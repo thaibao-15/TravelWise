@@ -1,35 +1,33 @@
 """
-Knowledge and KnowledgeChunk models — semi database-agnostic.
+Knowledge model — database-agnostic.
 
-Maps to: knowledge, knowledge_chunks tables
+Maps to: knowledge table
 
-Embedding strategy:
-- Currently stored as raw bytes (LargeBinary / VARBINARY(MAX)) — SQL Server compatible.
-- For PostgreSQL: consider using pgvector extension and the `Vector` type for proper
-  ANN (Approximate Nearest Neighbor) search.
+Per the SQL schema, Knowledge has only `created_at` (no updated_at).
+We define created_at as a standalone field (not via TimestampMixin) so we don't
+add an unwanted updated_at column.
 
-PostgreSQL migration note for `embedding`:
-  1. Install: pip install pgvector
-  2. from pgvector.sqlalchemy import Vector
-  3. Replace: sa_column=Column(LargeBinary, nullable=True)
-     With   : sa_column=Column(Vector(1536), nullable=True)  # adjust dim to your model
-  No other model / service changes needed.
+RAG note: KnowledgeChunk (embedding/vector) is deferred to Phase 2 (RAG pipeline).
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Column, LargeBinary, Text
+from sqlalchemy import Column, DateTime, Text
 from sqlmodel import Field, Relationship, SQLModel
 
-from app.db.base import TimestampMixin, _utcnow
+from app.db.base import _utcnow
 
 if TYPE_CHECKING:
     from app.models.place import Place
 
 
-class Knowledge(TimestampMixin, SQLModel, table=True):
-    """Knowledge article linked to a Place — used as RAG source documents."""
+class Knowledge(SQLModel, table=True):
+    """Knowledge article linked to a Place — primary RAG source document.
+
+    Intentionally does NOT inherit TimestampMixin because the schema only has
+    created_at (not updated_at). created_at is set once on creation.
+    """
 
     __tablename__ = "knowledge"
 
@@ -53,65 +51,22 @@ class Knowledge(TimestampMixin, SQLModel, table=True):
     content: Optional[str] = Field(
         default=None,
         sa_column=Column(Text),
-        # NVARCHAR(MAX) → Text
+        # NVARCHAR(MAX) → Text (SQL Server: NVARCHAR(MAX), PostgreSQL: TEXT)
     )
 
     source: Optional[str] = Field(
         default=None,
         sa_column=Column(Text),
-        # NVARCHAR(MAX) → Text (URL or reference)
+        # NVARCHAR(MAX) → Text (URL or citation reference)
     )
 
-    # NOTE: Knowledge has only created_at (no updated_at per schema).
-    # TimestampMixin adds both. If you want only created_at, define it inline
-    # instead of using the mixin.
-    # created_at inherited from TimestampMixin
-    # updated_at also inherited — harmless extra column
-
-    # Relationships
-    place: Optional["Place"] = Relationship(back_populates="knowledge_items")
-    chunks: List["KnowledgeChunk"] = Relationship(back_populates="knowledge")
-
-
-class KnowledgeChunk(SQLModel, table=True):
-    """Chunked segment of a Knowledge article, with vector embedding for RAG retrieval."""
-
-    __tablename__ = "knowledge_chunks"
-
-    id: Optional[int] = Field(
-        default=None,
-        primary_key=True,
-    )
-
-    knowledge_id: Optional[int] = Field(
-        default=None,
-        foreign_key="knowledge.id",
-        # ON DELETE CASCADE handled in migration
-    )
-
-    content: Optional[str] = Field(
-        default=None,
-        sa_column=Column(Text),
-        # NVARCHAR(MAX) → Text
-    )
-
-    embedding: Optional[bytes] = Field(
-        default=None,
-        sa_column=Column(
-            LargeBinary,
-            nullable=True,
-            # SQL Server: VARBINARY(MAX) — stores serialized float vector as bytes.
-            # PostgreSQL: Replace with pgvector Vector(dim) for ANN search.
-            # [SQL-SERVER-SPECIFIC — see module docstring for migration path]
-        ),
-    )
-
-    created_at: Optional[datetime] = Field(
+    created_at: datetime = Field(
         default_factory=_utcnow,
-        # Standalone created_at (no updated_at per original schema).
-        # SQLModel auto-generates DateTime column from the `datetime` annotation.
-        # Compatible with both SQL Server and PostgreSQL.
+        sa_type=DateTime,
+        # Python-side default — compatible with both SQL Server and PostgreSQL.
+        # No GETDATE() server_default used.
     )
 
     # Relationship
-    knowledge: Optional["Knowledge"] = Relationship(back_populates="chunks")
+    place: Optional["Place"] = Relationship(back_populates="knowledge_items")
+

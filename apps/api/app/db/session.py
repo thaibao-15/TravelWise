@@ -9,6 +9,7 @@ To switch databases: change DATABASE_URL in .env — no code changes needed here
 
 from typing import Generator
 
+from sqlalchemy import event
 from sqlmodel import Session, create_engine
 
 from app.core.config import settings
@@ -20,6 +21,13 @@ engine = create_engine(
     echo=False,
     pool_pre_ping=True,
 )
+
+
+@event.listens_for(engine, "connect")
+def _handle_pyodbc_udt(dbapi_connection, connection_record):
+    """Handle SQL Server GEOGRAPHY / GEOMETRY (-151) UDT columns in pyodbc."""
+    if hasattr(dbapi_connection, "add_output_converter"):
+        dbapi_connection.add_output_converter(-151, lambda val: bytes(val) if val else None)
 
 
 def get_session() -> Generator[Session, None, None]:

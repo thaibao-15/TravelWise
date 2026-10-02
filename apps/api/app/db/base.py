@@ -7,16 +7,19 @@ All definitions here are compatible with both SQL Server and PostgreSQL.
 
 from datetime import datetime, timezone
 
+from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
 
 def _utcnow() -> datetime:
-    """Return current UTC datetime (Python-side default for timestamp columns).
+    """Return current UTC datetime (timezone-aware).
 
-    Using Python-side default (instead of server_default) ensures:
-    - Compatibility with both SQL Server and PostgreSQL.
-    - Value is set before INSERT, available immediately after session.add().
-    - No dependency on DB-specific functions like GETDATE() or NOW().
+    Returns a timezone-aware UTC datetime. SQLAlchemy will strip the tzinfo
+    when writing to SQL Server DATETIME columns (which are tz-naive by nature).
+
+    PostgreSQL migration note:
+    - For TIMESTAMPTZ on PostgreSQL, use DateTime(timezone=True) in the column.
+    - This function works unchanged on PostgreSQL.
     """
     return datetime.now(timezone.utc)
 
@@ -24,19 +27,25 @@ def _utcnow() -> datetime:
 class TimestampMixin(SQLModel):
     """Mixin that adds created_at / updated_at columns to any SQLModel table.
 
-    Uses Field(default_factory=_utcnow) WITHOUT sa_column so that SQLModel creates
-    a fresh Column object per subclass — avoiding the SQLAlchemy error:
-    "Column object 'X' already assigned to Table 'Y'"
+    Uses Field(default_factory=_utcnow, sa_type=DateTime) instead of an explicit
+    sa_column=Column(...). This ensures SQLModel creates a separate, independent
+    Column object for every inheriting table (User, Place, etc.), avoiding the
+    SQLAlchemy ArgumentError caused by reusing a single Column object across tables.
 
-    SQLModel infers DateTime from the `datetime` annotation — compatible with
-    SQL Server DATETIME and PostgreSQL TIMESTAMP on both databases.
-
-    When migrating to PostgreSQL you can override these fields in the model with
-    sa_column=Column(DateTime(timezone=True)) for TIMESTAMPTZ support.
+    sa_type=DateTime ensures database-agnostic behavior:
+      SQL Server : DATETIME (tz-naive in DB; SQLAlchemy strips tzinfo on bind)
+      PostgreSQL : TIMESTAMP
 
     NOTE: server_default intentionally omitted to avoid GETDATE() SQL Server syntax.
     """
 
-    created_at: datetime = Field(default_factory=_utcnow)
-    updated_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_type=DateTime,
+    )
+
+    updated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_type=DateTime,
+    )
 
