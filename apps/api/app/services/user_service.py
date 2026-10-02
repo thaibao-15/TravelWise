@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
+from app.db.base import _utcnow
 from app.models.user import User
 from app.schemas.user import UpdateUserRequest
 
@@ -39,7 +39,7 @@ class UserService:
         for field, value in update_dict.items():
             setattr(user, field, value)
 
-        user.updated_at = datetime.now(timezone.utc)
+        user.updated_at = _utcnow()
         session.add(user)
         session.commit()
         session.refresh(user)
