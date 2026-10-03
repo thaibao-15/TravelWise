@@ -1,0 +1,15 @@
+"""
+RAG configuration module.
+Pulls settings from app.core.config.
+"""
+
+from app.core.config import settings
+
+CHROMA_PERSIST_DIRECTORY = settings.CHROMA_PERSIST_DIRECTORY
+CHROMA_COLLECTION_NAME = settings.CHROMA_COLLECTION_NAME
+EMBEDDING_PROVIDER = settings.EMBEDDING_PROVIDER
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL
+OPENAI_API_KEY = settings.OPENAI_API_KEY
+RAG_CHUNK_SIZE = settings.RAG_CHUNK_SIZE
+RAG_CHUNK_OVERLAP = settings.RAG_CHUNK_OVERLAP
+RAG_TOP_K = settings.RAG_TOP_K
