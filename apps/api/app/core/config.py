@@ -54,13 +54,27 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # -------------------------------------------------------------------------
+    # LLM Configuration (supports "gemini" and "openai")
+    # -------------------------------------------------------------------------
+    LLM_PROVIDER: str = "gemini"  # "gemini" or "openai"
+
+    # Google Gemini Configuration
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+
+    # OpenAI Configuration
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_BASE_URL: Optional[str] = None
+
+
+    # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
     # -------------------------------------------------------------------------
     CHROMA_PERSIST_DIRECTORY: str = "data/chroma"
     CHROMA_COLLECTION_NAME: str = "travelwise_knowledge"
     EMBEDDING_PROVIDER: str = "auto"  # "auto", "openai", "local"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
-    OPENAI_API_KEY: Optional[str] = None
     RAG_CHUNK_SIZE: int = 500
     RAG_CHUNK_OVERLAP: int = 100
     RAG_TOP_K: int = 3

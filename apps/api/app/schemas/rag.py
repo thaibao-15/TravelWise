@@ -63,3 +63,23 @@ class RAGSearchResponse(BaseModel):
     results: List[RAGSearchResultItem]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LLMTestRequest(BaseModel):
+    """Minimal request schema for testing LLM connection."""
+
+    prompt: str = Field(
+        default="Xin chào, bạn có thể giúp tôi lên kế hoạch du lịch không?",
+        description="Prompt test gửi tới OpenAI LLM",
+        examples=["Xin chào, bạn là ai?"],
+    )
+
+
+class LLMTestResponse(BaseModel):
+    """Response schema from minimal LLM test endpoint."""
+
+    status: str
+    provider: str
+    model: str
+    response: str
+

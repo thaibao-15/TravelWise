@@ -18,4 +18,4 @@ app.include_router(categories_router)
 app.include_router(places_router)
 app.include_router(rag_router)
 app.include_router(rag_router, prefix="/api/v1")
-
+
