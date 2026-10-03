@@ -28,7 +28,7 @@ def load_knowledge_documents(
         List of LangChain Document objects ready for splitting and embedding.
     """
     statement = (
-        select(Knowledge, Place.name.label("place_name"))
+        select(Knowledge, Place)
         .join(Place, Knowledge.place_id == Place.id, isouter=True)
     )
 
@@ -38,21 +38,38 @@ def load_knowledge_documents(
     results = session.exec(statement).all()
     documents: List[Document] = []
 
-    for knowledge, place_name in results:
+    for knowledge, place in results:
         content = knowledge.content or ""
-        # Include title in page_content to maximize semantic search quality
+
+        # Enrich page_content with place name, address, and knowledge title
+        header_parts = []
+        if place and place.name:
+            header_parts.append(f"Địa điểm: {place.name}")
+        if place and place.address:
+            header_parts.append(f"Địa chỉ: {place.address}")
         if knowledge.title:
-            page_content = f"{knowledge.title}\n{content}".strip()
+            header_parts.append(f"Chủ đề: {knowledge.title}")
+
+        header_str = " | ".join(header_parts)
+        if header_str:
+            page_content = f"[{header_str}]\n{content}".strip()
         else:
             page_content = content
 
         metadata = {
             "knowledge_id": knowledge.id,
-            "place_id": knowledge.place_id,
-            "place_name": place_name or "",
+            "place_id": knowledge.place_id or 0,
+            "place_name": place.name if place else "",
+            "place_address": place.address if (place and place.address) else "",
             "title": knowledge.title or "",
             "source": knowledge.source or "",
         }
+
+        # Add optional location coordinates if available
+        if place and place.latitude is not None:
+            metadata["latitude"] = float(place.latitude)
+        if place and place.longitude is not None:
+            metadata["longitude"] = float(place.longitude)
 
         documents.append(
             Document(

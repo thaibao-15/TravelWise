@@ -39,6 +39,9 @@ class RAGSearchMetadata(BaseModel):
     knowledge_id: Optional[int] = None
     place_id: Optional[int] = None
     place_name: Optional[str] = None
+    place_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     title: Optional[str] = None
     source: Optional[str] = None
     chunk_index: Optional[int] = None

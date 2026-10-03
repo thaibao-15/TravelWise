@@ -70,9 +70,19 @@ SQLSERVER_TRUST_CERT=yes
 JWT_SECRET=your-super-secret-key-change-this-in-production
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# LLM Configuration (Google Gemini miễn phí hoặc OpenAI)
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key-here
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# RAG Embedding Configuration (local = miễn phí 100%, không tốn quota)
+EMBEDDING_PROVIDER=local
 ```
 
-> ⚠️ **Quan trọng:** Đổi `JWT_SECRET` thành một chuỗi ngẫu nhiên mạnh trước khi deploy production.
+> ⚠️ **Quan trọng:** 
+> - Đổi `JWT_SECRET` thành một chuỗi ngẫu nhiên mạnh trước khi deploy production.
+> - Lấy `GEMINI_API_KEY` miễn phí tại [Google AI Studio](https://aistudio.google.com/apikey).
 
 ### 4. Tạo database trên SQL Server
 
@@ -109,7 +119,30 @@ uv run alembic revision --autogenerate -m "initial"
 uv run alembic upgrade head
 ```
 
-### 6. Khởi chạy server
+### 6. Khởi tạo dữ liệu mẫu (Seeding)
+
+Nạp dữ liệu các địa điểm du lịch, danh mục và bài viết tri thức vào SQL Server:
+
+```bash
+uv run python seed.py
+```
+
+### 7. Nạp dữ liệu từ SQL Server vào Chroma Vector Database (RAG Ingestion)
+
+Để hệ thống RAG có thể tìm kiếm và trả lời thông minh, chạy lệnh sau để chuyển đổi các bài viết tri thức từ SQL Server sang vector embeddings và lưu vào Chroma:
+
+```bash
+uv run python scripts/ingest_rag.py
+```
+
+> 💡 **Cơ chế hoạt động:**
+> 1. Đọc toàn bộ các bài viết từ bảng `Knowledge` trong SQL Server.
+> 2. Chia bài viết thành các đoạn nhỏ (`chunk_size=500`, `overlap=100`) bằng `RecursiveCharacterTextSplitter`.
+> 3. Tạo vector embeddings (mặc định dùng model local `all-MiniLM-L6-v2` miễn phí, không tốn quota API).
+> 4. Lưu và đánh index vào thư mục `data/chroma`.
+> 5. Script sử dụng ID cố định (`knowledge_{id}_chunk_{index}`) nên có thể **chạy lại bất kỳ lúc nào** khi có bài viết mới mà không lo trùng lặp dữ liệu.
+
+### 8. Khởi chạy server
 
 **Development (auto-reload):**
 ```bash
@@ -260,24 +293,110 @@ Authorization: Bearer <access_token>
 
 ---
 
+---
+
+## 🤖 RAG & AI Assistant APIs
+
+TravelWise tích hợp hệ thống RAG (Retrieval-Augmented Generation) kết hợp Chroma Vector Database và Gemini Chat Model.
+
+### 1. Hỏi đáp du lịch thông minh (RAG Ask)
+
+Gửi câu hỏi của người dùng, hệ thống tự động tìm kiếm tài liệu liên quan nhất và sinh câu trả lời chính xác, thân thiện:
+
+```http
+POST /rag/ask
+Content-Type: application/json
+
+{
+  "query": "Chùa Linh Ứng có gì đặc biệt?"
+}
+```
+
+**Response `200 OK`:**
+```json
+{
+  "query": "Chùa Linh Ứng có gì đặc biệt?",
+  "answer": "Chùa Linh Ứng - Bãi Bụt nổi bật với tượng Phật Quan Thế Âm cao 67m (tương đương tòa nhà 30 tầng), là một trong những tượng Phật cao nhất Việt Nam..."
+}
+```
+
+---
+
+### 2. Tìm kiếm ngữ nghĩa tri thức (Semantic Search)
+
+Tìm kiếm các đoạn tri thức liên quan dựa trên độ tương đồng ngữ nghĩa:
+
+```http
+POST /rag/search
+Content-Type: application/json
+
+{
+  "query": "Bà Nà Hills",
+  "top_k": 3
+}
+```
+
+**Response `200 OK`:**
+```json
+{
+  "query": "Bà Nà Hills",
+  "results": [
+    {
+      "content": "Khu du lịch Bà Nà Hills nằm trên đỉnh núi Chúa...",
+      "score": 0.8524,
+      "metadata": {
+        "place_name": "Bà Nà Hills",
+        "knowledge_id": 1,
+        "chunk_index": 0
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 3. Kiểm tra kết nối LLM (Health Check)
+
+```http
+POST /rag/test-llm
+Content-Type: application/json
+
+{
+  "prompt": "Xin chào"
+}
+```
+
+---
+
 ## 🧪 Test nhanh trên Swagger UI
 
 1. Mở `http://127.0.0.1:8000/docs`
-2. Gọi `POST /api/v1/auth/register` để tạo tài khoản
-3. Gọi `POST /api/v1/auth/login` → copy `access_token`
-4. Bấm **Authorize 🔒** → nhập token vào ô **Value**
-5. Gọi `GET /api/v1/auth/me` để xem thông tin tài khoản
+2. Đăng ký & Đăng nhập để lấy `access_token` nếu cần gọi các API bảo vệ.
+3. Thử nghiệm ngay các endpoint `/rag/search` và `/rag/ask` trực tiếp trên Swagger.
 
 ---
 
 ## 📦 Các lệnh hữu ích
 
 ```bash
+# Khởi chạy server development
+uv run uvicorn app.main:app --reload
+
+# Seed dữ liệu vào SQL Server
+uv run python seed.py
+
+# Nạp dữ liệu từ SQL Server vào Chroma Vector Database
+uv run python scripts/ingest_rag.py
+
+# Kiểm tra kết nối LLM
+uv run python scripts/test_llm.py
+
+# Chạy toàn bộ test suites tự động
+uv run python -m unittest discover tests
+
 # Cài thêm dependency
 uv add <package-name>
-
-# Chạy script Python
-uv run python <script.py>
 
 # Tạo migration mới
 uv run alembic revision --autogenerate -m "mô tả thay đổi"
@@ -291,3 +410,4 @@ uv run alembic downgrade -1
 # Xem lịch sử migration
 uv run alembic history
 ```
+
