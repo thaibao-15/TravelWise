@@ -2,11 +2,14 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import settings
+from app.rag.chain import RAGChainError, get_rag_chain
 from app.rag.llm import extract_response_text, get_chat_llm
 from app.rag.retriever import RAGRetriever
 from app.schemas.rag import (
     LLMTestRequest,
     LLMTestResponse,
+    RAGAskRequest,
+    RAGAskResponse,
     RAGSearchRequest,
     RAGSearchResponse,
 )
@@ -39,6 +42,41 @@ def search_knowledge(request: RAGSearchRequest) -> RAGSearchResponse:
         query=request.query,
         results=results,
     )
+
+
+@router.post(
+    "/ask",
+    response_model=RAGAskResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ask TravelWise RAG",
+    description="Hỏi đáp du lịch thông minh dựa trên cơ sở tri thức đã lưu trong vector database thông qua RAG Chain.",
+)
+def ask_knowledge(request: RAGAskRequest) -> RAGAskResponse:
+    """Execute RAG question-answering.
+
+    Flow:
+        Router -> Service/RAGChain -> Retriever -> Chroma -> Prompt -> LLM -> Response
+    """
+    try:
+        chain = get_rag_chain()
+        result = chain.invoke(question=request.query)
+        return RAGAskResponse(
+            query=request.query,
+            answer=result["answer"],
+        )
+    except RAGChainError as e:
+        logger.error("RAG chain error: %s", e.message)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
+        )
+    except Exception as e:
+        logger.error("Unexpected error in /rag/ask: %s", type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Đã xảy ra lỗi nội bộ khi xử lý câu hỏi.",
+        )
+
 
 
 @router.post(

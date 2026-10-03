@@ -3,7 +3,7 @@ Pydantic schemas for RAG retrieval and semantic search.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RAGSearchRequest(BaseModel):
@@ -82,4 +82,40 @@ class LLMTestResponse(BaseModel):
     provider: str
     model: str
     response: str
+
+
+class RAGAskRequest(BaseModel):
+    """Request payload for RAG question-answering."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        description="Nội dung câu hỏi du lịch của người dùng",
+        examples=["Chùa Linh Ứng có gì đặc biệt?"],
+    )
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Query không được để trống hoặc chỉ chứa khoảng trắng.")
+        return stripped
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "query": "Chùa Linh Ứng có gì đặc biệt?"
+            }
+        }
+    )
+
+
+class RAGAskResponse(BaseModel):
+    """Response payload for RAG question-answering."""
+
+    query: str
+    answer: str
+
+    model_config = ConfigDict(from_attributes=True)
 
