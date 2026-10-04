@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.api.routes.auth import router as auth_router
 from app.api.routes.categories import router as categories_router
 from app.api.routes.places import router as places_router
@@ -12,10 +14,20 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Cho phép ứng dụng Next.js gọi API (CORS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(categories_router)
 app.include_router(places_router)
 app.include_router(rag_router)
 app.include_router(rag_router, prefix="/api/v1")
+
 

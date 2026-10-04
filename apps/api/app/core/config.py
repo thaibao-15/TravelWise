@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     RAG_CHUNK_OVERLAP: int = 100
     RAG_TOP_K: int = 3
 
+    # -------------------------------------------------------------------------
+    # CORS Configuration
+    # -------------------------------------------------------------------------
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
     @computed_field
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
