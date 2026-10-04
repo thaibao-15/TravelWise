@@ -3,7 +3,7 @@ Pydantic schemas for RAG retrieval and semantic search.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class RAGSearchRequest(BaseModel):
@@ -87,28 +87,68 @@ class LLMTestResponse(BaseModel):
     response: str
 
 
-class RAGAskRequest(BaseModel):
-    """Request payload for RAG question-answering."""
+from datetime import datetime
+from typing import Any
 
-    query: str = Field(
-        ...,
-        min_length=1,
-        description="Nội dung câu hỏi du lịch của người dùng",
+
+class MessageResponse(BaseModel):
+    """Payload representing a single saved chat message."""
+
+    id: int
+    conversation_id: int
+    sender: str
+    content: str
+    audio_url: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RAGAskRequest(BaseModel):
+    """Request payload for RAG question-answering with optional conversation memory."""
+
+    query: Optional[str] = Field(
+        default=None,
+        description="Nội dung câu hỏi du lịch của người dùng (tương thích ngược)",
         examples=["Chùa Linh Ứng có gì đặc biệt?"],
     )
+    message: Optional[str] = Field(
+        default=None,
+        description="Nội dung câu hỏi hoặc tin nhắn",
+        examples=["Nó có gì đặc biệt?"],
+    )
+    conversation_id: Optional[int] = Field(
+        default=None,
+        description="ID cuộc trò chuyện (nếu tiếp tục hội thoại)",
+        examples=[15],
+    )
 
-    @field_validator("query")
+    @field_validator("query", "message")
     @classmethod
-    def validate_query(cls, v: str) -> str:
-        stripped = v.strip()
-        if not stripped:
-            raise ValueError("Query không được để trống hoặc chỉ chứa khoảng trắng.")
-        return stripped
+    def clean_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            stripped = v.strip()
+            return stripped if stripped else None
+        return None
+
+    @model_validator(mode="after")
+    def validate_content(self) -> "RAGAskRequest":
+        q = (self.message or self.query or "").strip()
+        if not q:
+            raise ValueError("Cần cung cấp nội dung câu hỏi ('message' hoặc 'query').")
+        return self
+
+    def get_question(self) -> str:
+        q = (self.message or self.query or "").strip()
+        if not q:
+            raise ValueError("Cần cung cấp nội dung câu hỏi ('message' hoặc 'query').")
+        return q
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "query": "Chùa Linh Ứng có gì đặc biệt?"
+                "conversation_id": 15,
+                "message": "Nó có gì đặc biệt?",
             }
         }
     )
@@ -119,6 +159,9 @@ class RAGAskResponse(BaseModel):
 
     query: str
     answer: str
+    conversation_id: Optional[int] = None
+    message: Optional[MessageResponse] = None
+    sources: Optional[List[Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

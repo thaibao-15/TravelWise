@@ -5,11 +5,14 @@ Uses TimestampMixin from app.db.base for created_at / updated_at, which relies o
 Python-side datetime defaults instead of SQL Server-specific GETDATE().
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, List, Optional
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 from app.db.base import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.conversation import Conversation
 
 
 class User(TimestampMixin, SQLModel, table=True):
@@ -51,4 +54,10 @@ class User(TimestampMixin, SQLModel, table=True):
     )
     # created_at and updated_at are inherited from TimestampMixin.
     # They use Python-side datetime.now(timezone.utc) — compatible with both
-    # SQL Server and PostgreSQL.
+    # SQL Server and PostgreSQL.
+
+    # Relationships
+    conversations: List["Conversation"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )

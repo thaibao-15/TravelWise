@@ -20,6 +20,8 @@ from app.models.hotel_detail import HotelDetail
 from app.models.place_image import PlaceImage
 from app.models.opening_hours import OpeningHours
 from app.models.knowledge import Knowledge
+from app.models.conversation import Conversation
+from app.models.message import Message
 
 __all__ = [
     "User",
@@ -30,4 +32,6 @@ __all__ = [
     "PlaceImage",
     "OpeningHours",
     "Knowledge",
+    "Conversation",
+    "Message",
 ]
