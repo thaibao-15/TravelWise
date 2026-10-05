@@ -158,18 +158,14 @@ def ask_knowledge(
     ConversationService.update_conversation_timestamp(session, conversation)
 
     return RAGAskResponse(
-        query=user_question,
-        answer=answer,
         conversation_id=conversation.id,
         message=MessageResponse(
             id=ai_msg.id,
-            conversation_id=conversation.id,
             sender=ai_msg.sender,
             content=ai_msg.content,
             created_at=ai_msg.created_at,
             audio_url=ai_msg.audio_url,
         ),
-        sources=result.get("sources"),
     )
 
 

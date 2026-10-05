@@ -304,19 +304,25 @@ TravelWise tích hợp hệ thống RAG (Retrieval-Augmented Generation) kết h
 Gửi câu hỏi của người dùng, hệ thống tự động tìm kiếm tài liệu liên quan nhất và sinh câu trả lời chính xác, thân thiện:
 
 ```http
-POST /rag/ask
+POST /api/v1/rag/ask
 Content-Type: application/json
 
 {
-  "query": "Chùa Linh Ứng có gì đặc biệt?"
+  "message": "Chùa Linh Ứng có gì đặc biệt?"
 }
 ```
 
 **Response `200 OK`:**
 ```json
 {
-  "query": "Chùa Linh Ứng có gì đặc biệt?",
-  "answer": "Chùa Linh Ứng - Bãi Bụt nổi bật với tượng Phật Quan Thế Âm cao 67m (tương đương tòa nhà 30 tầng), là một trong những tượng Phật cao nhất Việt Nam..."
+  "conversation_id": 15,
+  "message": {
+    "id": 42,
+    "sender": "AI",
+    "content": "Chùa Linh Ứng - Bãi Bụt nổi bật với tượng Phật Quan Thế Âm cao 67m (tương đương tòa nhà 30 tầng), là một trong những tượng Phật cao nhất Việt Nam...",
+    "created_at": "2026-10-05T08:00:00Z",
+    "audio_url": null
+  }
 }
 ```
 
