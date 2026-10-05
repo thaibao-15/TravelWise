@@ -41,7 +41,7 @@ export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
               TravelWise AI Assistant
             </h1>
             <span className="px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20">
-              RAG Powered
+              AI Thông minh
             </span>
           </div>
           <p className="text-xs text-slate-400">

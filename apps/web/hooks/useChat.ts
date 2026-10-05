@@ -15,121 +15,166 @@ const INITIAL_WELCOME_MESSAGE: ChatMessage = {
 
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_WELCOME_MESSAGE]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sendMessage = useCallback(async (queryText: string) => {
-    const trimmed = queryText.trim();
-    if (!trimmed || isLoading) return;
+  const sendMessage = useCallback(
+    async (queryText: string) => {
+      const trimmed = queryText.trim();
+      if (!trimmed || isLoading) return;
 
-    setError(null);
-    const timestamp = new Date();
+      setError(null);
+      const timestamp = new Date();
 
-    // Create user message
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: trimmed,
-      timestamp,
-      status: "success",
-    };
+      // Tạo tin nhắn người dùng
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: trimmed,
+        timestamp,
+        status: "success",
+      };
 
-    // Create temporary loading assistant message
-    const assistantMsgId = `assistant-${Date.now()}`;
-    const loadingAssistantMessage: ChatMessage = {
-      id: assistantMsgId,
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-      status: "sending",
-    };
+      // Tạo tin nhắn đang xử lý của assistant
+      const assistantMsgId = `assistant-${Date.now()}`;
+      const loadingAssistantMessage: ChatMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        status: "sending",
+      };
 
-    setMessages((prev) => [...prev, userMessage, loadingAssistantMessage]);
-    setIsLoading(true);
+      setMessages((prev) => [...prev, userMessage, loadingAssistantMessage]);
+      setIsLoading(true);
 
-    try {
-      const response = await chatService.askRAG(trimmed);
+      try {
+        // Gửi kèm conversationId nếu đang trong phiên chat
+        const response = await chatService.askAI(trimmed, conversationId);
 
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? {
-                ...msg,
-                content: response.answer,
-                status: "success",
-              }
-            : msg
-        )
-      );
-    } catch (err: unknown) {
-      const errorMsg =
-        err instanceof Error
-          ? err.message
-          : "Đã xảy ra lỗi không xác định khi kết nối với AI.";
+        // Lưu conversation_id được server trả về để duy trì ngữ cảnh
+        if (response.conversation_id) {
+          setConversationId(response.conversation_id);
+        }
 
-      setError(errorMsg);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? {
-                ...msg,
-                content: "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
-                status: "error",
-                errorMessage: errorMsg,
-              }
-            : msg
-        )
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading]);
+        // Lấy nội dung câu trả lời từ response.message.content (chuẩn Hướng 1) hoặc fallback
+        const answerContent =
+          response.message?.content || response.answer || "";
 
-  const retryMessage = useCallback(async (messageId: string) => {
-    // Find failed assistant message index and preceding user message
-    const targetIdx = messages.findIndex((m) => m.id === messageId);
-    if (targetIdx <= 0) return;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  id: response.message
+                    ? `msg-${response.message.id}`
+                    : assistantMsgId,
+                  content: answerContent,
+                  timestamp: response.message
+                    ? new Date(response.message.created_at)
+                    : new Date(),
+                  status: "success",
+                }
+              : msg
+          )
+        );
+      } catch (err: unknown) {
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "Đã xảy ra lỗi không xác định khi kết nối với AI.";
 
-    const precedingUserMsg = messages[targetIdx - 1];
-    if (!precedingUserMsg || precedingUserMsg.role !== "user") return;
+        setError(errorMsg);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content:
+                    "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
+                  status: "error",
+                  errorMessage: errorMsg,
+                }
+              : msg
+          )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [conversationId, isLoading]
+  );
 
-    // Reset status to sending
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId ? { ...m, status: "sending", errorMessage: undefined } : m
-      )
-    );
-    setIsLoading(true);
-    setError(null);
+  const retryMessage = useCallback(
+    async (messageId: string) => {
+      const targetIdx = messages.findIndex((m) => m.id === messageId);
+      if (targetIdx <= 0) return;
 
-    try {
-      const response = await chatService.askRAG(precedingUserMsg.content);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, content: response.answer, status: "success" }
-            : m
-        )
-      );
-    } catch (err: unknown) {
-      const errorMsg =
-        err instanceof Error ? err.message : "Thử lại thất bại.";
-      setError(errorMsg);
+      const precedingUserMsg = messages[targetIdx - 1];
+      if (!precedingUserMsg || precedingUserMsg.role !== "user") return;
+
       setMessages((prev) =>
         prev.map((m) =>
           m.id === messageId
-            ? {
-                ...m,
-                status: "error",
-                errorMessage: errorMsg,
-              }
+            ? { ...m, status: "sending", errorMessage: undefined }
             : m
         )
       );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [messages]);
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await chatService.askAI(
+          precedingUserMsg.content,
+          conversationId
+        );
+
+        if (response.conversation_id) {
+          setConversationId(response.conversation_id);
+        }
+
+        const answerContent =
+          response.message?.content || response.answer || "";
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  id: response.message
+                    ? `msg-${response.message.id}`
+                    : messageId,
+                  content: answerContent,
+                  timestamp: response.message
+                    ? new Date(response.message.created_at)
+                    : new Date(),
+                  status: "success",
+                }
+              : m
+          )
+        );
+      } catch (err: unknown) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Thử lại thất bại.";
+        setError(errorMsg);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  status: "error",
+                  errorMessage: errorMsg,
+                }
+              : m
+          )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [conversationId, messages]
+  );
 
   const clearMessages = useCallback(() => {
     setMessages([
@@ -138,15 +183,40 @@ export function useChat() {
         timestamp: new Date(),
       },
     ]);
+    setConversationId(null);
     setError(null);
+  }, []);
+
+  const loadConversation = useCallback(async (id: number) => {
+    try {
+      setIsLoading(true);
+      setConversationId(id);
+      const msgs = await chatService.getConversationMessages(id);
+      if (msgs && msgs.length > 0) {
+        const formatted: ChatMessage[] = msgs.map((m) => ({
+          id: `msg-${m.id}`,
+          role: m.sender.toUpperCase() === "USER" ? "user" : "assistant",
+          content: m.content,
+          timestamp: new Date(m.created_at),
+          status: "success",
+        }));
+        setMessages(formatted);
+      }
+    } catch (err) {
+      console.error("Failed to load conversation messages", err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   return {
     messages,
+    conversationId,
     isLoading,
     error,
     sendMessage,
     retryMessage,
     clearMessages,
+    loadConversation,
   };
 }

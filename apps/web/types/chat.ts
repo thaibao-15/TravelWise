@@ -11,14 +11,30 @@ export interface ChatMessage {
   errorMessage?: string;
 }
 
-export interface RAGAskRequest {
-  query: string;
+export interface ChatAskRequest {
+  message?: string;
+  query?: string;
+  conversation_id?: number | null;
 }
 
-export interface RAGAskResponse {
-  query: string;
-  answer: string;
+export type RAGAskRequest = ChatAskRequest;
+
+export interface AIMessageResponse {
+  id: number;
+  sender: string;
+  content: string;
+  created_at: string;
+  audio_url?: string | null;
 }
+
+export interface ChatAskResponse {
+  conversation_id: number;
+  message: AIMessageResponse;
+  // Giữ fallback dự phòng nếu cần
+  answer?: string;
+}
+
+export type RAGAskResponse = ChatAskResponse;
 
 export interface SuggestedQuestion {
   id: string;

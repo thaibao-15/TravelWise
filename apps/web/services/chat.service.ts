@@ -1,29 +1,60 @@
 import { apiFetch } from "@/services/api";
-import { RAG_ENDPOINTS } from "@/lib/constants";
-import { RAGAskRequest, RAGAskResponse } from "@/types/chat";
+import { AI_ENDPOINTS } from "@/lib/constants";
+import { ChatAskRequest, ChatAskResponse } from "@/types/chat";
 
 export const chatService = {
   /**
-   * Send a travel query to TravelWise RAG AI service
+   * Gửi câu hỏi du lịch đến Trợ lý AI TravelWise
    */
-  async askRAG(query: string): Promise<RAGAskResponse> {
-    const payload: RAGAskRequest = { query };
-    try {
-      // Primary route: /rag/ask
-      return await apiFetch<RAGAskResponse>(RAG_ENDPOINTS.ASK, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    } catch (err: unknown) {
-      // Fallback to /api/v1/rag/ask if root route fails with 404
-      const status = (err as { status?: number })?.status;
-      if (status === 404) {
-        return await apiFetch<RAGAskResponse>(RAG_ENDPOINTS.ASK_V1, {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      }
-      throw err;
-    }
+  async askAI(
+    query: string,
+    conversationId?: number | null
+  ): Promise<ChatAskResponse> {
+    const payload: ChatAskRequest = {
+      message: query,
+      conversation_id: conversationId || undefined,
+    };
+
+    return await apiFetch<ChatAskResponse>(AI_ENDPOINTS.ASK, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /**
+   * Alias ngắn gọn cho askAI
+   */
+  async ask(
+    query: string,
+    conversationId?: number | null
+  ): Promise<ChatAskResponse> {
+    return this.askAI(query, conversationId);
+  },
+
+  /**
+   * Alias tương thích ngược
+   */
+  async askRAG(
+    query: string,
+    conversationId?: number | null
+  ): Promise<ChatAskResponse> {
+    return this.askAI(query, conversationId);
+  },
+
+  /**
+   * Lấy danh sách tin nhắn của một cuộc hội thoại cụ thể
+   */
+  async getConversationMessages(conversationId: number) {
+    return await apiFetch<
+      Array<{
+        id: number;
+        conversation_id: number;
+        sender: string;
+        content: string;
+        created_at: string;
+      }>
+    >(`/api/v1/conversations/${conversationId}/messages`, {
+      method: "GET",
+    });
   },
 };

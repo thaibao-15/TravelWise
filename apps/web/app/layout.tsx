@@ -16,7 +16,7 @@ import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
   title: "TravelWise AI - Hỏi đáp Du lịch Thông minh",
-  description: "Trợ lý du lịch AI thông minh dựa trên công nghệ RAG và cơ sở tri thức TravelWise.",
+  description: "Trợ lý du lịch AI thông minh dựa trên dữ liệu và cơ sở tri thức TravelWise.",
 };
 
 export default function RootLayout({

@@ -3,12 +3,13 @@ import { SuggestedQuestion } from "@/types/chat";
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export const RAG_ENDPOINTS = {
-  ASK: "/rag/ask",
-  ASK_V1: "/api/v1/rag/ask",
-  SEARCH: "/rag/search",
-  TEST_LLM: "/rag/test-llm",
+export const AI_ENDPOINTS = {
+  ASK: "/api/v1/rag/ask",
+  SEARCH: "/api/v1/rag/search",
+  TEST_LLM: "/api/v1/rag/test-llm",
 };
+
+export const RAG_ENDPOINTS = AI_ENDPOINTS;
 
 export const DEFAULT_SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
   {

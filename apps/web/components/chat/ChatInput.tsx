@@ -113,7 +113,7 @@ export function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
 
         {/* Input Footer Disclaimer */}
         <p className="mt-2 text-center text-[11px] text-slate-500">
-          TravelWise AI truy vấn tri thức RAG trong cơ sở dữ liệu vector. Nhấn <kbd className="px-1 py-0.5 text-[10px] bg-slate-900 border border-slate-800 rounded text-slate-400">Enter</kbd> để gửi, <kbd className="px-1 py-0.5 text-[10px] bg-slate-900 border border-slate-800 rounded text-slate-400">Shift + Enter</kbd> xuống dòng.
+          TravelWise AI tra cứu dữ liệu du lịch chuẩn xác để hỗ trợ bạn. Nhấn <kbd className="px-1 py-0.5 text-[10px] bg-slate-900 border border-slate-800 rounded text-slate-400">Enter</kbd> để gửi, <kbd className="px-1 py-0.5 text-[10px] bg-slate-900 border border-slate-800 rounded text-slate-400">Shift + Enter</kbd> xuống dòng.
         </p>
       </div>
     </div>

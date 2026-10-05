@@ -9,11 +9,30 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { SuggestedQuestions } from "@/components/chat/SuggestedQuestions";
 
 function ChatContent() {
-  const { messages, isLoading, sendMessage, retryMessage, clearMessages } =
-    useChat();
+  const {
+    messages,
+    isLoading,
+    sendMessage,
+    retryMessage,
+    clearMessages,
+    loadConversation,
+  } = useChat();
   const searchParams = useSearchParams();
   const initialQuerySent = useRef(false);
+  const initialConvLoaded = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Tự động tải lại lịch sử hội thoại nếu có conversation_id trên URL
+  useEffect(() => {
+    const convId = searchParams.get("conversation_id");
+    if (convId && !initialConvLoaded.current) {
+      initialConvLoaded.current = true;
+      const numId = parseInt(convId, 10);
+      if (!isNaN(numId)) {
+        loadConversation(numId);
+      }
+    }
+  }, [searchParams, loadConversation]);
 
   // Auto-send query from URL query parameter (e.g. /chat?q=...)
   useEffect(() => {

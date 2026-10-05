@@ -154,7 +154,7 @@ export default function Home() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded-full bg-slate-900 border border-teal-500/30 text-teal-300 text-xs font-medium shadow-inner shadow-teal-500/10">
             <span className="flex h-2 w-2 rounded-full bg-teal-400 animate-pulse"></span>
-            <span>Ứng dụng công nghệ RAG & Semantic Search thông minh</span>
+            <span>Trợ lý du lịch AI thế hệ mới & Tra cứu thông minh</span>
           </div>
 
           {/* Main Headline */}
@@ -234,9 +234,9 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Tri thức RAG chuẩn xác</h3>
+              <h3 className="text-lg font-semibold text-white mb-2">Dữ liệu du lịch chuẩn xác</h3>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Hệ thống truy vấn dữ liệu thực tế từ cơ sở dữ liệu vector, giảm thiểu triệt để hiện tượng bịa đặt thông tin của AI thông thường.
+                Hệ thống tra cứu dữ liệu thực tế từ cơ sở dữ liệu du lịch đã kiểm duyệt, đảm bảo thông tin luôn chính xác và cập nhật.
               </p>
             </div>
 
@@ -355,7 +355,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-8 px-4 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© {new Date().getFullYear()} TravelWise. Nền tảng Du lịch Thông minh hỗ trợ bởi AI RAG.</p>
+          <p>© {new Date().getFullYear()} TravelWise. Nền tảng Du lịch Thông minh cùng Trợ lý AI.</p>
           <div className="flex items-center gap-4">
             <Link href="/chat" className="hover:text-teal-400 transition-colors">
               Trợ lý AI

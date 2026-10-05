@@ -139,7 +139,7 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
                 <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce"></span>
               </div>
               <span className="text-xs text-slate-400 italic">
-                Đang tìm kiếm dữ liệu RAG & tổng hợp câu trả lời...
+                Đang tra cứu dữ liệu & tổng hợp câu trả lời...
               </span>
             </div>
           ) : isError ? (
