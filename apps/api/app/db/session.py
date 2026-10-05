@@ -16,10 +16,18 @@ from app.core.config import settings
 
 # Engine is created from the database URI in settings.
 # pool_pre_ping=True works on both SQL Server and PostgreSQL.
+# use_setinputsizes=False prevents pyodbc from binding strings as non-Unicode (VARCHAR)
+# which causes Vietnamese diacritics to become '?' marks in SQL Server.
+engine_kwargs = {
+    "echo": False,
+    "pool_pre_ping": True,
+}
+if "mssql+pyodbc" in settings.SQLALCHEMY_DATABASE_URI:
+    engine_kwargs["use_setinputsizes"] = False
+
 engine = create_engine(
     settings.SQLALCHEMY_DATABASE_URI,
-    echo=False,
-    pool_pre_ping=True,
+    **engine_kwargs,
 )
 
 

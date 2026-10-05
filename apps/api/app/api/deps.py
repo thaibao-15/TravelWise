@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
@@ -8,9 +9,8 @@ from app.db.session import get_session
 from app.models.user import User
 
 # HTTPBearer reads "Authorization: Bearer <token>" header.
-# Unlike OAuth2PasswordBearer, it does NOT create a Swagger OAuth2 Password form.
-# Swagger will display a simple "Value" text field for pasting the JWT directly.
 http_bearer = HTTPBearer(auto_error=True)
+http_bearer_optional = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
@@ -49,4 +49,45 @@ def get_current_user(
     return user
 
 
-__all__ = ["get_session", "get_current_user", "http_bearer"]
+def get_current_user_optional(
+    session: Session = Depends(get_session),
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer_optional),
+) -> Optional[User]:
+    """Extract user if Authorization header is present and valid; returns None otherwise."""
+    if not credentials:
+        return None
+
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        user_id_str: str | None = payload.get("sub")
+        if user_id_str is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user_id = int(user_id_str)
+    except (jwt.PyJWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = session.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or disabled",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+__all__ = ["get_session", "get_current_user", "get_current_user_optional", "http_bearer", "http_bearer_optional"]
