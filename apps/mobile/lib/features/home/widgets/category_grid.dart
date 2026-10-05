@@ -1,56 +1,72 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 
 class CategoryGrid extends StatelessWidget {
-  const CategoryGrid({super.key});
+  const CategoryGrid({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final categories = [
-      {'icon': '🏖', 'label': 'Biển', 'color': Colors.blue.shade50},
-      {'icon': '🍜', 'label': 'Ẩm thực', 'color': Colors.red.shade50},
-      {'icon': '☕', 'label': 'Café', 'color': Colors.brown.shade50},
-      {'icon': '🌲', 'label': 'Tự nhiên', 'color': Colors.green.shade50},
-      {'icon': '🏛', 'label': 'Văn hóa', 'color': Colors.indigo.shade50},
-      {'icon': '🎡', 'label': 'Giải trí', 'color': Colors.purple.shade50},
-      {'icon': '📸', 'label': 'Check-in', 'color': Colors.pink.shade50},
-      {'icon': '🧘', 'label': 'Nghỉ dưỡng', 'color': Colors.teal.shade50},
+      {'icon': '🌊', 'label': 'Biển'},
+      {'icon': '🍜', 'label': 'Ẩm thực'},
+      {'icon': '☕', 'label': 'Cafe'},
+      {'icon': '🌲', 'label': 'Thiên nhiên'},
+      {'icon': '🏛', 'label': 'Văn hóa'},
+      {'icon': '🎡', 'label': 'Giải trí'},
+      {'icon': '📸', 'label': 'Chụp ảnh'},
+      {'icon': '🧘', 'label': 'Nghỉ dưỡng'},
     ];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: GridView.builder(
-        shrinkWrap: true,
+        padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
+        shrinkWrap: true,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
           mainAxisSpacing: AppSpacing.md,
           crossAxisSpacing: AppSpacing.md,
-          childAspectRatio: 0.85,
+          childAspectRatio: 0.8,
         ),
         itemCount: categories.length,
         itemBuilder: (context, index) {
           return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: categories[index]['color'] as Color,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                  ),
-                  child: Center(
-                    child: Text(
-                      categories[index]['icon'] as String,
-                      style: const TextStyle(fontSize: 24),
+              Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
-                  ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  categories[index]['icon']!,
+                  style: const TextStyle(fontSize: 24),
                 ),
               ),
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                categories[index]['label'] as String,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+                categories[index]['label']!,
+                style: AppTextStyles.caption.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           );

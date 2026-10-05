@@ -1,45 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 
-class HomeSearchBar extends StatelessWidget {
-  const HomeSearchBar({super.key});
+class SearchBar extends StatelessWidget {
+  const SearchBar({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.auto_awesome, color: AppColors.primary),
-          const SizedBox(width: AppSpacing.sm),
-          const Expanded(
-            child: Text(
-              'Bạn muốn đi đâu hôm nay?',
-              style: TextStyle(color: AppColors.textSecondary),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
+          ],
+        ),
+        child: TextField(
+          decoration: InputDecoration(
+            hintText: 'Bạn muốn đi đâu hôm nay?',
+            hintStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+            prefixIcon: const Icon(LucideIcons.search, color: AppColors.textSecondary),
+            suffixIcon: Container(
+              margin: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: const Icon(LucideIcons.slidersHorizontal, color: AppColors.primary, size: 18),
             ),
-            child: const Icon(Icons.mic, color: AppColors.primary, size: 18),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 16),
           ),
-        ],
+        ),
       ),
     );
   }

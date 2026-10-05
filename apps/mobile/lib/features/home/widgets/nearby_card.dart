@@ -1,39 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 
 class NearbyCard extends StatelessWidget {
-  final String title;
-  final String type;
-  final double distance;
-  final double rating;
-  final String imageUrl;
-
-  const NearbyCard({
-    super.key,
-    required this.title,
-    required this.type,
-    required this.distance,
-    required this.rating,
-    required this.imageUrl,
-  });
+  const NearbyCard({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      margin: const EdgeInsets.only(bottom: AppSpacing.md, left: AppSpacing.lg, right: AppSpacing.lg),
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             child: Image.network(
-              imageUrl,
+              'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80', // Restaurant
               width: 80,
               height: 80,
               fit: BoxFit.cover,
@@ -47,44 +36,45 @@ class NearbyCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
-                    Row(
-                      children: [
-                        const Icon(Icons.star, color: Colors.amber, size: 14),
-                        const SizedBox(width: 2),
-                        Text(rating.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
+                    Expanded(
+                      child: Text(
+                        'Nhà hàng Hải sản Bé Mặn',
+                        style: AppTextStyles.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(LucideIcons.bookmark, size: 20, color: AppColors.textSecondary),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Hải sản • 1.2km',
+                  style: AppTextStyles.caption,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    const Icon(Icons.star, size: 14, color: AppColors.warning),
+                    const SizedBox(width: 4),
+                    Text('4.8', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: AppSpacing.sm),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Đang mở',
+                        style: AppTextStyles.caption.copyWith(color: AppColors.success, fontSize: 10),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(type, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.near_me_outlined, size: 12, color: AppColors.textSecondary),
-                    const SizedBox(width: 2),
-                    Text('$distance km', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                      child: const Text('Đang mở cửa', style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                )
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.directions, color: AppColors.primary, size: 20),
-          )
         ],
       ),
     );

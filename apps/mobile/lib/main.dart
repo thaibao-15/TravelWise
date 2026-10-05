@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/features/explore/screens/explore_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'features/auth/screens/auth_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -16,8 +17,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        fontFamily: GoogleFonts.inter().fontFamily,
       ),
-      home: const ExploreScreen(),
+      home: const AuthScreen(),
     );
   }
 }
