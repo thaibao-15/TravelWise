@@ -1,19 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ChatMessage as ChatMessageType } from "@/types/chat";
 import { formatTime } from "@/lib/utils";
+import { ttsService } from "@/services/tts.service";
 
 interface ChatMessageProps {
   message: ChatMessageType;
   onRetry?: (id: string) => void;
 }
 
+type TTSState = "idle" | "loading" | "playing";
+
 export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
+  const [ttsState, setTtsState] = useState<TTSState>("idle");
+  const [ttsError, setTtsError] = useState<string | null>(null);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
   const isUser = message.role === "user";
   const isSending = message.status === "sending";
   const isError = message.status === "error";
+
+  // Stop audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -23,6 +42,60 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback
+    }
+  };
+
+  const handleToggleTts = async () => {
+    // 1. If currently playing, stop playback
+    if (ttsState === "playing") {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setTtsState("idle");
+      return;
+    }
+
+    setTtsError(null);
+
+    // 2. If audio was already fetched, replay directly
+    if (audioUrlRef.current && audioRef.current) {
+      try {
+        audioRef.current.currentTime = 0;
+        await audioRef.current.play();
+        setTtsState("playing");
+      } catch (err) {
+        console.error("Audio playback error:", err);
+        setTtsState("idle");
+      }
+      return;
+    }
+
+    // 3. Request TTS synthesis from backend
+    setTtsState("loading");
+    try {
+      const audioUrl = await ttsService.synthesize(message.content);
+      audioUrlRef.current = audioUrl;
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setTtsState("idle");
+      };
+
+      audio.onerror = () => {
+        setTtsState("idle");
+        setTtsError("Lỗi khi phát âm thanh.");
+      };
+
+      await audio.play();
+      setTtsState("playing");
+    } catch (err: unknown) {
+      console.error("TTS synthesis error:", err);
+      setTtsState("idle");
+      setTtsError(err instanceof Error ? err.message : "Không thể tạo giọng đọc.");
+      setTimeout(() => setTtsError(null), 4000);
     }
   };
 
@@ -174,9 +247,59 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           {/* Action Toolbar on Assistant Message */}
           {!isUser && !isSending && !isError && (
             <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-800/60 text-slate-500">
+              {/* TTS Error Toast */}
+              {ttsError && (
+                <span className="text-[11px] text-amber-400 mr-auto animate-in fade-in">
+                  ⚠️ {ttsError}
+                </span>
+              )}
+
+              {/* TTS Speaker Button */}
+              {ttsState === "loading" ? (
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/30 cursor-wait animate-pulse"
+                >
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>⏳ Đang tạo audio...</span>
+                </button>
+              ) : ttsState === "playing" ? (
+                <button
+                  type="button"
+                  onClick={handleToggleTts}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 active:scale-95 transition-all cursor-pointer shadow-sm shadow-red-500/20"
+                  title="Dừng phát giọng đọc"
+                >
+                  <span className="w-2 h-2 rounded-sm bg-red-400"></span>
+                  <span>⏹ Dừng</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleToggleTts}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-lg hover:bg-slate-800 hover:text-teal-300 transition-colors cursor-pointer"
+                  title="Nghe câu trả lời bằng giọng nói (Text-to-Speech)"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                    />
+                  </svg>
+                  <span>🔊 Đọc</span>
+                </button>
+              )}
+
+              {/* Copy Button */}
               <button
+                type="button"
                 onClick={handleCopy}
-                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded hover:bg-slate-800 hover:text-slate-300 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg hover:bg-slate-800 hover:text-slate-300 transition-colors"
                 title="Sao chép câu trả lời"
               >
                 {copied ? (

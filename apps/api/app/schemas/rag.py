@@ -121,6 +121,11 @@ class RAGAskRequest(BaseModel):
         description="ID cuộc trò chuyện (nếu tiếp tục hội thoại)",
         examples=[15],
     )
+    mode: Optional[str] = Field(
+        default="chat",
+        description="Chế độ hội thoại: 'chat' (chi tiết đầy đủ) hoặc 'voice' (ngắn gọn trực tiếp, tối ưu cho đàm thoại giọng nói)",
+        examples=["chat", "voice"],
+    )
 
     @field_validator("query", "message")
     @classmethod

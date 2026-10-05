@@ -132,6 +132,7 @@ class TestRAGAskAPI(unittest.TestCase):
             d in answer_lower
             for d in [
                 "không tìm thấy đủ thông tin",
+                "không tìm thấy thông tin",
                 "không có thông tin",
                 "không có đủ thông tin",
                 "chưa có thông tin",

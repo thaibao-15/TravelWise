@@ -78,6 +78,17 @@ class Settings(BaseSettings):
     BLAZE_STT_LANGUAGE: str = "vi"
 
     # -------------------------------------------------------------------------
+    # Blaze AI - Text to Speech Configuration
+    # -------------------------------------------------------------------------
+    BLAZE_TTS_API_URL: str = "https://api.blaze.vn/v1/tts"
+    BLAZE_TTS_SPEAKER_ID: str = "HN-Nam-1-BL"
+    BLAZE_TTS_MODEL: str = "v2.0_pro"
+    BLAZE_TTS_SPEED: str = "1.2"
+    BLAZE_TTS_AUDIO_QUALITY: int = 64
+    BLAZE_TTS_AUDIO_FORMAT: str = "wav"
+    BLAZE_TTS_NORMALIZATION: str = "basic"
+
+    # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
     # -------------------------------------------------------------------------
     CHROMA_PERSIST_DIRECTORY: str = "data/chroma"

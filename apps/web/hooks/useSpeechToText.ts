@@ -52,6 +52,14 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const onTranscriptRef = useRef(onTranscript);
+  onTranscriptRef.current = onTranscript;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
+  const isRecordingRef = useRef(false);
+  isRecordingRef.current = isRecording;
+
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -68,21 +76,21 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
     if (processorRef.current) {
       try {
         processorRef.current.disconnect();
-      } catch {}
+      } catch { }
       processorRef.current = null;
     }
 
     if (gainRef.current) {
       try {
         gainRef.current.disconnect();
-      } catch {}
+      } catch { }
       gainRef.current = null;
     }
 
     if (sourceRef.current) {
       try {
         sourceRef.current.disconnect();
-      } catch {}
+      } catch { }
       sourceRef.current = null;
     }
 
@@ -92,13 +100,13 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
     }
 
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current.close().catch(() => { });
       audioContextRef.current = null;
     }
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (isRecording) {
+    if (isRecordingRef.current) {
       setIsProcessing(true);
     }
 
@@ -106,12 +114,13 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         wsRef.current.send(JSON.stringify({ type: "stop" }));
-      } catch {}
+      } catch { }
     }
 
     // 2. Cleanup hardware microphone pipeline immediately
     cleanupAudioPipeline();
 
+    isRecordingRef.current = false;
     setIsRecording(false);
     setIsConnecting(false);
 
@@ -119,7 +128,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
     setTimeout(() => {
       setIsProcessing(false);
     }, 2500);
-  }, [cleanupAudioPipeline, isRecording]);
+  }, [cleanupAudioPipeline]);
 
   const startRecording = useCallback(async () => {
     clearError();
@@ -211,8 +220,8 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
             chunkQueue.push(pcm16);
             totalSamples += pcm16.length;
 
-            // Batch and send every ~250ms (4000 samples @ 16kHz) to avoid network packet thrashing
-            if (totalSamples >= 4000) {
+            // Batch and send every ~125ms (2000 samples @ 16kHz) for low transmission latency
+            if (totalSamples >= 2000) {
               const merged = new Int16Array(totalSamples);
               let offset = 0;
               for (const ch of chunkQueue) {
@@ -233,7 +242,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
           console.error("Audio pipeline initialization error:", audioErr);
           const errMsg = "Không thể khởi tạo bộ xử lý âm thanh trong trình duyệt.";
           setError(errMsg);
-          onError?.(errMsg);
+          onErrorRef.current?.(errMsg);
           stopRecording();
         }
       };
@@ -243,7 +252,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
           const data = JSON.parse(event.data);
           if (data.type === "transcript") {
             if (data.text) {
-              onTranscript(data.text, !!data.is_final);
+              onTranscriptRef.current(data.text, !!data.is_final);
             }
             if (data.is_final) {
               setIsProcessing(false);
@@ -255,7 +264,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
           } else if (data.type === "error") {
             const errMsg = data.message || "Xảy ra lỗi trong quá trình nhận dạng giọng nói.";
             setError(errMsg);
-            onError?.(errMsg);
+            onErrorRef.current?.(errMsg);
             stopRecording();
           }
         } catch (parseErr) {
@@ -267,7 +276,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
         console.error("STT WebSocket error:", e);
         const errMsg = "Lỗi kết nối WebSocket tới dịch vụ nhận diện giọng nói.";
         setError(errMsg);
-        onError?.(errMsg);
+        onErrorRef.current?.(errMsg);
         stopRecording();
       };
 
@@ -276,9 +285,10 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
         if (e.code === 1008) {
           const errMsg = "Chưa cấu hình BLAZE_API_KEY hoặc khóa không hợp lệ.";
           setError(errMsg);
-          onError?.(errMsg);
+          onErrorRef.current?.(errMsg);
         }
         cleanupAudioPipeline();
+        isRecordingRef.current = false;
         setIsRecording(false);
         setIsConnecting(false);
       };
@@ -286,10 +296,10 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
       console.error("Failed to create WebSocket:", wsErr);
       const errMsg = "Không thể khởi tạo kết nối WebSocket.";
       setError(errMsg);
-      onError?.(errMsg);
+      onErrorRef.current?.(errMsg);
       stopRecording();
     }
-  }, [cleanupAudioPipeline, clearError, onError, onTranscript, stopRecording]);
+  }, [cleanupAudioPipeline, clearError, stopRecording]);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -298,7 +308,7 @@ export function useSpeechToText({ onTranscript, onError }: UseSpeechToTextOption
       if (wsRef.current) {
         try {
           wsRef.current.close();
-        } catch {}
+        } catch { }
       }
     };
   }, [cleanupAudioPipeline]);

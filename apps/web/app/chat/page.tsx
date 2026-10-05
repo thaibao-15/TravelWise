@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useRef, useEffect, Suspense } from "react";
+import React, { useRef, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useChat } from "@/hooks/useChat";
 import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { SuggestedQuestions } from "@/components/chat/SuggestedQuestions";
+import { VoiceChatModal } from "@/components/chat/VoiceChatModal";
 
 function ChatContent() {
   const {
@@ -21,6 +22,7 @@ function ChatContent() {
   const initialQuerySent = useRef(false);
   const initialConvLoaded = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
 
   // Tự động tải lại lịch sử hội thoại nếu có conversation_id trên URL
   useEffect(() => {
@@ -58,6 +60,7 @@ function ChatContent() {
       <ChatHeader
         onClearHistory={clearMessages}
         messageCount={messages.length}
+        onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
       />
 
       {/* Main Chat Conversation Area */}
@@ -83,7 +86,19 @@ function ChatContent() {
       </main>
 
       {/* Sticky Chat Input Bar */}
-      <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+      <ChatInput
+        onSendMessage={sendMessage}
+        isLoading={isLoading}
+        onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
+      />
+
+      {/* Fullscreen AI Live Voice Call Mode */}
+      <VoiceChatModal
+        isOpen={isVoiceModeOpen}
+        onClose={() => setIsVoiceModeOpen(false)}
+        onSendMessage={sendMessage}
+        isLoadingChat={isLoading}
+      />
     </div>
   );
 }

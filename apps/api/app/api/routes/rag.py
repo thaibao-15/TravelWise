@@ -122,6 +122,7 @@ def ask_knowledge(
             question=user_question,
             standalone_question=standalone_question,
             chat_history=chat_history,
+            mode=request.mode or "chat",
         )
         answer = result["answer"]
     except RAGChainError as e:
@@ -166,6 +167,105 @@ def ask_knowledge(
             created_at=ai_msg.created_at,
             audio_url=ai_msg.audio_url,
         ),
+    )
+
+
+@router.post(
+    "/ask-stream",
+    summary="Hỏi đáp AI có phản hồi thời gian thực qua Streaming (SSE)",
+    description="Stream trực tiếp từng token từ LLM qua Server-Sent Events giúp giảm tối đa độ trễ phản hồi cho người dùng.",
+)
+async def ask_rag_stream(
+    request: RAGAskRequest,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    import json
+    from fastapi.responses import StreamingResponse
+
+    user_question = request.get_question()
+
+    if request.conversation_id is not None:
+        conversation = ConversationService.get_conversation_by_id(
+            session=session,
+            conversation_id=request.conversation_id,
+            current_user=current_user,
+            check_ownership=True,
+        )
+    else:
+        title = user_question[:60] + ("..." if len(user_question) > 60 else "")
+        user_id = current_user.id if current_user else None
+        conversation = ConversationService.create_conversation(
+            session=session,
+            user_id=user_id,
+            title=title,
+        )
+
+    recent_messages = ConversationService.get_recent_messages(
+        session=session,
+        conversation_id=conversation.id,
+        limit=10,
+    )
+
+    chat_history = []
+    for msg in recent_messages:
+        if msg.sender == "USER":
+            chat_history.append(HumanMessage(content=msg.content))
+        elif msg.sender == "AI":
+            chat_history.append(AIMessage(content=msg.content))
+
+    chain = get_rag_chain()
+    standalone_question = chain.contextualize_question(
+        question=user_question,
+        chat_history=chat_history,
+    )
+
+    async def event_generator():
+        yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
+
+        full_answer_parts = []
+        try:
+            for token in chain.stream_answer(
+                question=user_question,
+                standalone_question=standalone_question,
+                chat_history=chat_history,
+                mode=request.mode or "chat",
+            ):
+                full_answer_parts.append(token)
+                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+        except Exception as e:
+            logger.error("Streaming error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Đã xảy ra lỗi khi tạo câu trả lời.'})}\n\n"
+            return
+
+        final_answer = "".join(full_answer_parts).strip()
+
+        ConversationService.save_message(
+            session=session,
+            conversation_id=conversation.id,
+            sender="USER",
+            content=user_question,
+        )
+
+        ai_msg = ConversationService.save_message(
+            session=session,
+            conversation_id=conversation.id,
+            sender="AI",
+            content=final_answer,
+        )
+
+        ConversationService.update_conversation_timestamp(session, conversation)
+
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': ai_msg.id, 'content': final_answer})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

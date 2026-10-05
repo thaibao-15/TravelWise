@@ -20,7 +20,7 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null);
 
   const sendMessage = useCallback(
-    async (queryText: string) => {
+    async (queryText: string, mode: "chat" | "voice" = "chat") => {
       const trimmed = queryText.trim();
       if (!trimmed || isLoading) return;
 
@@ -49,56 +49,103 @@ export function useChat() {
       setMessages((prev) => [...prev, userMessage, loadingAssistantMessage]);
       setIsLoading(true);
 
+      let currentStreamContent = "";
+
       try {
-        // Gửi kèm conversationId nếu đang trong phiên chat
-        const response = await chatService.askAI(trimmed, conversationId);
+        // Ưu tiên truyền phát dữ liệu thời gian thực (Streaming)
+        const finalAnswer = await chatService.askStream(
+          trimmed,
+          conversationId,
+          mode,
+          {
+            onInit: (convId) => {
+              setConversationId(convId);
+            },
+            onToken: (token) => {
+              currentStreamContent += token;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMsgId
+                    ? { ...msg, content: currentStreamContent }
+                    : msg
+                )
+              );
+            },
+            onDone: (data) => {
+              if (data.conversation_id) {
+                setConversationId(data.conversation_id);
+              }
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMsgId
+                    ? {
+                        ...msg,
+                        id: `msg-${data.message_id}`,
+                        content: data.content,
+                        status: "success",
+                      }
+                    : msg
+                )
+              );
+            },
+          }
+        );
 
-        // Lưu conversation_id được server trả về để duy trì ngữ cảnh
-        if (response.conversation_id) {
-          setConversationId(response.conversation_id);
+        return finalAnswer;
+      } catch (streamErr) {
+        console.warn("Stream API error, falling back to standard askAI:", streamErr);
+
+        try {
+          // Fallback sang endpoint đồng bộ nếu streaming bị lỗi mạng
+          const response = await chatService.askAI(trimmed, conversationId, mode);
+
+          if (response.conversation_id) {
+            setConversationId(response.conversation_id);
+          }
+
+          const answerContent =
+            response.message?.content || response.answer || "";
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    id: response.message
+                      ? `msg-${response.message.id}`
+                      : assistantMsgId,
+                    content: answerContent,
+                    timestamp: response.message
+                      ? new Date(response.message.created_at)
+                      : new Date(),
+                    status: "success",
+                  }
+                : msg
+            )
+          );
+          return answerContent;
+        } catch (err: unknown) {
+          const errorMsg =
+            err instanceof Error
+              ? err.message
+              : "Đã xảy ra lỗi không xác định khi kết nối với AI.";
+
+          setError(errorMsg);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    content:
+                      "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
+                    status: "error",
+                    errorMessage: errorMsg,
+                  }
+                : msg
+            )
+          );
+          return null;
         }
-
-        // Lấy nội dung câu trả lời từ response.message.content (chuẩn Hướng 1) hoặc fallback
-        const answerContent =
-          response.message?.content || response.answer || "";
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  id: response.message
-                    ? `msg-${response.message.id}`
-                    : assistantMsgId,
-                  content: answerContent,
-                  timestamp: response.message
-                    ? new Date(response.message.created_at)
-                    : new Date(),
-                  status: "success",
-                }
-              : msg
-          )
-        );
-      } catch (err: unknown) {
-        const errorMsg =
-          err instanceof Error
-            ? err.message
-            : "Đã xảy ra lỗi không xác định khi kết nối với AI.";
-
-        setError(errorMsg);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  content:
-                    "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
-                  status: "error",
-                  errorMessage: errorMsg,
-                }
-              : msg
-          )
-        );
       } finally {
         setIsLoading(false);
       }

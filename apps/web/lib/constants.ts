@@ -5,6 +5,7 @@ export const API_BASE_URL =
 
 export const AI_ENDPOINTS = {
   ASK: "/api/v1/rag/ask",
+  ASK_STREAM: "/api/v1/rag/ask-stream",
   SEARCH: "/api/v1/rag/search",
   TEST_LLM: "/api/v1/rag/test-llm",
 };

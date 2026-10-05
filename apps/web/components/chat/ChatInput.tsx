@@ -6,9 +6,10 @@ import { useSpeechToText } from "@/hooks/useSpeechToText";
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading: boolean;
+  onOpenVoiceMode?: () => void;
 }
 
-export function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
+export function ChatInput({ onSendMessage, isLoading, onOpenVoiceMode }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const baseTextRef = useRef("");
@@ -185,6 +186,21 @@ export function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
             disabled={isLoading}
             className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 resize-none outline-none py-2 px-1 max-h-36 min-h-[40px] leading-relaxed"
           />
+
+          {/* Voice Mode Button */}
+          {onOpenVoiceMode && (
+            <button
+              type="button"
+              onClick={onOpenVoiceMode}
+              disabled={isLoading}
+              className="flex items-center justify-center w-10 h-10 rounded-xl text-teal-400 hover:text-teal-200 hover:bg-teal-500/10 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+              title="Mở Chế độ Giọng nói 2 chiều (Voice Mode)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+            </button>
+          )}
 
           {/* Microphone STT Button */}
           {isRecording ? (

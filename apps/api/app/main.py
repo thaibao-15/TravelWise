@@ -7,6 +7,7 @@ from app.api.routes.conversations import router as conversations_router
 from app.api.routes.places import router as places_router
 from app.api.routes.rag import router as rag_router
 from app.api.routes.stt import router as stt_router
+from app.api.routes.tts import router as tts_router
 from app.api.routes.users import router as users_router
 
 app = FastAPI(
@@ -31,3 +32,4 @@ app.include_router(places_router)
 app.include_router(conversations_router)
 app.include_router(rag_router)
 app.include_router(stt_router)
+app.include_router(tts_router)

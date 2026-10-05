@@ -20,6 +20,8 @@ from app.rag.prompt import (
     get_contextualize_prompt,
     get_rag_prompt,
     get_rag_prompt_with_history,
+    get_rag_voice_prompt,
+    get_rag_voice_prompt_with_history,
 )
 from app.rag.retriever import RAGRetriever
 
@@ -50,6 +52,8 @@ class RAGChain:
         self.llm = llm or get_chat_llm()
         self.prompt = prompt or get_rag_prompt()
         self.prompt_with_history = prompt_with_history or get_rag_prompt_with_history()
+        self.voice_prompt = get_rag_voice_prompt()
+        self.voice_prompt_with_history = get_rag_voice_prompt_with_history()
         self.contextualize_prompt = contextualize_prompt or get_contextualize_prompt()
         self.top_k = top_k or RAG_TOP_K
 
@@ -69,6 +73,19 @@ class RAGChain:
         """
         clean_question = (question or "").strip()
         if not clean_question or not chat_history:
+            return clean_question
+
+        # Fast heuristic: if the question does not contain contextual pronouns/words
+        # and has more than 5 words, it is likely already standalone.
+        lower_q = clean_question.lower()
+        context_cues = (
+            "nó", "đó", "đấy", "ở đó", "ở đây", "chỗ này", "chỗ đó", "nơi đó", "chúng",
+            "họ", "vé vào", "mấy giờ", "giá bao nhiêu", "còn gì", "đi thế nào",
+            "ở đâu", "mở cửa", "gần không", "cách bao xa"
+        )
+        has_context_cue = any(cue in lower_q for cue in context_cues)
+        if not has_context_cue and len(clean_question.split()) >= 5:
+            # Standalone question, skip expensive LLM rewrite to save 1.5s!
             return clean_question
 
         try:
@@ -99,6 +116,7 @@ class RAGChain:
         standalone_question: Optional[str] = None,
         chat_history: Optional[Sequence[Any]] = None,
         top_k: Optional[int] = None,
+        mode: str = "chat",
     ) -> Dict[str, Any]:
         """Execute the RAG pipeline for a given question and optional conversation context.
 
@@ -107,24 +125,8 @@ class RAGChain:
             2. Determine search query (standalone_question if provided, else clean_question).
             3. Retrieve top-K relevant documents from vector store.
             4. Build formatted context string.
-            5. Fill prompt template (with history if provided).
+            5. Fill prompt template (standard or voice-optimized).
             6. Invoke LLM and extract text response.
-
-        Args:
-            question: The raw user query string.
-            standalone_question: Optional standalone rewritten question for retrieval.
-            chat_history: Optional list of previous chat messages.
-            top_k: Optional override for the number of documents to retrieve.
-
-        Returns:
-            Dict containing:
-                - question (str): The cleaned input question.
-                - standalone_question (str): The query used for retrieval.
-                - answer (str): Generated answer from LLM or fallback message.
-                - sources (list): List of retrieved source document dictionaries for debugging.
-
-        Raises:
-            RAGChainError: If LLM call or processing fails (sanitized, zero secret leakage).
         """
         clean_question = (question or "").strip()
 
@@ -149,26 +151,36 @@ class RAGChain:
 
         # 3. Handle no relevant documents found
         if not retrieved_docs:
+            fallback_ans = (
+                "Hiện tại tôi chưa có đủ thông tin về vấn đề này để giải đáp cho bạn."
+                if mode == "voice"
+                else "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn."
+            )
             return {
                 "question": clean_question,
                 "standalone_question": search_query,
-                "answer": "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn.",
+                "answer": fallback_ans,
                 "sources": [],
             }
 
         # 4. Build context
         context_text = format_docs(retrieved_docs)
 
-        # 5. Format prompt (use prompt_with_history if chat_history is provided)
+        # 5. Format prompt (use voice prompt for voice mode, otherwise standard prompt)
         try:
+            if mode == "voice":
+                target_prompt = self.voice_prompt_with_history if chat_history else self.voice_prompt
+            else:
+                target_prompt = self.prompt_with_history if chat_history else self.prompt
+
             if chat_history:
-                formatted_messages = self.prompt_with_history.format_messages(
+                formatted_messages = target_prompt.format_messages(
                     context=context_text,
                     chat_history=list(chat_history),
                     question=clean_question,
                 )
             else:
-                formatted_messages = self.prompt.format_messages(
+                formatted_messages = target_prompt.format_messages(
                     context=context_text,
                     question=clean_question,
                 )
@@ -190,6 +202,69 @@ class RAGChain:
             "answer": answer,
             "sources": retrieved_docs,
         }
+
+    def stream_answer(
+        self,
+        question: str,
+        standalone_question: Optional[str] = None,
+        chat_history: Optional[Sequence[Any]] = None,
+        top_k: Optional[int] = None,
+        mode: str = "chat",
+    ):
+        """Stream response tokens generator for real-time low-latency response."""
+        clean_question = (question or "").strip()
+        if not clean_question:
+            yield "Vui lòng nhập câu hỏi để TravelWise có thể hỗ trợ bạn."
+            return
+
+        k = top_k or self.top_k
+        search_query = (standalone_question or clean_question).strip()
+
+        try:
+            retrieved_docs = self.retriever.search(query=search_query, top_k=k)
+        except Exception as e:
+            logger.error("RAG retrieval failed: %s", type(e).__name__)
+            retrieved_docs = []
+
+        if not retrieved_docs:
+            yield (
+                "Hiện tại tôi chưa có đủ thông tin về vấn đề này để giải đáp cho bạn."
+                if mode == "voice"
+                else "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn."
+            )
+            return
+
+        context_text = format_docs(retrieved_docs)
+
+        try:
+            if mode == "voice":
+                target_prompt = self.voice_prompt_with_history if chat_history else self.voice_prompt
+            else:
+                target_prompt = self.prompt_with_history if chat_history else self.prompt
+
+            if chat_history:
+                formatted_messages = target_prompt.format_messages(
+                    context=context_text,
+                    chat_history=list(chat_history),
+                    question=clean_question,
+                )
+            else:
+                formatted_messages = target_prompt.format_messages(
+                    context=context_text,
+                    question=clean_question,
+                )
+        except Exception as e:
+            logger.error("RAG prompt formatting error: %s", type(e).__name__)
+            raise RAGChainError("Lỗi định dạng câu hỏi và ngữ cảnh.") from None
+
+        try:
+            for chunk in self.llm.stream(formatted_messages):
+                token = extract_response_text(getattr(chunk, "content", chunk))
+                if token:
+                    yield token
+        except Exception as e:
+            logger.error("RAG LLM stream error: %s", type(e).__name__)
+            raise RAGChainError("Đã xảy ra lỗi trong quá trình tạo câu trả lời.") from None
 
 
 _rag_chain_instance: Optional[RAGChain] = None

@@ -15,6 +15,7 @@ export interface ChatAskRequest {
   message?: string;
   query?: string;
   conversation_id?: number | null;
+  mode?: "chat" | "voice";
 }
 
 export type RAGAskRequest = ChatAskRequest;

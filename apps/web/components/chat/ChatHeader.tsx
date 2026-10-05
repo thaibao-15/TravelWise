@@ -7,9 +7,10 @@ import { useAuth } from "@/hooks/useAuth";
 interface ChatHeaderProps {
   onClearHistory: () => void;
   messageCount: number;
+  onOpenVoiceMode?: () => void;
 }
 
-export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
+export function ChatHeader({ onClearHistory, messageCount, onOpenVoiceMode }: ChatHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 shadow-lg">
@@ -84,6 +85,20 @@ export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
               />
             </svg>
             <span className="hidden sm:inline">Làm mới</span>
+          </button>
+        )}
+
+        {onOpenVoiceMode && (
+          <button
+            onClick={onOpenVoiceMode}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-teal-500/20 via-emerald-500/20 to-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-teal-500/30 hover:border-teal-400 active:scale-95 shadow-sm shadow-teal-500/20 transition-all cursor-pointer"
+            title="Mở chế độ trò chuyện giọng nói 2 chiều (Voice Mode)"
+          >
+            <svg className="w-3.5 h-3.5 text-teal-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+            <span className="hidden sm:inline">Chế độ Giọng nói</span>
+            <span className="sm:hidden">Voice</span>
           </button>
         )}
 
