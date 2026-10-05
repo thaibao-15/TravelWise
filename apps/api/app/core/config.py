@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_BASE_URL: Optional[str] = None
 
+    # -------------------------------------------------------------------------
+    # Blaze AI - Speech to Text Realtime Configuration
+    # -------------------------------------------------------------------------
+    BLAZE_API_KEY: Optional[str] = None
+    BLAZE_STT_WS_URL: str = "wss://api.blaze.vn/v1/stt/realtime"
+    BLAZE_STT_API_URL: str = "https://api.blaze.vn/v1/audio/transcriptions"
+    BLAZE_STT_MODEL: str = "stt-stream-1.5"
+    BLAZE_STT_SAMPLE_RATE: int = 16000
+    BLAZE_STT_LANGUAGE: str = "vi"
 
     # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
