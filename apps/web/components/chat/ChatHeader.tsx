@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ChatHeaderProps {
   onClearHistory: () => void;
@@ -8,6 +10,7 @@ interface ChatHeaderProps {
 }
 
 export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
+  const { user, isAuthenticated, logout } = useAuth();
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 shadow-lg">
       <div className="flex items-center gap-3">
@@ -48,7 +51,19 @@ export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
       </div>
 
       {/* Header Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Back to Home Link */}
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-all"
+          title="Trở về trang chủ"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="hidden sm:inline">Trang chủ</span>
+        </Link>
+
         {messageCount > 1 && (
           <button
             onClick={onClearHistory}
@@ -70,6 +85,37 @@ export function ChatHeader({ onClearHistory, messageCount }: ChatHeaderProps) {
             </svg>
             <span className="hidden sm:inline">Làm mới</span>
           </button>
+        )}
+
+        {isAuthenticated && user ? (
+          <div className="flex items-center gap-2">
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 hover:border-teal-500/40 border border-slate-700/60 text-xs text-slate-200 transition-all group"
+              title="Xem thông tin cá nhân"
+            >
+              <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-400 font-semibold flex items-center justify-center text-[10px] border border-teal-500/30 group-hover:scale-105 transition-transform">
+                {(user.full_name || user.email)[0].toUpperCase()}
+              </div>
+              <span className="hidden md:inline max-w-[100px] truncate font-medium group-hover:text-teal-300 transition-colors">
+                {user.full_name || user.email}
+              </span>
+            </Link>
+            <button
+              onClick={logout}
+              className="px-2.5 py-1 text-xs text-slate-400 hover:text-red-400 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-colors"
+              title="Đăng xuất"
+            >
+              Thoát
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/login?redirect=/chat"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:from-teal-300 hover:to-emerald-200 rounded-lg shadow-sm shadow-teal-500/20 transition-all"
+          >
+            Đăng nhập
+          </Link>
         )}
       </div>
     </header>

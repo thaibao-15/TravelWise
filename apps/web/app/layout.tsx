@@ -12,6 +12,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { AuthProvider } from "@/context/AuthContext";
+
 export const metadata: Metadata = {
   title: "TravelWise AI - Hỏi đáp Du lịch Thông minh",
   description: "Trợ lý du lịch AI thông minh dựa trên công nghệ RAG và cơ sở tri thức TravelWise.",
@@ -32,7 +34,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className="h-full min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-teal-500/30 selection:text-teal-200 flex flex-col"
       >
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

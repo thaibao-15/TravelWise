@@ -23,6 +23,17 @@ export async function apiFetch<T>(
     Accept: "application/json",
   };
 
+  if (typeof window !== "undefined") {
+    try {
+      const token = localStorage.getItem("travelwise_token");
+      if (token) {
+        defaultHeaders["Authorization"] = `Bearer ${token}`;
+      }
+    } catch {
+      // Ignore localStorage errors (e.g. security sandbox)
+    }
+  }
+
   try {
     const response = await fetch(url, {
       ...options,

@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Home() {
   const router = useRouter();
+  const { user, isAuthenticated, logout } = useAuth();
   const [quickQuery, setQuickQuery] = useState("");
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -92,15 +94,55 @@ export default function Home() {
           </nav>
 
           {/* Header Action Button */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 hover:border-teal-500/30 border border-slate-800 text-xs text-slate-300 transition-all group"
+                  title="Xem hồ sơ cá nhân"
+                >
+                  <div className="w-6 h-6 rounded-full bg-teal-500/20 text-teal-400 font-semibold flex items-center justify-center text-[11px] border border-teal-500/30 group-hover:scale-105 transition-transform">
+                    {(user.full_name || user.email)[0].toUpperCase()}
+                  </div>
+                  <span className="hidden sm:inline max-w-[120px] truncate font-medium group-hover:text-teal-300 transition-colors">
+                    {user.full_name || user.email}
+                  </span>
+                </Link>
+                <button
+                  onClick={logout}
+                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-400 bg-slate-900/80 hover:bg-slate-900 border border-slate-800 rounded-xl transition-colors"
+                  title="Đăng xuất"
+                >
+                  Đăng xuất
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/login"
+                  className="px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  Đăng nhập
+                </Link>
+                <Link
+                  href="/register"
+                  className="hidden sm:inline-block px-3 py-1.5 text-xs sm:text-sm font-medium text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded-xl transition-all"
+                >
+                  Đăng ký
+                </Link>
+              </div>
+            )}
+
             <Link
               href="/chat"
-              className="flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:from-teal-300 hover:to-emerald-200 rounded-xl shadow-md shadow-teal-500/20 hover:scale-105 active:scale-95 transition-all duration-200"
+              className="flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:from-teal-300 hover:to-emerald-200 rounded-xl shadow-md shadow-teal-500/20 hover:scale-105 active:scale-95 transition-all duration-200"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              <span>Vào phòng Chat AI</span>
+              <span className="hidden sm:inline">Phòng Chat AI</span>
+              <span className="sm:hidden">Chat</span>
             </Link>
           </div>
         </div>
