@@ -128,6 +128,13 @@ class TestRAGChain(unittest.TestCase):
                 "không có thông tin",
                 "không có đủ thông tin",
                 "chưa có thông tin",
+                "không tìm thấy thông tin",
+                "không có dữ liệu",
+                "không có đủ dữ liệu",
+                "nằm ngoài phạm vi",
+                "không thuộc phạm vi",
+                "không thể trả lời",
+                "không hỗ trợ",
             ]
         )
         self.assertTrue(
