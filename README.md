@@ -201,6 +201,84 @@ flutter run
 
 ---
 
+## 🐳 4. Chạy bằng Docker Compose (Backend + Web)
+
+Docker Compose cho phép khởi chạy đồng thời **API Backend** và **Web Frontend** chỉ với một lệnh duy nhất, không cần cài đặt Python, uv hay Bun trên máy host.
+
+### Yêu cầu
+
+| Thành phần | Ghi chú |
+|---|---|
+| **Docker Desktop** | [Tải Docker Desktop](https://www.docker.com/products/docker-desktop/) |
+| **SQL Server** | Đang chạy trên máy host (local) hoặc remote server |
+| **File `.env`** | Đã cấu hình đầy đủ tại `apps/api/.env` (xem [Bước 2 ở mục 1](#bước-2--cấu-hình-biến-môi-trường)) |
+
+### Kiến trúc Services
+
+```text
+┌─────────────────────────────────────────────────┐
+│                Docker Compose                   │
+│                                                 │
+│  ┌──────────────────┐   ┌────────────────────┐  │
+│  │  travelwise-api  │   │  travelwise-web    │  │
+│  │  (FastAPI)       │   │  (Next.js)         │  │
+│  │  Port: 8000      │◄──│  Port: 3000        │  │
+│  └────────┬─────────┘   └────────────────────┘  │
+│           │                                     │
+└───────────┼─────────────────────────────────────┘
+            │ host.docker.internal
+            ▼
+   ┌─────────────────┐
+   │  SQL Server     │
+   │  (Máy host)     │
+   │  Port: 1433     │
+   └─────────────────┘
+```
+
+> **Lưu ý:** SQL Server chạy trên máy host, API container kết nối tới SQL Server thông qua `host.docker.internal`.
+
+### Bước 1 — Cấu hình file `.env`
+
+Đảm bảo file `apps/api/.env` đã được cấu hình đúng (xem [hướng dẫn ở mục 1](#bước-2--cấu-hình-biến-môi-trường)). Docker Compose sẽ tự động load file này và ghi đè `SQLSERVER_SERVER=host.docker.internal` để container có thể kết nối tới SQL Server trên máy host.
+
+### Bước 2 — Build và khởi chạy
+
+```bash
+# Tại thư mục gốc TravelWise/
+docker compose up --build
+```
+
+Lần đầu build sẽ mất vài phút để tải image và cài dependencies. Các lần sau sẽ nhanh hơn nhờ Docker cache.
+
+### Bước 3 — Truy cập ứng dụng
+
+| Service | URL | Mô tả |
+|---|---|---|
+| **Web App** | `http://localhost:3000` | Giao diện người dùng |
+| **API** | `http://localhost:8000` | REST API endpoint |
+| **Swagger UI** | `http://localhost:8000/docs` | Tài liệu API tương tác |
+| **ReDoc** | `http://localhost:8000/redoc` | Tài liệu API chuẩn hóa |
+
+### Các lệnh Docker Compose thường dùng
+
+```bash
+docker compose up --build         # Build và chạy (foreground, xem log trực tiếp)
+docker compose up --build -d      # Build và chạy (background/detached)
+docker compose logs -f            # Xem log realtime của tất cả services
+docker compose logs -f api        # Xem log riêng API service
+docker compose down               # Dừng và xóa containers
+docker compose restart api        # Restart riêng API service
+docker compose ps                 # Xem trạng thái các containers
+```
+
+> [!TIP]
+> Nếu chỉ thay đổi code mà không đổi dependencies, bạn có thể chạy `docker compose up --build` — Docker sẽ sử dụng cache cho các layer không thay đổi nên build rất nhanh.
+
+> [!WARNING]
+> **SQL Server trên Windows:** Đảm bảo SQL Server cho phép kết nối TCP/IP và firewall không chặn port `1433`. Kiểm tra trong **SQL Server Configuration Manager** → **SQL Server Network Configuration** → **Protocols** → Enable **TCP/IP**.
+
+---
+
 ## 🛠️ Tổng hợp lệnh hữu ích
 
 ```bash
