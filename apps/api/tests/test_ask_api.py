@@ -13,6 +13,7 @@ Validates:
 """
 
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -21,12 +22,27 @@ from app.main import app
 from app.rag.chain import RAGChainError
 
 
+def _chroma_has_data() -> bool:
+    """Check if Chroma vector store directory exists and has ingested documents."""
+    try:
+        from app.rag.vectorstore import get_persist_path, get_vectorstore
+
+        persist_dir = Path(get_persist_path())
+        sqlite_file = persist_dir / "chroma.sqlite3"
+        if not sqlite_file.exists() or sqlite_file.stat().st_size == 0:
+            return False
+        return get_vectorstore()._collection.count() > 0
+    except Exception:
+        return False
+
+
 class TestRAGAskAPI(unittest.TestCase):
     """Test suite for POST /rag/ask endpoint."""
 
     def setUp(self):
         self.client = TestClient(app)
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_search_endpoint_still_works(self):
         """Verify that existing /api/v1/rag/search is preserved and functioning."""
         res = self.client.post("/api/v1/rag/search", json={"query": "chùa linh ứng", "top_k": 2})
@@ -57,6 +73,7 @@ class TestRAGAskAPI(unittest.TestCase):
             self.assertEqual(res.status_code, 503)
             self.assertIn("không khả dụng", res.json()["detail"])
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_ask_chua_linh_ung_dac_biet(self):
         """Query 1: 'Chùa Linh Ứng có gì đặc biệt?'."""
         res = self.client.post(
@@ -77,6 +94,7 @@ class TestRAGAskAPI(unittest.TestCase):
         )
         self.assertTrue(has_facts, f"Answer missing key facts: {answer}")
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_ask_chua_linh_ung_o_dau(self):
         """Query 2: 'Chùa Linh Ứng nằm ở đâu?'."""
         res = self.client.post(
@@ -96,6 +114,7 @@ class TestRAGAskAPI(unittest.TestCase):
         )
         self.assertTrue(has_location, f"Answer missing location: {answer}")
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_ask_bana_hills(self):
         """Query 3: 'Bà Nà Hills có gì?'."""
         res = self.client.post(
@@ -115,6 +134,7 @@ class TestRAGAskAPI(unittest.TestCase):
         )
         self.assertTrue(has_attraction, f"Answer missing Ba Na details: {answer}")
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_ask_unknown_query_no_hallucination(self):
         """Query 4: Out-of-knowledge question should decline to hallucinate."""
         res = self.client.post(
