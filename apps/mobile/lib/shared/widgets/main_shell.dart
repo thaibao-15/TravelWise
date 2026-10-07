@@ -5,6 +5,7 @@ import '../widgets/bottom_nav_bar.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/explore/screens/explore_screen.dart';
 import '../../features/assistant/presentation/screens/travel_assistant_screen.dart';
+import '../../features/trips/screens/trips_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -21,7 +22,7 @@ class _MainShellState extends State<MainShell> {
     const ExploreScreen(),
     const TravelAssistantScreen(),
 
-    const TripsPlaceholderScreen(),
+    const TripsScreen(),
     const ProfilePlaceholderScreen(),
   ];
 
