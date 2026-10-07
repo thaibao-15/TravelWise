@@ -4,12 +4,12 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
-import '../../../home/screens/home_screen.dart';
+// import '../../../home/screens/home_screen.dart';
 import '../providers/auth_notifier.dart';
 import '../providers/auth_state.dart';
 import '../widgets/auth_widgets.dart';
 import 'register_screen.dart';
-
+import '../../../../shared/widgets/main_shell.dart';
 /// Login screen that integrates with Riverpod auth state management.
 /// Watches the authProvider for state changes and handles navigation + error display.
 class LoginScreen extends ConsumerStatefulWidget {
@@ -60,7 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next is AuthAuthenticated) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => const MainShell(),
+          ),
           (route) => false,
         );
       } else if (next is AuthError) {

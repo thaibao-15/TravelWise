@@ -17,15 +17,15 @@ class HeaderSection extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Chào buổi sáng 👋',
-                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Linh Nguyễn',
-                style: AppTextStyles.h2,
-              ),
+              // Text(
+              //   '',
+              //   style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+              // ),
+              // const SizedBox(height: AppSpacing.xs),
+              // Text(
+              //   '',
+              //   style: AppTextStyles.h2,
+              // ),
               const SizedBox(height: AppSpacing.xs),
               Row(
                 children: [

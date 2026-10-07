@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
-import '../../../shared/widgets/bottom_nav_bar.dart';
+// import '../../../shared/widgets/bottom_nav_bar.dart';
 import '../widgets/header_section.dart';
 import '../widgets/search_bar.dart' as custom_search;
 import '../widgets/suggestion_chips.dart';
@@ -74,10 +74,10 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 0,
-        onTap: (index) {},
-      ),
+      // bottomNavigationBar: CustomBottomNavBar(
+      //   currentIndex: 0,
+      //   onTap: (index) {},
+      // ),
     );
   }
 
