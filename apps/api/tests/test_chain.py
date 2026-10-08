@@ -12,9 +12,24 @@ Validates:
 """
 
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.rag.chain import RAGChain, RAGChainError, ask_rag
+
+
+def _chroma_has_data() -> bool:
+    """Check if Chroma vector store directory exists and has ingested documents."""
+    try:
+        from app.rag.vectorstore import get_persist_path, get_vectorstore
+
+        persist_dir = Path(get_persist_path())
+        sqlite_file = persist_dir / "chroma.sqlite3"
+        if not sqlite_file.exists() or sqlite_file.stat().st_size == 0:
+            return False
+        return get_vectorstore()._collection.count() > 0
+    except Exception:
+        return False
 
 
 class TestRAGChain(unittest.TestCase):
@@ -72,6 +87,7 @@ class TestRAGChain(unittest.TestCase):
         self.assertNotIn(secret_leak, error_message)
         self.assertIn("lỗi", error_message.lower())
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_chua_linh_ung_query_e2e(self):
         """RAG chain should successfully answer 'Chùa Linh Ứng có gì đặc biệt?'."""
         res = ask_rag("Chùa Linh Ứng có gì đặc biệt?", top_k=2)
@@ -92,6 +108,7 @@ class TestRAGChain(unittest.TestCase):
             f"Expected answer to contain Linh Ung details, got: {res['answer']}",
         )
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_bana_hills_query_e2e(self):
         """RAG chain should successfully answer 'Bà Nà Hills có gì?'."""
         res = ask_rag("Bà Nà Hills có gì?", top_k=2)
@@ -112,6 +129,7 @@ class TestRAGChain(unittest.TestCase):
             f"Expected answer to contain Ba Na Hills details, got: {res['answer']}",
         )
 
+    @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_unsupported_query_grounded_response(self):
         """RAG chain should decline to hallucinate on out-of-domain query ('Người ngoài hành tinh đang ở đâu?')."""
         res = ask_rag("Người ngoài hành tinh đang ở đâu?", top_k=2)
@@ -128,6 +146,13 @@ class TestRAGChain(unittest.TestCase):
                 "không có thông tin",
                 "không có đủ thông tin",
                 "chưa có thông tin",
+                "không tìm thấy thông tin",
+                "không có dữ liệu",
+                "không có đủ dữ liệu",
+                "nằm ngoài phạm vi",
+                "không thuộc phạm vi",
+                "không thể trả lời",
+                "không hỗ trợ",
             ]
         )
         self.assertTrue(

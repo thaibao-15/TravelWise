@@ -67,6 +67,26 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_BASE_URL: Optional[str] = None
 
+    # -------------------------------------------------------------------------
+    # Blaze AI - Speech to Text Realtime Configuration
+    # -------------------------------------------------------------------------
+    BLAZE_API_KEY: Optional[str] = None
+    BLAZE_STT_WS_URL: str = "wss://api.blaze.vn/v1/stt/realtime"
+    BLAZE_STT_API_URL: str = "https://api.blaze.vn/v1/audio/transcriptions"
+    BLAZE_STT_MODEL: str = "stt-stream-1.5"
+    BLAZE_STT_SAMPLE_RATE: int = 16000
+    BLAZE_STT_LANGUAGE: str = "vi"
+
+    # -------------------------------------------------------------------------
+    # Blaze AI - Text to Speech Configuration
+    # -------------------------------------------------------------------------
+    BLAZE_TTS_API_URL: str = "https://api.blaze.vn/v1/tts"
+    BLAZE_TTS_SPEAKER_ID: str = "HN-Nam-1-BL"
+    BLAZE_TTS_MODEL: str = "v2.0_pro"
+    BLAZE_TTS_SPEED: str = "1.2"
+    BLAZE_TTS_AUDIO_QUALITY: int = 64
+    BLAZE_TTS_AUDIO_FORMAT: str = "wav"
+    BLAZE_TTS_NORMALIZATION: str = "basic"
 
     # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
@@ -78,6 +98,14 @@ class Settings(BaseSettings):
     RAG_CHUNK_SIZE: int = 500
     RAG_CHUNK_OVERLAP: int = 100
     RAG_TOP_K: int = 3
+
+    # -------------------------------------------------------------------------
+    # CORS Configuration
+    # -------------------------------------------------------------------------
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     @computed_field
     @property

@@ -1,0 +1,63 @@
+name: API CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/api-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/api-ci.yml"
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    env:
+      # Use SQLite for CI — no SQL Server dependency needed
+      DATABASE_URL: "sqlite:///./test_ci.db"
+      # LLM settings
+      LLM_PROVIDER: "gemini"
+      GEMINI_MODEL: "gemini-3.5-flash-lite"
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # JWT (test-only value)
+      JWT_SECRET: "ci-test-secret-key-not-for-production"
+      # Blaze AI STT/TTS
+      BLAZE_API_KEY: ${{ secrets.BLAZE_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint with Ruff (check)
+        run: uv run ruff check app/ tests/
+        continue-on-error: true
+
+      - name: Format check with Ruff
+        run: uv run ruff format --check app/ tests/
+        continue-on-error: true
+
+      - name: Create database tables (SQLite for CI)
+        run: uv run python -c "from app.models import *; from app.db.session import engine; from sqlmodel import SQLModel; SQLModel.metadata.create_all(engine)"
+
+      - name: Run tests
+        run: uv run python -m unittest discover tests -v

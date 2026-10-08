@@ -72,7 +72,7 @@ class TestLLMConnection(unittest.TestCase):
 
         with patch("app.api.routes.rag.get_chat_llm", return_value=fake_llm):
             res = self.client.post(
-                "/rag/test-llm",
+                "/api/v1/rag/test-llm",
                 json={"prompt": "Xin chào"},
             )
             self.assertEqual(res.status_code, 200)
@@ -86,7 +86,7 @@ class TestLLMConnection(unittest.TestCase):
         """FastAPI /rag/test-llm should handle missing API key cleanly without leaking info."""
         with patch("app.api.routes.rag.get_chat_llm", side_effect=ValueError("API key missing")):
             res = self.client.post(
-                "/rag/test-llm",
+                "/api/v1/rag/test-llm",
                 json={"prompt": "Xin chào"},
             )
             self.assertEqual(res.status_code, 500)
@@ -103,7 +103,7 @@ class TestLLMConnection(unittest.TestCase):
             side_effect=Exception(f"LLM error with key {secret_key_leak}"),
         ):
             res = self.client.post(
-                "/rag/test-llm",
+                "/api/v1/rag/test-llm",
                 json={"prompt": "Xin chào"},
             )
             self.assertEqual(res.status_code, 502)

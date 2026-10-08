@@ -95,11 +95,10 @@ class MessageResponse(BaseModel):
     """Payload representing a single saved chat message."""
 
     id: int
-    conversation_id: int
     sender: str
     content: str
-    audio_url: Optional[str] = None
     created_at: datetime
+    audio_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,6 +120,11 @@ class RAGAskRequest(BaseModel):
         default=None,
         description="ID cuộc trò chuyện (nếu tiếp tục hội thoại)",
         examples=[15],
+    )
+    mode: Optional[str] = Field(
+        default="chat",
+        description="Chế độ hội thoại: 'chat' (chi tiết đầy đủ) hoặc 'voice' (ngắn gọn trực tiếp, tối ưu cho đàm thoại giọng nói)",
+        examples=["chat", "voice"],
     )
 
     @field_validator("query", "message")
@@ -155,13 +159,24 @@ class RAGAskRequest(BaseModel):
 
 
 class RAGAskResponse(BaseModel):
-    """Response payload for RAG question-answering."""
+    """Response payload for RAG question-answering with conversational message."""
 
-    query: str
-    answer: str
-    conversation_id: Optional[int] = None
-    message: Optional[MessageResponse] = None
-    sources: Optional[List[Any]] = None
+    conversation_id: int
+    message: MessageResponse
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "conversation_id": 15,
+                "message": {
+                    "id": 42,
+                    "sender": "AI",
+                    "content": "Chùa Linh Ứng - Bãi Bụt nổi bật với tượng Phật Quan Thế Âm cao 67m...",
+                    "created_at": "2026-10-05T08:00:00Z",
+                    "audio_url": None,
+                },
+            }
+        },
+    )
 

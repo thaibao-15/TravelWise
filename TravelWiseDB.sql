@@ -815,3 +815,5 @@ GO
 select * from users 
 select * from places 
 select * from knowledge
+select * from conversations where id =15
+select * from messages where conversation_id = 15
