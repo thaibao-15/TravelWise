@@ -11,7 +11,7 @@ class TripRecommendationsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
-        Text('Báº¡n cÃ³ thá»ƒ thÃ­ch', style: AppTextStyles.h2),
+        Text('Bạn có thể thích', style: AppTextStyles.h2),
         const SizedBox(height: 12),
         SizedBox(
           height: 180,
@@ -20,7 +20,7 @@ class TripRecommendationsSection extends StatelessWidget {
             itemCount: 3,
             separatorBuilder: (context, index) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final titles = ['VinWonders Nam Há»™i An', 'CÃ¹ Lao ChÃ m', 'Biá»ƒn Má»¹ KhÃª'];
+              final titles = ['VinWonders Nam Hội An', 'Cù Lao Chàm', 'Biển Mỹ Khê'];
               final images = [
                 'https://images.unsplash.com/photo-1596700055171-8eb12e847c0b',
                 'https://images.unsplash.com/photo-1590847970868-b76bb06198bb',

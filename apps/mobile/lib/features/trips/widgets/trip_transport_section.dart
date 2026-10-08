@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -12,7 +12,7 @@ class TripTransportSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
-        Text('Di chuyá»ƒn', style: AppTextStyles.h2),
+        Text('Di chuyển ', style: AppTextStyles.h2),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
@@ -23,9 +23,9 @@ class TripTransportSection extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _buildRow(LucideIcons.car, 'Grab', '15 phÃºt Â· 3.2 km', '45.000 â‚«'),
+              _buildRow(LucideIcons.car, 'Grab', '15 phút  3.2 km', '45.000 ₫'),
               const Divider(height: 24, color: AppColors.border),
-              _buildRow(LucideIcons.footprints, 'Äi bá»™', '8 phÃºt Â· 600 m', 'Miá»…n phÃ­'),
+              _buildRow(LucideIcons.footprints, 'Đi bộ', '8 phút • 600 m', 'Miễn phí'),
             ],
           ),
         ),

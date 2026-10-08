@@ -15,8 +15,8 @@ class TripPlacesSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Äá»‹a Ä‘iá»ƒm ná»•i báº­t', style: AppTextStyles.h2),
-            Text('Xem táº¥t cáº£', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.primary)),
+            Text('Địa điểm nổi bật', style: AppTextStyles.h2),
+            Text('Xem tất cả', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.primary)),
           ],
         ),
         const SizedBox(height: 12),
@@ -27,7 +27,7 @@ class TripPlacesSection extends StatelessWidget {
             itemCount: 3,
             separatorBuilder: (context, index) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final titles = ['BÃ¡n Äáº£o SÆ¡n TrÃ ', 'Cáº§u VÃ ng', 'Chá»£ HÃ n'];
+              final titles = ['Bán Đảo Sơn Trà', 'Cầu Vàng', 'Chợ Hàn'];
               final images = [
                 'https://images.unsplash.com/photo-1621255855018-9366e6097fc0',
                 'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9',

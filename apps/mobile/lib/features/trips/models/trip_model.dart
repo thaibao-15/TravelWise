@@ -11,6 +11,11 @@ class Trip {
   final bool optimized;
   final String coverImage;
   final List<TripDay> days;
+  final String? status;
+  final String? category;
+  final double? progress;
+  final bool? aiPlanned;
+  final Map<String, bool>? checklist;
 
   Trip({
     required this.id,
@@ -25,6 +30,11 @@ class Trip {
     required this.optimized,
     required this.coverImage,
     required this.days,
+    this.status,
+    this.category,
+    this.progress,
+    this.aiPlanned,
+    this.checklist,
   });
 }
 

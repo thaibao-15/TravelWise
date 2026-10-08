@@ -44,7 +44,7 @@ class TripBottomActions extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('LÆ°u chuyáº¿n Ä‘i', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text('Lưu chuyến đi', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],

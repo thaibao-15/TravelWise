@@ -11,7 +11,7 @@ class TripBudgetSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
-        Text('Chi phÃ­ dá»± kiáº¿n', style: AppTextStyles.h2),
+        Text('Chi phí dự kiến', style: AppTextStyles.h2),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
@@ -22,13 +22,13 @@ class TripBudgetSection extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _buildBudgetRow('Ä‚n uá»‘ng', '800.000 â‚«', 0.2, AppColors.primary),
+              _buildBudgetRow('Ăn uống', '800.000 â‚«', 0.2, AppColors.primary),
               const SizedBox(height: 12),
-              _buildBudgetRow('Di chuyá»ƒn', '500.000 â‚«', 0.15, AppColors.secondary),
+              _buildBudgetRow('Di chuyển', '500.000 â‚«', 0.15, AppColors.secondary),
               const SizedBox(height: 12),
-              _buildBudgetRow('VÃ© tham quan', '600.000 â‚«', 0.15, AppColors.warning),
+              _buildBudgetRow('Vé tham quan', '600.000 â‚«', 0.15, AppColors.warning),
               const SizedBox(height: 12),
-              _buildBudgetRow('LÆ°u trÃº', '2.000.000 â‚«', 0.5, AppColors.success),
+              _buildBudgetRow('Lưu trú', '2.000.000 â‚«', 0.5, AppColors.success),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Divider(color: AppColors.border),
@@ -36,7 +36,7 @@ class TripBudgetSection extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Tá»•ng cá»™ng', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.bold)),
+                  Text('Tổng cộng', style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.bold)),
                   Text('3.900.000 â‚«', style: AppTextStyles.h3.copyWith(color: AppColors.primary)),
                 ],
               )

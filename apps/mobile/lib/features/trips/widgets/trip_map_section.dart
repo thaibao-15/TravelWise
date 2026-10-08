@@ -12,7 +12,7 @@ class TripMapSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 24),
-        Text('Lá»™ trÃ¬nh báº£n Ä‘á»“', style: AppTextStyles.h2),
+        Text('Lộ trình bản đồ', style: AppTextStyles.h2),
         const SizedBox(height: 12),
         Container(
           height: 180,
@@ -30,7 +30,7 @@ class TripMapSection extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: () {},
               icon: const Icon(LucideIcons.map, size: 18),
-              label: const Text('Xem lá»™ trÃ¬nh chi tiáº¿t'),
+              label: const Text('Xem lộ trình chi tiết'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: AppColors.primary,

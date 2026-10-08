@@ -14,7 +14,7 @@ class TripReviewsSection extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('ÄÃ¡nh giÃ¡', style: AppTextStyles.h2),
+            Text('Đánh giá', style: AppTextStyles.h2),
             const SizedBox(width: 8),
             Row(
               children: [
@@ -47,7 +47,7 @@ class TripReviewsSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Nguyá»…n VÄƒn A', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                        Text('Nguyễn Văn A', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
                         Text('12/10/2023', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
                       ],
                     ),
@@ -58,7 +58,7 @@ class TripReviewsSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Text('Lá»‹ch trÃ¬nh ráº¥t há»£p lÃ½, thá»i gian phÃ¢n bá»• tá»‘t. Ráº¥t thÃ­ch há»£p cho gia Ä‘Ã¬nh.', style: AppTextStyles.bodyMedium),
+              Text('Lịch trình rất hợp lý, thời gian phân bổ tốt. Rất thích hợp cho gia đình.', style: AppTextStyles.bodyMedium),
             ],
           ),
         ),

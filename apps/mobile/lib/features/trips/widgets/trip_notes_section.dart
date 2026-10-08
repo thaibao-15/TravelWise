@@ -11,7 +11,7 @@ class TripNotesSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
-        Text('LÆ°u Ã½ cho chuyáº¿n Ä‘i', style: AppTextStyles.h2),
+        Text('Lưu ý cho chuyến đi', style: AppTextStyles.h2),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
@@ -23,10 +23,10 @@ class TripNotesSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildNoteItem('Mang theo kem chá»‘ng náº¯ng, mÅ© rÃ¢m.'),
-              _buildNoteItem('NÃªn Ä‘áº·t bÃ n trÆ°á»›c vÃ o cuá»‘i tuáº§n.'),
-              _buildNoteItem('Mang giÃ y thá»ƒ thao thoáº£i mÃ¡i Ä‘á»ƒ Ä‘i bá»™.'),
-              _buildNoteItem('Kiá»ƒm tra thá»i tiáº¿t trÆ°á»›c khi ra ngoÃ i.'),
+              _buildNoteItem('Mang theo kem chống nắng, mũ râm.'),
+              _buildNoteItem('Nên đặt bàn trước vào cuối tuần.'),
+              _buildNoteItem('Mang giày thể thao thoải mái để đi bộ.'),
+              _buildNoteItem('Kiểm tra thời tiết trước khi ra ngoài.'),
             ],
           ),
         ),
