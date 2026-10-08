@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../models/place_model.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/featured_card.dart';
 import '../widgets/filter_row.dart';
@@ -101,7 +100,7 @@ class ExploreScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(),
+      // bottomNavigationBar: const BottomNavBar(),
     );
   }
 }
