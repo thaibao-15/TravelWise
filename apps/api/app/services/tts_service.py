@@ -66,6 +66,144 @@ class BlazeTTSService:
                 status_code=401,
             )
 
+    async def create_tts(
+        self,
+        text: str,
+        language: str = "vi",
+        speaker_id: str = "HN-Nam-1-BL",
+        model: str = "v2.0_pro",
+        audio_speed: str = "1",
+        audio_quality: int = 64,
+        audio_format: str = "wav",
+        normalization: str = "basic",
+    ) -> dict:
+        self.validate_configuration()
+        
+        import re
+        cleaned_text = re.sub(r"```[\s\S]*?```", "", text)
+        cleaned_text = re.sub(r"`.*?`", "", cleaned_text)
+        cleaned_text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned_text)
+        cleaned_text = re.sub(r"[*_~#>-]", " ", cleaned_text)
+        cleaned_text = re.sub(r"https?://\S+", "", cleaned_text)
+        cleaned_text = re.sub(r"\s+", " ", cleaned_text).strip()
+
+        if not cleaned_text:
+            raise BlazeTTSError("Nội dung văn bản để đọc không được để trống.", status_code=400)
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "query": cleaned_text,
+            "language": language,
+            "audio_speed": audio_speed,
+            "audio_quality": audio_quality,
+            "audio_format": audio_format,
+            "normalization": normalization,
+            "speaker_id": speaker_id,
+            "model": model,
+        }
+
+        client = self.get_http_client()
+        try:
+            res = await client.post(self.api_url, json=payload, headers=headers, timeout=10.0)
+        except httpx.TimeoutException:
+            raise BlazeTTSError("Kết nối tới Blaze TTS bị quá hạn (Timeout).", status_code=504)
+        except Exception as e:
+            logger.error("Failed to connect to Blaze TTS: %s", e)
+            raise BlazeTTSError(f"Lỗi kết nối tới máy chủ Blaze TTS: {str(e)}", status_code=503)
+
+        if res.status_code in (401, 403):
+            raise BlazeTTSError("Blaze API Key không hợp lệ hoặc không có quyền truy cập.", status_code=401)
+        if res.status_code == 429:
+            raise BlazeTTSError("Quá số lượng yêu cầu cho phép (Rate limit).", status_code=429)
+        if res.status_code not in (200, 202):
+            logger.error("Blaze TTS creation failed with HTTP %s: %s", res.status_code, res.text)
+            raise BlazeTTSError(f"Dịch vụ Blaze TTS trả về mã lỗi HTTP {res.status_code}.", status_code=502)
+
+        data = res.json()
+        return data
+
+    async def get_tts_info(self, tts_id: str) -> dict:
+        self.validate_configuration()
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+        }
+        url = f"{self.api_url.rstrip('/')}/{tts_id}/info"
+        client = self.get_http_client()
+        try:
+            res = await client.get(url, headers=headers, timeout=10.0)
+        except httpx.TimeoutException:
+            raise BlazeTTSError("Kết nối tới Blaze TTS bị quá hạn (Timeout).", status_code=504)
+        except Exception as e:
+            raise BlazeTTSError(f"Lỗi kết nối tới máy chủ Blaze TTS: {str(e)}", status_code=503)
+
+        if res.status_code == 404:
+            raise BlazeTTSError("Không tìm thấy TTS ID này.", status_code=404)
+        if res.status_code in (401, 403):
+            raise BlazeTTSError("Blaze API Key không hợp lệ.", status_code=401)
+        if res.status_code != 200:
+            raise BlazeTTSError(f"Lỗi từ dịch vụ Blaze TTS (HTTP {res.status_code}).", status_code=502)
+        
+        return res.json()
+
+    async def get_tts_options(self) -> dict:
+        self.validate_configuration()
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+        }
+        url = f"{self.api_url.rstrip('/')}/options"
+        # Blaze might not have this exact url, using base url as defined, but appending /options
+        # since settings.BLAZE_TTS_API_URL is "https://api.blaze.vn/v1/tts", we replace "tts" with "tts/options" or just append to base
+        # But wait, api_url is typically "https://api.blaze.vn/v1/tts".
+        # If url is "https://api.blaze.vn/v1/tts/options", it matches requirements.
+        client = self.get_http_client()
+        try:
+            res = await client.get(url, headers=headers, timeout=10.0)
+        except httpx.TimeoutException:
+            raise BlazeTTSError("Kết nối tới Blaze TTS bị quá hạn (Timeout).", status_code=504)
+        except Exception as e:
+            raise BlazeTTSError(f"Lỗi kết nối tới máy chủ Blaze TTS: {str(e)}", status_code=503)
+
+        if res.status_code in (401, 403):
+            raise BlazeTTSError("Blaze API Key không hợp lệ.", status_code=401)
+        if res.status_code != 200:
+            raise BlazeTTSError(f"Lỗi từ dịch vụ Blaze TTS (HTTP {res.status_code}).", status_code=502)
+        
+        return res.json()
+
+    async def stream_audio(self, tts_id: str):
+        self.validate_configuration()
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+        }
+        url = f"{self.api_url.rstrip('/')}/{tts_id}/play"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                async with client.stream("GET", url, headers=headers, timeout=30.0) as res:
+                    if res.status_code == 404:
+                        yield b"Not Found"
+                        return
+                    if res.status_code in (401, 403):
+                        yield b"Unauthorized"
+                        return
+                    if res.status_code != 200:
+                        yield b"Error"
+                        return
+                    async for chunk in res.aiter_bytes():
+                        yield chunk
+            except Exception as e:
+                logger.error("Error streaming audio: %s", e)
+                yield b"Stream Error"
+        if not self.api_key or not self.api_key.strip():
+            raise BlazeTTSError(
+                "BLAZE_API_KEY chưa được cấu hình trong .env. Vui lòng thêm BLAZE_API_KEY để sử dụng tính năng TTS.",
+                status_code=401,
+            )
+
     async def synthesize_speech(self, text: str) -> bytes:
         """Synthesize text into WAV audio bytes using Blaze AI TTS."""
         self.validate_configuration()
