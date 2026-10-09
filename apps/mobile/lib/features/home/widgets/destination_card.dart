@@ -1,46 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 
 class DestinationCard extends StatefulWidget {
-  final String title;
-  final double rating;
-  final String reviews;
-  final String imageUrl;
-  final String description;
-
-  const DestinationCard({
-    super.key,
-    required this.title,
-    required this.rating,
-    required this.reviews,
-    required this.imageUrl,
-    required this.description,
-  });
+  const DestinationCard({Key? key}) : super(key: key);
 
   @override
   State<DestinationCard> createState() => _DestinationCardState();
 }
 
-class _DestinationCardState extends State<DestinationCard> {
-  bool _isPressed = false;
+class _DestinationCardState extends State<DestinationCard> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      child: AnimatedScale(
-        scale: _isPressed ? 0.98 : 1.0,
-        duration: const Duration(milliseconds: 150),
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        // Navigate or action
+      },
+      onTapCancel: () => _controller.reverse(),
+      child: ScaleTransition(
+        scale: _scaleAnimation,
         child: Container(
-          width: 240,
+          width: 220,
           decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
           child: Column(
@@ -49,10 +63,10 @@ class _DestinationCardState extends State<DestinationCard> {
               Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusLg)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
                     child: Image.network(
-                      widget.imageUrl,
-                      height: 120,
+                      'https://images.unsplash.com/photo-1555921015-c262060f0c0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', // Da Nang bridge
+                      height: 160,
                       width: double.infinity,
                       fit: BoxFit.cover,
                     ),
@@ -61,52 +75,29 @@ class _DestinationCardState extends State<DestinationCard> {
                     top: AppSpacing.sm,
                     left: AppSpacing.sm,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.trending_up, color: Colors.white, size: 12),
-                          SizedBox(width: 4),
-                          Text('Thịnh hành', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                        ],
+                      child: Text(
+                        'Thịnh hành',
+                        style: AppTextStyles.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
                   Positioned(
                     top: AppSpacing.sm,
                     right: AppSpacing.sm,
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      radius: 14,
-                      child: const Icon(Icons.favorite_border, size: 16, color: Colors.red),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: AppSpacing.sm,
-                    left: AppSpacing.sm,
-                    child: Text(
-                      widget.title,
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black54, blurRadius: 4)]),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: AppSpacing.sm,
-                    right: AppSpacing.sm,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 12),
-                          const SizedBox(width: 2),
-                          Text(widget.rating.toString(), style: const TextStyle(color: Colors.white, fontSize: 12)),
-                        ],
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.9),
                       ),
+                      child: const Icon(LucideIcons.heart, size: 16, color: AppColors.error),
                     ),
-                  )
+                  ),
                 ],
               ),
               Padding(
@@ -114,28 +105,48 @@ class _DestinationCardState extends State<DestinationCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.description,
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('${widget.reviews} đánh giá', style: const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                        Text('Đà Nẵng', style: AppTextStyles.h3),
                         Row(
-                          children: const [
-                            Text('Khám phá', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
-                            Icon(Icons.chevron_right, size: 16, color: AppColors.primary),
+                          children: [
+                            const Icon(Icons.star, size: 16, color: AppColors.warning),
+                            const SizedBox(width: 4),
+                            Text('4.9', style: AppTextStyles.label),
                           ],
-                        )
+                        ),
                       ],
-                    )
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Thành phố đáng sống nhất Việt Nam',
+                      style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 36,
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary.withOpacity(0.1),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          ),
+                        ),
+                        child: Text(
+                          'Khám phá',
+                          style: AppTextStyles.label.copyWith(color: AppColors.primary),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              )
+              ),
             ],
           ),
         ),

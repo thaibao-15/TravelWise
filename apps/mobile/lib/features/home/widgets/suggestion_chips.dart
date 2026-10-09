@@ -1,41 +1,46 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 
 class SuggestionChips extends StatelessWidget {
-  const SuggestionChips({super.key});
+  const SuggestionChips({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Row(
-        children: [
-          _buildChip('Đi đâu cuối tuần?', Icons.auto_awesome),
-          const SizedBox(width: AppSpacing.sm),
-          _buildChip('Ăn gì ở Đà Nẵng?', Icons.restaurant_outlined, iconColor: Colors.green),
-          const SizedBox(width: AppSpacing.sm),
-          _buildChip('Lập lịch...', Icons.calendar_today_outlined, iconColor: Colors.blue),
-        ],
-      ),
-    );
-  }
+    final suggestions = [
+      'Đi đâu cuối tuần?',
+      'Ăn gì ở Đà Nẵng?',
+      'Lập lịch',
+    ];
 
-  Widget _buildChip(String label, IconData icon, {Color iconColor = AppColors.primary}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg * 2),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: iconColor),
-          const SizedBox(width: AppSpacing.xs),
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: SizedBox(
+        height: 36,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          itemCount: suggestions.length,
+          itemBuilder: (context, index) {
+            return Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
+                  border: Border.all(color: AppColors.border),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  suggestions[index],
+                  style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
