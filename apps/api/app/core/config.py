@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RAG_CHUNK_SIZE: int = 500
     RAG_CHUNK_OVERLAP: int = 100
-    RAG_TOP_K: int = 3
+    RAG_TOP_K: int = 6
 
     # -------------------------------------------------------------------------
     # CORS Configuration

@@ -79,3 +79,100 @@ def load_knowledge_documents(
         )
 
     return documents
+
+
+def load_crawled_documents(
+    file_path: Optional[str] = None,
+    min_length: int = 150,
+) -> List[Document]:
+    """Read crawled articles from a JSONL file and convert to LangChain Documents.
+
+    Args:
+        file_path: Optional path to the JSONL file. Defaults to `apps/api/data/crawled_pages.jsonl`.
+        min_length: Minimum character length for article content to filter out trivial pages.
+
+    Returns:
+        List of LangChain Document objects.
+    """
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+
+    if file_path:
+        target_path = Path(file_path)
+    else:
+        # Check environment variable first
+        env_path = os.getenv("CRAWLED_PAGES_PATH")
+        if env_path and Path(env_path).exists():
+            target_path = Path(env_path)
+        else:
+            # Default to apps/api/data/crawled_pages.jsonl
+            base_dir = Path(__file__).resolve().parent.parent.parent
+            target_path = base_dir / "data" / "crawled_pages.jsonl"
+            
+            # Fallback to Blazer Intern/crawl/data/crawled_pages.jsonl if default doesn't exist
+            if not target_path.exists():
+                fallback_crawl_path = Path(r"e:\Blazer Intern\crawl\data\crawled_pages.jsonl")
+                if fallback_crawl_path.exists():
+                    target_path = fallback_crawl_path
+
+    if not target_path.exists():
+        return []
+
+    documents: List[Document] = []
+
+    with target_path.open("r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            content = (record.get("content") or "").strip()
+            if len(content) < min_length:
+                continue
+
+            url = (record.get("url") or "").strip()
+            title = (record.get("title") or "").strip()
+
+            header_parts = []
+            if title:
+                header_parts.append(f"Chủ đề: {title}")
+            if url:
+                header_parts.append(f"Nguồn: {url}")
+
+            header_str = " | ".join(header_parts)
+            if header_str:
+                page_content = f"[{header_str}]\n{content}".strip()
+            else:
+                page_content = content
+
+            url_hash = (
+                hashlib.md5(url.encode("utf-8")).hexdigest()[:10]
+                if url
+                else f"line_{line_num}"
+            )
+
+            metadata = {
+                "source_type": "crawl4ai",
+                "doc_id": f"crawl_{url_hash}",
+                "title": title,
+                "source": url,
+                "date": record.get("date") or "",
+                "description": record.get("description") or "",
+                "crawled_at": record.get("crawled_at") or "",
+            }
+
+            documents.append(
+                Document(
+                    page_content=page_content,
+                    metadata=metadata,
+                )
+            )
+
+    return documents

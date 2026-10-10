@@ -37,7 +37,7 @@ from app.rag.config import (
     RAG_CHUNK_OVERLAP,
     RAG_CHUNK_SIZE,
 )
-from app.rag.loader import load_knowledge_documents
+from app.rag.loader import load_crawled_documents, load_knowledge_documents
 from app.rag.splitter import split_documents
 from app.rag.vectorstore import get_vectorstore, upsert_documents
 
@@ -55,23 +55,36 @@ def run_ingestion() -> None:
     print(f"Chunk Overlap    : {RAG_CHUNK_OVERLAP}")
     print("-" * 60)
 
-    # 1. Load documents from SQL Server
-    print("[1/4] Reading knowledge from SQL Server...")
-    with Session(engine) as session:
-        raw_documents = load_knowledge_documents(session)
+    # 1. Load documents from all sources
+    print("[1/4] Reading knowledge from sources...")
+    raw_documents = []
+
+    # Source A: SQL Server
+    try:
+        with Session(engine) as session:
+            sql_documents = load_knowledge_documents(session)
+            print(f"      [✓] SQL Server : Loaded {len(sql_documents)} articles.")
+            raw_documents.extend(sql_documents)
+    except Exception as exc:
+        print(f"      [!] SQL Server : Bỏ qua do kết nối DB không thành công ({type(exc).__name__}).")
+
+    # Source B: Crawled JSONL
+    try:
+        crawled_documents = load_crawled_documents()
+        if crawled_documents:
+            print(f"      [✓] Crawl JSONL: Loaded {len(crawled_documents)} articles.")
+            raw_documents.extend(crawled_documents)
+        else:
+            print("      [-] Crawl JSONL: Không tìm thấy file hoặc file trống.")
+    except Exception as exc:
+        print(f"      [!] Crawl JSONL: Lỗi đọc file ({exc}).")
 
     if not raw_documents:
-        print("WARNING: No knowledge articles found in database!")
-        print("Please run `seed.py` first to insert initial knowledge data.")
+        print("WARNING: No knowledge articles found from any source!")
+        print("Vui lòng chạy crawler hoặc tạo dữ liệu mẫu trước.")
         return
 
-    print(f"      Loaded {len(raw_documents)} knowledge articles.")
-    for doc in raw_documents[:5]:
-        place_name = doc.metadata.get("place_name") or "N/A"
-        title = doc.metadata.get("title") or "Untitled"
-        print(f"      - [Place: {place_name}] {title}")
-    if len(raw_documents) > 5:
-        print(f"      ... and {len(raw_documents) - 5} more articles.")
+    print(f"      ==> Tổng cộng: {len(raw_documents)} bài viết sẵn sàng để index.")
 
     # 2. Chunk documents
     print("\n[2/4] Splitting documents into chunks...")
