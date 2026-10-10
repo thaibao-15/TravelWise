@@ -149,13 +149,16 @@ export function VoiceChatModal({
             );
             webSpeechCancelRef.current = cancel;
           } else {
-            // Chế độ Blaze AI: Gọi server TTS đã tối ưu hóa polling 0.12s
+            // Chế độ Blaze AI: Stream trực tiếp từ Blaze TTS Realtime WebSocket (TTFB < 500ms)
             try {
-              const audioUrl = await ttsService.synthesize(cleanAnswer);
+              const streamUrl = cleanAnswer.length <= 1800
+                ? ttsService.getStreamUrl(cleanAnswer)
+                : await ttsService.synthesize(cleanAnswer);
 
               if (!isOpenRef.current) return;
 
-              const audio = new Audio(audioUrl);
+              const audio = new Audio(streamUrl);
+              audio.preload = "auto";
               audioRef.current = audio;
 
               audio.onended = () => {

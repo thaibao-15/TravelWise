@@ -20,6 +20,16 @@ export const ttsService = {
   },
 
   /**
+   * Lấy URL streaming HTTP trực tiếp từ server để thẻ Audio phát tức thì (TTFB < 500ms)
+   */
+  getStreamUrl(text: string): string {
+    const cleaned = this.cleanText(text);
+    if (!cleaned) return "";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    return `${apiUrl}/api/v1/tts/stream?text=${encodeURIComponent(cleaned)}`;
+  },
+
+  /**
    * Request TTS synthesis and return object audio URL
    */
   async synthesize(text: string): Promise<string> {

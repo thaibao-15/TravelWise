@@ -78,14 +78,15 @@ class Settings(BaseSettings):
     BLAZE_STT_LANGUAGE: str = "vi"
 
     # -------------------------------------------------------------------------
-    # Blaze AI - Text to Speech Configuration
+    # Blaze AI - Text to Speech Configuration (Realtime WebSocket & Stream)
     # -------------------------------------------------------------------------
+    BLAZE_TTS_WS_URL: str = "wss://api.blaze.vn/v1/tts/realtime"
     BLAZE_TTS_API_URL: str = "https://api.blaze.vn/v1/tts"
-    BLAZE_TTS_SPEAKER_ID: str = "HN-Nam-1-BL"
-    BLAZE_TTS_MODEL: str = "v2.0_pro"
-    BLAZE_TTS_SPEED: str = "1.2"
+    BLAZE_TTS_SPEAKER_ID: str = "DaNang-Nu-1-BL"
+    BLAZE_TTS_MODEL: str = "2.0-realtime"
+    BLAZE_TTS_SPEED: str = "1.5"
     BLAZE_TTS_AUDIO_QUALITY: int = 64
-    BLAZE_TTS_AUDIO_FORMAT: str = "wav"
+    BLAZE_TTS_AUDIO_FORMAT: str = "mp3"
     BLAZE_TTS_NORMALIZATION: str = "basic"
 
     # -------------------------------------------------------------------------

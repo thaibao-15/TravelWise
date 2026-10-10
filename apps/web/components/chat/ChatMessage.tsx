@@ -74,10 +74,13 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
     // 3. Request TTS synthesis from backend
     setTtsState("loading");
     try {
-      const audioUrl = await ttsService.synthesize(message.content);
-      audioUrlRef.current = audioUrl;
+      const streamUrl = message.content.length <= 1800
+        ? ttsService.getStreamUrl(message.content)
+        : await ttsService.synthesize(message.content);
+      audioUrlRef.current = streamUrl;
 
-      const audio = new Audio(audioUrl);
+      const audio = new Audio(streamUrl);
+      audio.preload = "auto";
       audioRef.current = audio;
 
       audio.onended = () => {
