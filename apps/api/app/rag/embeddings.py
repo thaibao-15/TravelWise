@@ -17,6 +17,7 @@ from langchain_core.embeddings import Embeddings
 from app.rag.config import (
     EMBEDDING_MODEL,
     EMBEDDING_PROVIDER,
+    GEMINI_API_KEY,
     OPENAI_API_KEY,
 )
 
@@ -50,13 +51,14 @@ def get_embeddings() -> Embeddings:
     """Factory function returning a configured LangChain Embeddings instance.
 
     Selection strategy:
-    1. If EMBEDDING_PROVIDER == "openai":
+    1. If EMBEDDING_PROVIDER == "gemini":
+       Uses Google's Gemini Embeddings (models/gemini-embedding-2).
+    2. If EMBEDDING_PROVIDER == "openai":
        Requires OPENAI_API_KEY; uses LangChain's OpenAIEmbeddings.
-    2. If EMBEDDING_PROVIDER == "auto":
-       If OPENAI_API_KEY is available -> uses OpenAIEmbeddings.
-       Otherwise -> falls back cleanly to local ChromaDefaultEmbeddings.
-    3. If EMBEDDING_PROVIDER == "local" or "default":
-       Uses ChromaDefaultEmbeddings.
+    3. If EMBEDDING_PROVIDER == "auto":
+       Prefers Gemini if GEMINI_API_KEY is available, then OpenAI, else local.
+    4. If EMBEDDING_PROVIDER == "local" or "default":
+       Uses ChromaDefaultEmbeddings (all-MiniLM-L6-v2).
     """
     global _embeddings_instance
     if _embeddings_instance is not None:
@@ -64,7 +66,20 @@ def get_embeddings() -> Embeddings:
 
     provider = (EMBEDDING_PROVIDER or "auto").lower()
 
-    if provider == "openai" or (provider == "auto" and OPENAI_API_KEY):
+    if provider == "gemini" or (provider == "auto" and GEMINI_API_KEY):
+        if not GEMINI_API_KEY:
+            raise ValueError(
+                "GEMINI_API_KEY must be set in environment when EMBEDDING_PROVIDER is 'gemini'."
+            )
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+        model_name = EMBEDDING_MODEL if EMBEDDING_MODEL.startswith("models/") else f"models/{EMBEDDING_MODEL}"
+        logger.info("Initializing GoogleGenerativeAIEmbeddings with model: %s", model_name)
+        _embeddings_instance = GoogleGenerativeAIEmbeddings(
+            model=model_name,
+            google_api_key=GEMINI_API_KEY,
+        )
+    elif provider == "openai" or (provider == "auto" and OPENAI_API_KEY):
         if not OPENAI_API_KEY:
             raise ValueError(
                 "OPENAI_API_KEY must be set in environment when EMBEDDING_PROVIDER is 'openai'."

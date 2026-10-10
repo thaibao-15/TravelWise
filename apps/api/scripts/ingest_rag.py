@@ -95,8 +95,18 @@ def run_ingestion() -> None:
     )
     print(f"      Created {len(chunked_documents)} chunks from {len(raw_documents)} articles.")
 
-    # 3. Initialize Chroma vector store
+    # 3. Initialize Chroma vector store & reset old collection
     print("\n[3/4] Initializing Chroma vector store & embeddings...")
+    vectorstore = get_vectorstore()
+    try:
+        vectorstore._client.delete_collection(CHROMA_COLLECTION_NAME)
+        print(f"      [✓] Đã làm sạch collection cũ '{CHROMA_COLLECTION_NAME}' (loại bỏ chunk cũ & bài đã xóa).")
+    except Exception:
+        pass
+
+    # Tái tạo instance mới sạch hoàn toàn
+    import app.rag.vectorstore as vs_module
+    vs_module._vectorstore_instance = None
     vectorstore = get_vectorstore()
 
     # 4. Upsert chunks into Chroma

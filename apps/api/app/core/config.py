@@ -93,10 +93,10 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     CHROMA_PERSIST_DIRECTORY: str = "data/chroma"
     CHROMA_COLLECTION_NAME: str = "travelwise_knowledge"
-    EMBEDDING_PROVIDER: str = "auto"  # "auto", "openai", "local"
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
-    RAG_CHUNK_SIZE: int = 500
-    RAG_CHUNK_OVERLAP: int = 100
+    EMBEDDING_PROVIDER: str = "gemini"  # "gemini", "openai", "local", "auto"
+    EMBEDDING_MODEL: str = "models/gemini-embedding-2"
+    RAG_CHUNK_SIZE: int = 1200
+    RAG_CHUNK_OVERLAP: int = 250
     RAG_TOP_K: int = 6
 
     # -------------------------------------------------------------------------

@@ -76,23 +76,24 @@ def generate_chunk_id(doc: Document, fallback_index: int = 0) -> str:
 def upsert_documents(
     documents: List[Document],
     vectorstore: Optional[Chroma] = None,
-    batch_size: int = 500,
+    batch_size: int = 25,
 ) -> int:
     """Upsert chunked documents into Chroma using deterministic IDs in batches.
 
-    Re-running this function updates existing chunks rather than creating duplicates.
-    Processes items in batches to respect ChromaDB's maximum batch size limit (5,461).
+    Processes items in batches and handles API rate limits with automatic retries.
 
     Args:
         documents: List of chunked Document objects.
         vectorstore: Optional Chroma instance.
-        batch_size: Number of documents per batch (default: 500).
+        batch_size: Number of documents per batch (default: 25 for rate limit safety).
 
     Returns:
         Number of documents upserted.
     """
     if not documents:
         return 0
+
+    import time
 
     vs = vectorstore or get_vectorstore()
 
@@ -106,7 +107,21 @@ def upsert_documents(
         batch_docs = documents[start:end]
         batch_ids = ids[start:end]
 
-        vs.add_documents(documents=batch_docs, ids=batch_ids)
+        # Retry with backoff if hitting 429 Rate Limit
+        for attempt in range(5):
+            try:
+                vs.add_documents(documents=batch_docs, ids=batch_ids)
+                break
+            except Exception as e:
+                err_msg = str(e)
+                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg or "quota" in err_msg.lower():
+                    wait_sec = 20 * (attempt + 1)
+                    print(f"      [Rate Limit] Đạt hạn mức gọi API, đang nghỉ {wait_sec}s rồi tự động tiếp tục...")
+                    time.sleep(wait_sec)
+                else:
+                    raise e
+
         print(f"      [Chroma] Tiến độ: {end:,}/{total:,} chunks ({((end / total) * 100):.1f}%)...")
+        time.sleep(1.2)  # Nghỉ nhẹ 1.2s giữa các đợt để không bị vượt 100 req/min
 
     return total
