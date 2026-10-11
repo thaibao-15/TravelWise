@@ -158,11 +158,15 @@ class RAGAskRequest(BaseModel):
     )
 
 
+from app.schemas.trip_planning import TripPlanningContext
+
+
 class RAGAskResponse(BaseModel):
-    """Response payload for RAG question-answering with conversational message."""
+    """Response payload for RAG question-answering with conversational message and optional planning context."""
 
     conversation_id: int
     message: MessageResponse
+    planning_context: Optional[TripPlanningContext] = None
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -176,7 +180,9 @@ class RAGAskResponse(BaseModel):
                     "created_at": "2026-10-05T08:00:00Z",
                     "audio_url": None,
                 },
+                "planning_context": None,
             }
         },
     )
+
 

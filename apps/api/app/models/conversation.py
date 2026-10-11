@@ -12,7 +12,9 @@ from sqlmodel import Field, Relationship, SQLModel
 from app.db.base import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.ai_context import AIContext
     from app.models.message import Message
+    from app.models.trip import Trip
     from app.models.user import User
 
 
@@ -45,6 +47,13 @@ class Conversation(TimestampMixin, SQLModel, table=True):
     # Relationships
     user: Optional["User"] = Relationship(back_populates="conversations")
     messages: List["Message"] = Relationship(
+        back_populates="conversation",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    trips: List["Trip"] = Relationship(
+        back_populates="conversation",
+    )
+    ai_contexts: List["AIContext"] = Relationship(
         back_populates="conversation",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )

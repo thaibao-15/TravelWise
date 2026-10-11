@@ -79,11 +79,11 @@ export function useChat() {
                 prev.map((msg) =>
                   msg.id === assistantMsgId
                     ? {
-                        ...msg,
-                        id: `msg-${data.message_id}`,
-                        content: data.content,
-                        status: "success",
-                      }
+                      ...msg,
+                      id: `msg-${data.message_id}`,
+                      content: data.content,
+                      status: "success",
+                    }
                     : msg
                 )
               );
@@ -110,16 +110,16 @@ export function useChat() {
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
-                    ...msg,
-                    id: response.message
-                      ? `msg-${response.message.id}`
-                      : assistantMsgId,
-                    content: answerContent,
-                    timestamp: response.message
-                      ? new Date(response.message.created_at)
-                      : new Date(),
-                    status: "success",
-                  }
+                  ...msg,
+                  id: response.message
+                    ? `msg-${response.message.id}`
+                    : assistantMsgId,
+                  content: answerContent,
+                  timestamp: response.message
+                    ? new Date(response.message.created_at)
+                    : new Date(),
+                  status: "success",
+                }
                 : msg
             )
           );
@@ -135,12 +135,12 @@ export function useChat() {
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
-                    ...msg,
-                    content:
-                      "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
-                    status: "error",
-                    errorMessage: errorMsg,
-                  }
+                  ...msg,
+                  content:
+                    "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
+                  status: "error",
+                  errorMessage: errorMsg,
+                }
                 : msg
             )
           );
@@ -188,16 +188,16 @@ export function useChat() {
           prev.map((m) =>
             m.id === messageId
               ? {
-                  ...m,
-                  id: response.message
-                    ? `msg-${response.message.id}`
-                    : messageId,
-                  content: answerContent,
-                  timestamp: response.message
-                    ? new Date(response.message.created_at)
-                    : new Date(),
-                  status: "success",
-                }
+                ...m,
+                id: response.message
+                  ? `msg-${response.message.id}`
+                  : messageId,
+                content: answerContent,
+                timestamp: response.message
+                  ? new Date(response.message.created_at)
+                  : new Date(),
+                status: "success",
+              }
               : m
           )
         );
@@ -209,10 +209,10 @@ export function useChat() {
           prev.map((m) =>
             m.id === messageId
               ? {
-                  ...m,
-                  status: "error",
-                  errorMessage: errorMsg,
-                }
+                ...m,
+                status: "error",
+                errorMessage: errorMsg,
+              }
               : m
           )
         );

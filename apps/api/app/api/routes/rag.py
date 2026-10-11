@@ -96,7 +96,29 @@ def ask_knowledge(
             title=title,
         )
 
-    # 2. Load recent conversation history (5-10 messages)
+    # 2. Save USER message to database
+    user_msg = ConversationService.save_message(
+        session=session,
+        conversation_id=conversation.id,
+        sender="USER",
+        content=user_question,
+    )
+
+    # 3. Extract and update TripPlanningContext if relevant (non-blocking for chat failure)
+    planning_context = None
+    try:
+        from app.services.trip_planning_service import TripPlanningContextExtractionService
+
+        planning_context = TripPlanningContextExtractionService.extract_and_update_trip_context(
+            session=session,
+            conversation_id=conversation.id,
+            current_user=current_user,
+            latest_message=user_msg,
+        )
+    except Exception as e:
+        logger.error("Planning context extraction error for conversation %s: %s", conversation.id, e)
+
+    # 4. Load recent conversation history (5-10 messages)
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
@@ -105,12 +127,14 @@ def ask_knowledge(
 
     chat_history = []
     for msg in recent_messages:
+        if msg.id == user_msg.id:
+            continue  # Avoid duplicating the current question in historical context
         if msg.sender == "USER":
             chat_history.append(HumanMessage(content=msg.content))
         elif msg.sender == "AI":
             chat_history.append(AIMessage(content=msg.content))
 
-    # 3. Contextualize question & invoke RAG chain
+    # 5. Contextualize question & invoke RAG chain
     try:
         chain = get_rag_chain()
         standalone_question = chain.contextualize_question(
@@ -140,14 +164,7 @@ def ask_knowledge(
             detail="Đã xảy ra lỗi nội bộ khi xử lý câu hỏi.",
         )
 
-    # 4. Save messages to database
-    ConversationService.save_message(
-        session=session,
-        conversation_id=conversation.id,
-        sender="USER",
-        content=user_question,
-    )
-
+    # 6. Save AI message to database
     ai_msg = ConversationService.save_message(
         session=session,
         conversation_id=conversation.id,
@@ -155,7 +172,7 @@ def ask_knowledge(
         content=answer,
     )
 
-    # 5. Update conversation updated_at
+    # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
 
     return RAGAskResponse(
@@ -167,6 +184,7 @@ def ask_knowledge(
             created_at=ai_msg.created_at,
             audio_url=ai_msg.audio_url,
         ),
+        planning_context=planning_context,
     )
 
 
@@ -240,12 +258,27 @@ async def ask_rag_stream(
 
         final_answer = "".join(full_answer_parts).strip()
 
-        ConversationService.save_message(
+        user_msg = ConversationService.save_message(
             session=session,
             conversation_id=conversation.id,
             sender="USER",
             content=user_question,
         )
+
+        planning_context_data = None
+        try:
+            from app.services.trip_planning_service import TripPlanningContextExtractionService
+
+            ctx = TripPlanningContextExtractionService.extract_and_update_trip_context(
+                session=session,
+                conversation_id=conversation.id,
+                current_user=current_user,
+                latest_message=user_msg,
+            )
+            if ctx:
+                planning_context_data = ctx.model_dump()
+        except Exception as e:
+            logger.error("Planning context extraction error in stream: %s", e)
 
         ai_msg = ConversationService.save_message(
             session=session,
@@ -256,7 +289,16 @@ async def ask_rag_stream(
 
         ConversationService.update_conversation_timestamp(session, conversation)
 
-        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': ai_msg.id, 'content': final_answer})}\n\n"
+        done_payload = {
+            "type": "done",
+            "conversation_id": conversation.id,
+            "message_id": ai_msg.id,
+            "content": final_answer,
+        }
+        if planning_context_data:
+            done_payload["planning_context"] = planning_context_data
+
+        yield f"data: {json.dumps(done_payload)}\n\n"
 
     return StreamingResponse(
         event_generator(),

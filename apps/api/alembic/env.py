@@ -30,6 +30,13 @@ from app.models.hotel_detail import HotelDetail  # noqa: F401
 from app.models.place_image import PlaceImage  # noqa: F401
 from app.models.opening_hours import OpeningHours  # noqa: F401
 from app.models.knowledge import Knowledge  # noqa: F401
+from app.models.conversation import Conversation  # noqa: F401
+from app.models.message import Message  # noqa: F401
+from app.models.trip import Trip  # noqa: F401
+from app.models.trip_preference import TripPreference  # noqa: F401
+from app.models.ai_context import AIContext  # noqa: F401
+from app.models.itinerary_day import ItineraryDay  # noqa: F401
+from app.models.itinerary_activity import ItineraryActivity  # noqa: F401
 
 config = context.config
 

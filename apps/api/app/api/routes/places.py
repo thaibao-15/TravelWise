@@ -70,3 +70,31 @@ def create_place_knowledge(
     # Ensure place_id in body matches the URL param
     data.place_id = place_id
     return KnowledgeService.create_knowledge(session, data)
+
+
+from app.schemas.place_search import PlaceSearchRequest, PlaceSearchResponse
+from app.services.place_search_service import PlaceSearchService
+
+
+@router.post(
+    "/search-for-itinerary",
+    response_model=PlaceSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Direct search places for itinerary with TripPlanningContext",
+    description="Tìm kiếm và xếp hạng các địa điểm thực tế từ SQL Server dựa trên TripPlanningContext được truyền trực tiếp.",
+)
+def search_places_for_itinerary(
+    request: PlaceSearchRequest,
+    session: Session = Depends(get_session),
+) -> PlaceSearchResponse:
+    """Direct itinerary place search endpoint using context from request body."""
+    from app.schemas.trip_planning import TripPlanningContext
+
+    context = request.context or TripPlanningContext()
+    return PlaceSearchService.search_places_for_itinerary(
+        session=session,
+        context=context,
+        skip=request.skip,
+        limit=request.limit,
+    )
+

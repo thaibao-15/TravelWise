@@ -22,6 +22,11 @@ from app.models.opening_hours import OpeningHours
 from app.models.knowledge import Knowledge
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.models.trip import Trip
+from app.models.trip_preference import TripPreference
+from app.models.ai_context import AIContext
+from app.models.itinerary_day import ItineraryDay
+from app.models.itinerary_activity import ItineraryActivity
 
 __all__ = [
     "User",
@@ -34,4 +39,10 @@ __all__ = [
     "Knowledge",
     "Conversation",
     "Message",
+    "Trip",
+    "TripPreference",
+    "AIContext",
+    "ItineraryDay",
+    "ItineraryActivity",
 ]
+

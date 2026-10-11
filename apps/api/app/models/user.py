@@ -13,6 +13,7 @@ from app.db.base import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
+    from app.models.trip import Trip
 
 
 class User(TimestampMixin, SQLModel, table=True):
@@ -58,6 +59,10 @@ class User(TimestampMixin, SQLModel, table=True):
 
     # Relationships
     conversations: List["Conversation"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    trips: List["Trip"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )

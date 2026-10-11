@@ -199,6 +199,75 @@ CREATE TABLE trip_items (
     FOREIGN KEY (place_id) REFERENCES places(id)
 );
 
+CREATE TABLE trip_preferences (
+    id BIGINT IDENTITY PRIMARY KEY,
+    trip_id BIGINT NOT NULL UNIQUE,
+
+    travelers INT,
+    budget DECIMAL(12,2),
+    transport NVARCHAR(50),
+    travel_style NVARCHAR(50),
+    interests NVARCHAR(MAX),
+    special_requirements NVARCHAR(MAX),
+
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+
+    FOREIGN KEY (trip_id)
+        REFERENCES trips(id) ON DELETE CASCADE
+);
+
+CREATE TABLE itinerary_days (
+    id BIGINT IDENTITY PRIMARY KEY,
+    trip_id BIGINT NOT NULL,
+    day_number INT NOT NULL,
+    date DATE,
+    title NVARCHAR(255),
+    description NVARCHAR(MAX),
+
+    FOREIGN KEY (trip_id)
+        REFERENCES trips(id) ON DELETE CASCADE,
+
+    UNIQUE (trip_id, day_number)
+);
+
+CREATE TABLE itinerary_activities (
+    id BIGINT IDENTITY PRIMARY KEY,
+    itinerary_day_id BIGINT NOT NULL,
+    place_id BIGINT NULL,
+
+    activity_type NVARCHAR(30) DEFAULT 'VISIT',
+    title NVARCHAR(255) NOT NULL,
+    description NVARCHAR(MAX),
+
+    start_time TIME,
+    end_time TIME,
+    duration_minutes INT,
+
+    estimated_cost DECIMAL(12,2),
+    travel_duration_minutes INT,
+    travel_distance_km DECIMAL(10,2),
+
+    order_index INT NOT NULL,
+    note NVARCHAR(MAX),
+
+    FOREIGN KEY (itinerary_day_id)
+        REFERENCES itinerary_days(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (place_id)
+        REFERENCES places(id),
+
+    CHECK (duration_minutes IS NULL OR duration_minutes >= 0),
+    CHECK (estimated_cost IS NULL OR estimated_cost >= 0),
+
+    UNIQUE (itinerary_day_id, order_index)
+);
+
+CREATE INDEX idx_itinerary_activities_day
+ON itinerary_activities(itinerary_day_id, order_index);
+
+
+
 CREATE INDEX idx_trip_user ON trips(user_id);
 
 -- CATEGORIES

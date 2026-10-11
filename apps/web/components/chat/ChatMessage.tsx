@@ -167,17 +167,15 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
 
   return (
     <div
-      className={`flex items-start gap-3 my-4 max-w-3xl mx-auto px-4 ${
-        isUser ? "flex-row-reverse" : "flex-row"
-      }`}
+      className={`flex items-start gap-3 my-4 max-w-3xl mx-auto px-4 ${isUser ? "flex-row-reverse" : "flex-row"
+        }`}
     >
       {/* Avatar */}
       <div
-        className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md ${
-          isUser
+        className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md ${isUser
             ? "bg-gradient-to-tr from-cyan-600 to-teal-500 text-slate-950"
             : "bg-slate-800 text-teal-400 border border-slate-700/80"
-        }`}
+          }`}
       >
         {isUser ? (
           <svg className="w-5 h-5 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,11 +199,10 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
 
         {/* Bubble */}
         <div
-          className={`relative px-4 py-3 text-sm rounded-2xl transition-all duration-200 ${
-            isUser
+          className={`relative px-4 py-3 text-sm rounded-2xl transition-all duration-200 ${isUser
               ? "bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-tr-xs shadow-md shadow-teal-900/20"
               : "bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-xs shadow-lg backdrop-blur-md"
-          }`}
+            }`}
         >
           {isSending ? (
             <div className="flex items-center gap-3 py-1 text-slate-400">
