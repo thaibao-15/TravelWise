@@ -70,9 +70,34 @@ class _VoiceOrbState extends State<VoiceOrb>
       case VoiceState.listening:
         return AppColors.primary;
       case VoiceState.thinking:
+      case VoiceState.processing:
+      case VoiceState.connecting:
         return AppColors.secondary;
       case VoiceState.speaking:
         return AppColors.success;
+      case VoiceState.error:
+        return const Color(0xFFEF4444);
+      case VoiceState.idle:
+        return const Color(0xFF94A3B8);
+    }
+  }
+
+  String get _stateLabel {
+    switch (widget.voiceState) {
+      case VoiceState.idle:
+        return '○ Nhấn để nghe';
+      case VoiceState.connecting:
+        return '◌ Đang kết nối...';
+      case VoiceState.listening:
+        return '● Đang nghe';
+      case VoiceState.processing:
+        return '◌ Đang xử lý';
+      case VoiceState.thinking:
+        return '◌ Đang xử lý';
+      case VoiceState.speaking:
+        return '▷ Đang nói';
+      case VoiceState.error:
+        return '⚠ Lỗi';
     }
   }
 
@@ -105,7 +130,7 @@ class _VoiceOrbState extends State<VoiceOrb>
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: _primaryColor.withOpacity(opacity),
+                          color: _primaryColor.withValues(alpha: opacity),
                           blurRadius: 48,
                           spreadRadius: 12,
                         ),
@@ -174,7 +199,7 @@ class _VoiceOrbState extends State<VoiceOrb>
                         colors: [
                           _primaryColor,
                           AppColors.secondary,
-                          _primaryColor.withOpacity(0.5),
+                          _primaryColor.withValues(alpha: 0.5),
                           _primaryColor,
                         ],
                       ),
@@ -189,10 +214,10 @@ class _VoiceOrbState extends State<VoiceOrb>
                 height: 126,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(
+                  gradient: const RadialGradient(
                     colors: [
                       AppColors.orbDark,
-                      const Color(0xFF0F1E2E),
+                      Color(0xFF0F1E2E),
                     ],
                     center: Alignment.center,
                     radius: 1.0,
@@ -203,7 +228,7 @@ class _VoiceOrbState extends State<VoiceOrb>
                     voiceState: widget.voiceState,
                     barWidth: 4.5,
                     maxBarHeight: 38,
-                    barColor: Colors.white.withOpacity(0.92),
+                    barColor: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
               ),
@@ -214,14 +239,10 @@ class _VoiceOrbState extends State<VoiceOrb>
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: Text(
-                    switch (widget.voiceState) {
-                      VoiceState.listening => '● Đang nghe',
-                      VoiceState.thinking => '◌ Đang xử lý',
-                      VoiceState.speaking => '▷ Đang nói',
-                    },
+                    _stateLabel,
                     key: ValueKey(widget.voiceState),
                     style: TextStyle(
-                      color: _primaryColor.withOpacity(0.85),
+                      color: _primaryColor.withValues(alpha: 0.85),
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.4,

@@ -21,6 +21,9 @@ dependencies:
   # Networking
   dio: ^5.7.0
 
+  # WebSocket (STT)
+  web_socket_channel: ^3.0.1
+
   # Secure Storage
   flutter_secure_storage: ^9.2.4
 

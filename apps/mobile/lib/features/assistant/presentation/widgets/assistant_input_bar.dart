@@ -38,6 +38,17 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
     super.dispose();
   }
 
+  void _syncMicPulse(bool isRecording) {
+    if (isRecording) {
+      if (!_micPulse.isAnimating) {
+        _micPulse.repeat(reverse: true);
+      }
+    } else if (_micPulse.isAnimating || _micPulse.value != 0) {
+      _micPulse.stop();
+      _micPulse.animateTo(0);
+    }
+  }
+
   void _handleSend() {
     final text = _textCtrl.text.trim();
     if (text.isEmpty) return;
@@ -46,22 +57,23 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
   }
 
   void _toggleMic() {
-    final notifier = ref.read(voiceAssistantProvider.notifier);
-    notifier.toggleRecording();
-    final isRecording =
-        ref.read(voiceAssistantProvider).isRecording;
-    if (isRecording) {
-      _micPulse.repeat(reverse: true);
-    } else {
-      _micPulse.stop();
-      _micPulse.animateTo(0);
-    }
+    ref.read(voiceAssistantProvider.notifier).toggleRecording();
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<VoiceAssistantState>(voiceAssistantProvider, (previous, next) {
+      final micActive = next.isRecording ||
+          next.voiceState == VoiceState.listening ||
+          next.voiceState == VoiceState.connecting;
+      _syncMicPulse(micActive);
+    });
+
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
+    final micActive = state.isRecording ||
+        state.voiceState == VoiceState.listening ||
+        state.voiceState == VoiceState.connecting;
 
     return Container(
       padding: EdgeInsets.only(
@@ -159,10 +171,10 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: state.isRecording
+                  color: micActive
                       ? AppColors.error
                       : AppColors.border.withOpacity(0.5),
-                  boxShadow: state.isRecording
+                  boxShadow: micActive
                       ? [
                           BoxShadow(
                             color: AppColors.error.withOpacity(0.4),
@@ -173,9 +185,9 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
                       : [],
                 ),
                 child: Icon(
-                  state.isRecording ? Icons.mic : Icons.mic_none,
+                  micActive ? Icons.mic : Icons.mic_none,
                   size: 20,
-                  color: state.isRecording
+                  color: micActive
                       ? Colors.white
                       : AppColors.textSecondary,
                 ),

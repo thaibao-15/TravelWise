@@ -59,7 +59,7 @@ class TravelAssistantScreen extends ConsumerWidget {
                     // ── Voice Orb (tap to cycle state) ──────────────────────
                     VoiceOrb(
                       voiceState: state.voiceState,
-                      onTap: notifier.cycleVoiceState,
+                      onTap: notifier.toggleRecording,
                     ),
 
                     const SizedBox(height: AppSpacing.xxl),
