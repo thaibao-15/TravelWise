@@ -10,10 +10,11 @@ class TranscriptView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(voiceAssistantProvider);
+    final displayText = _displayText(state);
 
     return Column(
       children: [
-        // Transcript text
+        // Transcript / status / error text
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: AnimatedSwitcher(
@@ -29,13 +30,15 @@ class TranscriptView extends ConsumerWidget {
               ),
             ),
             child: Text(
-              state.currentTranscript,
-              key: ValueKey(state.currentTranscript),
+              displayText,
+              key: ValueKey(displayText),
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
+                color: state.error != null && state.error!.isNotEmpty
+                    ? AppColors.error
+                    : AppColors.textSecondary,
                 height: 1.55,
               ),
             ),
@@ -48,6 +51,31 @@ class TranscriptView extends ConsumerWidget {
         const _AnimatedDots(),
       ],
     );
+  }
+
+  String _displayText(VoiceAssistantState state) {
+    if (state.error != null && state.error!.isNotEmpty) {
+      return state.error!;
+    }
+    if (state.currentTranscript.trim().isNotEmpty) {
+      return state.currentTranscript;
+    }
+    switch (state.voiceState) {
+      case VoiceState.connecting:
+        return 'Đang kết nối nhận dạng giọng nói...';
+      case VoiceState.listening:
+        return 'Đang nghe... hãy nói tiếng Việt';
+      case VoiceState.processing:
+        return 'Đang xử lý câu nói...';
+      case VoiceState.thinking:
+        return 'AI đang suy nghĩ...';
+      case VoiceState.speaking:
+        return 'AI đang trả lời...';
+      case VoiceState.error:
+        return 'Có lỗi xảy ra. Thử nhấn micro lại.';
+      case VoiceState.idle:
+        return 'Nhấn micro để bắt đầu nói';
+    }
   }
 }
 
@@ -79,9 +107,9 @@ class _AnimatedDotsState extends State<_AnimatedDots>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
+        return AnimatedBuilder(
       animation: _controller,
-      builder: (_, __) {
+      builder: (_, _) {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {

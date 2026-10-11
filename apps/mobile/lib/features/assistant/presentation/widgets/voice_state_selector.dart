@@ -4,9 +4,18 @@ import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../providers/voice_assistant_provider.dart';
 
-/// Segmented control to switch between Listening / Thinking / Speaking states.
+/// Segmented control showing only the 3 user-visible states:
+/// Listening / Thinking / Speaking.
+/// Other transient states (idle, connecting, etc.) are not shown as tabs.
 class VoiceStateSelector extends ConsumerWidget {
   const VoiceStateSelector({super.key});
+
+  // Only the 3 states the user can manually set via this widget
+  static const _displayedStates = [
+    VoiceState.listening,
+    VoiceState.thinking,
+    VoiceState.speaking,
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,11 +27,11 @@ class VoiceStateSelector extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: AppColors.border.withOpacity(0.6),
+          color: AppColors.border.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(28),
         ),
         child: Row(
-          children: VoiceState.values.map((vs) {
+          children: _displayedStates.map((vs) {
             final selected = state.voiceState == vs;
             return Expanded(
               child: GestureDetector(
@@ -37,7 +46,7 @@ class VoiceStateSelector extends ConsumerWidget {
                     boxShadow: selected
                         ? [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.07),
+                              color: Colors.black.withValues(alpha: 0.07),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             )
@@ -83,15 +92,29 @@ class VoiceStateSelector extends ConsumerWidget {
     );
   }
 
-  String _stateLabel(VoiceState vs) => switch (vs) {
-        VoiceState.listening => 'Lắng nghe',
-        VoiceState.thinking => 'Xử lý',
-        VoiceState.speaking => 'Đang nói',
-      };
+  String _stateLabel(VoiceState vs) {
+    switch (vs) {
+      case VoiceState.listening:
+        return 'Lắng nghe';
+      case VoiceState.thinking:
+        return 'Xử lý';
+      case VoiceState.speaking:
+        return 'Đang nói';
+      default:
+        return '';
+    }
+  }
 
-  Color _stateColor(VoiceState vs) => switch (vs) {
-        VoiceState.listening => AppColors.primary,
-        VoiceState.thinking => AppColors.secondary,
-        VoiceState.speaking => AppColors.success,
-      };
+  Color _stateColor(VoiceState vs) {
+    switch (vs) {
+      case VoiceState.listening:
+        return AppColors.primary;
+      case VoiceState.thinking:
+        return AppColors.secondary;
+      case VoiceState.speaking:
+        return AppColors.success;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
 }

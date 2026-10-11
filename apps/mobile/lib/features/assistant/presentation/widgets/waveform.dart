@@ -52,9 +52,14 @@ class _WaveformBarsState extends State<WaveformBars>
       case VoiceState.listening:
         _controller.duration = const Duration(milliseconds: 1200);
       case VoiceState.thinking:
+      case VoiceState.processing:
+      case VoiceState.connecting:
         _controller.duration = const Duration(milliseconds: 2200);
       case VoiceState.speaking:
         _controller.duration = const Duration(milliseconds: 700);
+      case VoiceState.idle:
+      case VoiceState.error:
+        _controller.duration = const Duration(milliseconds: 3000);
     }
     _controller.repeat();
   }
@@ -70,11 +75,17 @@ class _WaveformBarsState extends State<WaveformBars>
       case VoiceState.listening:
         return minH + raw * (maxH * 0.65 - minH);
       case VoiceState.thinking:
+      case VoiceState.processing:
+      case VoiceState.connecting:
         // Subtle, slow
         return minH + raw * (maxH * 0.35 - minH);
       case VoiceState.speaking:
         // Energetic, full range
         return minH + raw * (maxH - minH);
+      case VoiceState.idle:
+      case VoiceState.error:
+        // Nearly flat
+        return minH + raw * (maxH * 0.15 - minH).clamp(0, maxH);
     }
   }
 
