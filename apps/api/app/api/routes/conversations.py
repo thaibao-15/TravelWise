@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_current_user_optional, get_session
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
@@ -66,7 +66,7 @@ def list_conversations(
 def get_conversation(
     conversation_id: int,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> Conversation:
     return ConversationService.get_conversation_by_id(
         session=session,
@@ -88,7 +88,7 @@ def get_conversation_messages(
     skip: int = 0,
     limit: int = 100,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> List[Message]:
     return ConversationService.get_messages_by_conversation(
         session=session,

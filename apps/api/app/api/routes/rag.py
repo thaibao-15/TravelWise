@@ -142,10 +142,15 @@ def ask_knowledge(
             chat_history=chat_history,
         )
 
+        planning_summary = ""
+        if planning_context:
+            planning_summary = TripPlanningContextExtractionService.format_context_summary(planning_context)
+
         result = chain.invoke(
             question=user_question,
             standalone_question=standalone_question,
             chat_history=chat_history,
+            planning_summary=planning_summary,
             mode=request.mode or "chat",
         )
         answer = result["answer"]
@@ -238,6 +243,21 @@ async def ask_rag_stream(
         chat_history=chat_history,
     )
 
+    planning_summary = ""
+    try:
+        from app.services.trip_planning_service import TripPlanningContextExtractionService
+
+        existing_ctx = TripPlanningContextExtractionService.get_planning_context_by_conversation(
+            session=session,
+            conversation_id=conversation.id,
+            current_user=current_user,
+            check_ownership=False,
+        )
+        if existing_ctx:
+            planning_summary = TripPlanningContextExtractionService.format_context_summary(existing_ctx)
+    except Exception as e:
+        logger.debug("Could not retrieve existing planning context for stream: %s", e)
+
     async def event_generator():
         yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
 
@@ -247,6 +267,7 @@ async def ask_rag_stream(
                 question=user_question,
                 standalone_question=standalone_question,
                 chat_history=chat_history,
+                planning_summary=planning_summary,
                 mode=request.mode or "chat",
             ):
                 full_answer_parts.append(token)

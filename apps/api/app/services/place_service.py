@@ -46,3 +46,23 @@ class PlaceService:
         session.commit()
         session.refresh(place)
         return place
+
+    @staticmethod
+    def search_places_by_keyword(
+        session: Session,
+        query: str,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> List[Place]:
+        stmt = (
+            select(Place)
+            .where(Place.is_deleted == False)  # noqa: E712
+            .where(
+                (Place.name.ilike(f"%{query}%"))
+                | (Place.address.ilike(f"%{query}%"))
+                | (Place.description.ilike(f"%{query}%"))
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(session.exec(stmt).all())

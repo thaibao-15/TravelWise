@@ -115,6 +115,7 @@ class RAGChain:
         question: str,
         standalone_question: Optional[str] = None,
         chat_history: Optional[Sequence[Any]] = None,
+        planning_summary: Optional[str] = None,
         top_k: Optional[int] = None,
         mode: str = "chat",
     ) -> Dict[str, Any]:
@@ -149,22 +150,22 @@ class RAGChain:
             logger.error("RAG retrieval failed: %s", type(e).__name__)
             retrieved_docs = []
 
-        # 3. Handle no relevant documents found
+        # 3. Handle documents found or fallback to conversational guide
         if not retrieved_docs:
-            fallback_ans = (
-                "Hiện tại tôi chưa có đủ thông tin về vấn đề này để giải đáp cho bạn."
-                if mode == "voice"
-                else "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn."
+            context_text = (
+                "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
+                "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
             )
-            return {
-                "question": clean_question,
-                "standalone_question": search_query,
-                "answer": fallback_ans,
-                "sources": [],
-            }
+        else:
+            context_text = format_docs(retrieved_docs)
 
-        # 4. Build context
-        context_text = format_docs(retrieved_docs)
+        # 4. Inject planning context summary if available
+        if planning_summary:
+            context_text = (
+                f"{context_text}\n\n"
+                f"=== BẢNG TIÊU CHÍ KẾ HOẠCH CHUYẾN ĐI HIỆN TẠI ===\n"
+                f"{planning_summary}\n"
+            )
 
         # 5. Format prompt (use voice prompt for voice mode, otherwise standard prompt)
         try:
@@ -208,6 +209,7 @@ class RAGChain:
         question: str,
         standalone_question: Optional[str] = None,
         chat_history: Optional[Sequence[Any]] = None,
+        planning_summary: Optional[str] = None,
         top_k: Optional[int] = None,
         mode: str = "chat",
     ):
@@ -227,14 +229,20 @@ class RAGChain:
             retrieved_docs = []
 
         if not retrieved_docs:
-            yield (
-                "Hiện tại tôi chưa có đủ thông tin về vấn đề này để giải đáp cho bạn."
-                if mode == "voice"
-                else "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn."
+            context_text = (
+                "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
+                "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
             )
-            return
+        else:
+            context_text = format_docs(retrieved_docs)
 
-        context_text = format_docs(retrieved_docs)
+        # Inject planning context summary if available
+        if planning_summary:
+            context_text = (
+                f"{context_text}\n\n"
+                f"=== BẢNG TIÊU CHÍ KẾ HOẠCH CHUYẾN ĐI HIỆN TẠI ===\n"
+                f"{planning_summary}\n"
+            )
 
         try:
             if mode == "voice":

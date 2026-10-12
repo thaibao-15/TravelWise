@@ -157,4 +157,75 @@ export const chatService = {
       method: "GET",
     });
   },
+
+  /**
+   * Sinh lịch trình du lịch nhiều ngày từ TripPlanningContext (FastAPI)
+   */
+  async generateItinerary(tripId: number, options?: any) {
+    return await apiFetch<{
+      status: string;
+      trip_id: number;
+      message?: string;
+      itinerary?: any;
+    }>(`/api/v1/trips/${tripId}/itinerary/generate`, {
+      method: "POST",
+      body: JSON.stringify(options || { save_to_db: true }),
+    });
+  },
+
+  /**
+   * Sinh lịch trình du lịch trực tiếp từ context hoặc conversation (không bắt buộc có trip_id trước)
+   */
+  async generateItineraryDirect(options: {
+    context?: any;
+    conversation_id?: number | null;
+    save_to_db?: boolean;
+    user_prompt?: string;
+  }) {
+    return await apiFetch<any>(`/api/v1/trips/generate`, {
+      method: "POST",
+      body: JSON.stringify({
+        context: options.context,
+        conversation_id: options.conversation_id || undefined,
+        save_to_db: options.save_to_db ?? true,
+        user_prompt: options.user_prompt,
+      }),
+    });
+  },
+
+  /**
+   * Chỉnh sửa lịch trình theo câu lệnh ngôn ngữ tự nhiên
+   */
+  async editItinerary(tripId: number, changePrompt: string, targetDay?: number) {
+    return await apiFetch<any>(`/api/v1/trips/${tripId}/itinerary/edit`, {
+      method: "POST",
+      body: JSON.stringify({
+        change_prompt: changePrompt,
+        target_day: targetDay,
+      }),
+    });
+  },
+
+  /**
+   * Lấy ngữ cảnh lập kế hoạch hiện hành của cuộc hội thoại
+   */
+  async getPlanningContext(conversationId: number) {
+    try {
+      return await apiFetch<any>(
+        `/api/v1/trips/conversations/${conversationId}/planning-context`,
+        { method: "GET" }
+      );
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Lấy chi tiết lịch trình đầy đủ của một chuyến đi
+   */
+  async getTripItinerary(tripId: number) {
+    return await apiFetch<any>(`/api/v1/trips/${tripId}/itinerary`, {
+      method: "GET",
+    });
+  },
 };

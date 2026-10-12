@@ -1,18 +1,64 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { ChatMessage as ChatMessageType } from "@/types/chat";
+import {
+  ChatMessage as ChatMessageType,
+  ItineraryProposalData,
+  GeneratedItineraryData,
+} from "@/types/chat";
 import { formatTime } from "@/lib/utils";
 import { ttsService } from "@/services/tts.service";
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  isLatest?: boolean;
+  planningContext?: any;
+  hasItinerary?: boolean;
   onRetry?: (id: string) => void;
+  onGenerateProposal?: (proposal?: ItineraryProposalData) => void;
+  onMoreChat?: () => void;
+  onEditPrompt?: (prompt: string) => void;
+  isPlanning?: boolean;
+}
+
+function getChecklistSuggestionChips(ctx: any): string[] {
+  const dest = ctx?.trip?.destination?.city;
+  const departure = ctx?.logistics?.departure_location;
+  const travelers = ctx?.trip?.travelers?.adults || ctx?.companions?.count;
+  const duration = ctx?.trip?.dates?.duration_days || ctx?.trip?.duration_days;
+  const interests = ctx?.preferences?.interests || [];
+
+  if (!dest) {
+    return ["Đà Nẵng", "Phú Quốc", "Đà Lạt", "Gợi ý cho mình"];
+  }
+  if (!duration) {
+    return ["3 ngày 2 đêm", "2 ngày 1 đêm", "4 ngày 3 đêm", "Cuối tuần này"];
+  }
+  if (!travelers) {
+    return ["Đi 1 mình", "Cặp đôi (2 người)", "Gia đình có trẻ em", "Nhóm bạn thân"];
+  }
+  if (!interests || interests.length === 0) {
+    return ["Tắm biển & hải sản", "Ẩm thực & cafe chill", "Khám phá văn hóa & danh lam", "Nghỉ dưỡng thư thái"];
+  }
+  if (!departure) {
+    return ["Từ Hà Nội", "Từ TP. Hồ Chí Minh", "Từ Đà Nẵng", "Nơi khác"];
+  }
+  return ["✨ Tạo lịch trình ngay", "Điều chỉnh thêm"];
 }
 
 type TTSState = "idle" | "loading" | "playing";
 
-export function ChatMessage({ message, onRetry }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  isLatest,
+  planningContext,
+  hasItinerary,
+  onRetry,
+  onGenerateProposal,
+  onMoreChat,
+  onEditPrompt,
+  isPlanning,
+}: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const [ttsState, setTtsState] = useState<TTSState>("idle");
   const [ttsError, setTtsError] = useState<string | null>(null);
@@ -74,9 +120,10 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
     // 3. Request TTS synthesis from backend
     setTtsState("loading");
     try {
-      const streamUrl = message.content.length <= 1800
-        ? ttsService.getStreamUrl(message.content)
-        : await ttsService.synthesize(message.content);
+      const streamUrl =
+        message.content.length <= 1800
+          ? ttsService.getStreamUrl(message.content)
+          : await ttsService.synthesize(message.content);
       audioUrlRef.current = streamUrl;
 
       const audio = new Audio(streamUrl);
@@ -111,7 +158,6 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
     const lines = content.split("\n");
 
     return lines.map((line, idx) => {
-      // Process bold formatting **text**
       const parts = line.split(/(\*\*.*?\*\*)/g);
       const formattedLine = parts.map((part, pIdx) => {
         if (part.startsWith("**") && part.endsWith("**")) {
@@ -124,7 +170,6 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
         return part;
       });
 
-      // Check if bullet point
       const isBullet = line.trim().startsWith("- ") || line.trim().startsWith("* ");
       const isNumbered = /^\d+\.\s/.test(line.trim());
 
@@ -142,16 +187,19 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           <div key={idx} className="flex items-start gap-2 my-1 pl-1">
             <span className="text-teal-400 font-bold">{line.match(/^\d+\./)?.[0]}</span>
             <span className="flex-1">
-              {line.replace(/^\d+\.\s/, "").split(/(\*\*.*?\*\*)/g).map((part, pIdx) => {
-                if (part.startsWith("**") && part.endsWith("**")) {
-                  return (
-                    <strong key={pIdx} className="font-semibold text-teal-300">
-                      {part.slice(2, -2)}
-                    </strong>
-                  );
-                }
-                return part;
-              })}
+              {line
+                .replace(/^\d+\.\s/, "")
+                .split(/(\*\*.*?\*\*)/g)
+                .map((part, pIdx) => {
+                  if (part.startsWith("**") && part.endsWith("**")) {
+                    return (
+                      <strong key={pIdx} className="font-semibold text-teal-300">
+                        {part.slice(2, -2)}
+                      </strong>
+                    );
+                  }
+                  return part;
+                })}
             </span>
           </div>
         );
@@ -167,15 +215,17 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
 
   return (
     <div
-      className={`flex items-start gap-3 my-4 max-w-3xl mx-auto px-4 ${isUser ? "flex-row-reverse" : "flex-row"
-        }`}
+      className={`flex items-start gap-3 my-4 max-w-3xl mx-auto px-4 ${
+        isUser ? "flex-row-reverse" : "flex-row"
+      }`}
     >
       {/* Avatar */}
       <div
-        className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md ${isUser
+        className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md ${
+          isUser
             ? "bg-gradient-to-tr from-cyan-600 to-teal-500 text-slate-950"
             : "bg-slate-800 text-teal-400 border border-slate-700/80"
-          }`}
+        }`}
       >
         {isUser ? (
           <svg className="w-5 h-5 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -189,7 +239,11 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
       </div>
 
       {/* Message Bubble Container */}
-      <div className={`flex flex-col max-w-[85%] sm:max-w-[78%] ${isUser ? "items-end" : "items-start"}`}>
+      <div
+        className={`flex flex-col max-w-[85%] sm:max-w-[78%] ${
+          isUser ? "items-end" : "items-start"
+        }`}
+      >
         {/* Sender Name & Timestamp */}
         <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
           <span className="font-medium">{isUser ? "Bạn" : "TravelWise AI"}</span>
@@ -199,10 +253,11 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
 
         {/* Bubble */}
         <div
-          className={`relative px-4 py-3 text-sm rounded-2xl transition-all duration-200 ${isUser
+          className={`relative px-4 py-3 text-sm rounded-2xl transition-all duration-200 ${
+            isUser
               ? "bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-tr-xs shadow-md shadow-teal-900/20"
               : "bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-xs shadow-lg backdrop-blur-md"
-            }`}
+          }`}
         >
           {isSending ? (
             <div className="flex items-center gap-3 py-1 text-slate-400">
@@ -247,7 +302,6 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           {/* Action Toolbar on Assistant Message */}
           {!isUser && !isSending && !isError && (
             <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-800/60 text-slate-500">
-              {/* TTS Error Toast */}
               {ttsError && (
                 <span className="text-[11px] text-amber-400 mr-auto animate-in fade-in">
                   ⚠️ {ttsError}
@@ -321,6 +375,114 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
             </div>
           )}
         </div>
+
+        {/* 1. Proposal Card (Xuất hiện khi AI đề xuất tạo lịch trình) */}
+        {message.proposal && !message.itinerary && (
+          <div className="w-full mt-3 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-teal-950/75 via-slate-900/90 to-emerald-950/60 border border-teal-500/40 shadow-xl backdrop-blur-md text-slate-100 max-w-xl animate-in fade-in">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 font-bold text-base shadow-sm">
+                  🗺️
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-teal-400">
+                    Đề xuất từ AI Tour Guide
+                  </span>
+                  <h4 className="text-base font-bold text-slate-100">
+                    Lên lịch trình cho chuyến đi {message.proposal.destination}?
+                  </h4>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">
+                Sẵn sàng tạo
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 text-xs my-3">
+              <div>
+                <span className="text-[10px] text-slate-500 block">Điểm đến</span>
+                <span className="font-semibold text-slate-200">📍 {message.proposal.destination}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block">Thời lượng</span>
+                <span className="font-semibold text-teal-300">
+                  ⏱️ {message.proposal.durationDays ? `${message.proposal.durationDays} ngày` : "3 ngày"}
+                </span>
+              </div>
+              {message.proposal.companions && (
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Bạn đồng hành</span>
+                  <span className="text-slate-300">👥 {message.proposal.companions}</span>
+                </div>
+              )}
+              {message.proposal.interests && message.proposal.interests.length > 0 && (
+                <div className="col-span-2">
+                  <span className="text-[10px] text-slate-500 block">Sở thích trải nghiệm</span>
+                  <span className="text-slate-300 truncate block">
+                    ✨ {message.proposal.interests.join(", ")}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Mình đã nắm được các thông tin cơ bản cho chuyến đi của bạn. Bạn có muốn mình tạo ngay lịch trình chi tiết từng ngày với các địa điểm thực tế không?
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => onGenerateProposal?.(message.proposal)}
+                disabled={isPlanning}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 hover:from-teal-300 hover:to-emerald-200 text-slate-950 font-bold text-xs shadow-md shadow-teal-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                {isPlanning ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Đang tạo lịch trình...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨ Tạo lịch trình</span>
+                    <span>🚀</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onMoreChat}
+                disabled={isPlanning}
+                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-slate-100 text-xs font-semibold border border-slate-700/80 transition-all cursor-pointer"
+              >
+                Trao đổi thêm 💬
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Suggestion Chips (Gợi ý lựa chọn nhanh chuẩn Layla AI: Đà Nẵng | Phú Quốc | ...) */}
+        {isLatest && !isUser && !isSending && !hasItinerary && onEditPrompt && (
+          <div className="flex flex-wrap gap-1.5 mt-3 animate-in fade-in">
+            {getChecklistSuggestionChips(planningContext).map((chip, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  if (chip === "✨ Tạo lịch trình ngay") {
+                    if (onGenerateProposal) onGenerateProposal();
+                    else onEditPrompt(chip);
+                  } else {
+                    onEditPrompt(chip);
+                  }
+                }}
+                className="text-xs px-3.5 py-1.5 rounded-full bg-slate-800/95 hover:bg-teal-500/20 text-slate-200 hover:text-teal-200 border border-slate-700/80 hover:border-teal-500/40 shadow-sm transition-all cursor-pointer font-medium active:scale-95"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

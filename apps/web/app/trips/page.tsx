@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useTrips } from "@/hooks/useTrips";
 
 export default function TripsPage() {
-  const { trips, isLoading } = useTrips(50);
+  const { trips, isLoading, deleteTrip } = useTrips(50);
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
 
   const filteredTrips =
@@ -103,9 +103,25 @@ export default function TripsPage() {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20 uppercase tracking-wider">
                       {trip.status}
                     </span>
-                    <span className="text-xs text-slate-400 font-medium">
-                      📅 {trip.days_count} ngày
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 font-medium">
+                        📅 {trip.days_count} ngày
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (confirm(`Bạn có chắc muốn xóa chuyến đi "${trip.name || trip.destination_city || `#${trip.id}`}"?`)) {
+                            await deleteTrip(trip.id);
+                          }
+                        }}
+                        className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-xs"
+                        title="Xóa chuyến đi"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
 
                   <h3 className="text-base font-bold text-slate-100 group-hover:text-teal-300 transition-colors">

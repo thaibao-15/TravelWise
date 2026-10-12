@@ -434,12 +434,68 @@ class TripPlanningContextExtractionService:
 
         is_ready = dest_ready and duration_ready and has_no_conflicts
 
+        clarification_qs: List[str] = []
+        if not dest_ready:
+            clarification_qs.append("Bạn dự định du lịch tại thành phố hoặc điểm đến nào?")
+        if not duration_ready:
+            clarification_qs.append("Bạn dự kiến chuyến đi kéo dài trong mấy ngày mấy đêm?")
+        if context.trip.travelers.adults is None and context.trip.travelers.group_type == GroupTypeEnum.UNKNOWN:
+            clarification_qs.append("Bạn sẽ đi cùng ai (một mình, cặp đôi, gia đình hay nhóm bạn)?")
+        if not context.preferences.interests:
+            clarification_qs.append("Bạn có sở thích đặc biệt nào cho chuyến đi này không (tắm biển, ẩm thực, check-in, nghỉ dưỡng)?")
+
         context.planning_state.known_fields = known
         context.planning_state.unknown_fields = unknown
         context.planning_state.missing_information = missing
+        if not context.planning_state.clarification_questions:
+            context.planning_state.clarification_questions = clarification_qs
         context.planning_state.is_ready_to_generate = is_ready
 
         return context
+
+    @classmethod
+    def format_context_summary(cls, context: Optional[TripPlanningContext]) -> str:
+        """Formats the current planning context into a concise text block for RAG prompt."""
+        if not context:
+            return ""
+
+        known_items: List[str] = []
+        if context.trip.destination.city:
+            known_items.append(f"Điểm đến: {context.trip.destination.city}")
+        if context.trip.dates.duration_days:
+            known_items.append(f"Thời lượng: {context.trip.dates.duration_days} ngày")
+        elif context.trip.dates.start_date and context.trip.dates.end_date:
+            known_items.append(f"Thời gian: từ {context.trip.dates.start_date} đến {context.trip.dates.end_date}")
+        if context.trip.travelers.adults:
+            known_items.append(f"Số người lớn: {context.trip.travelers.adults}")
+        if context.trip.travelers.group_type and context.trip.travelers.group_type != GroupTypeEnum.UNKNOWN:
+            known_items.append(f"Nhóm: {context.trip.travelers.group_type.value}")
+        if context.budget.total:
+            known_items.append(f"Ngân sách: {context.budget.total:,.0f} {context.budget.currency}")
+        if context.preferences.interests:
+            known_items.append(f"Sở thích: {', '.join(context.preferences.interests)}")
+        if context.logistics.departure_location:
+            known_items.append(f"Khởi hành từ: {context.logistics.departure_location}")
+
+        missing_items: List[str] = []
+        for m in context.planning_state.missing_information:
+            field_name = m.field
+            if field_name == "trip.destination.city":
+                missing_items.append("Điểm đến (Thành phố/Địa danh)")
+            elif field_name == "trip.dates.duration":
+                missing_items.append("Thời lượng / Số ngày đi (Ví dụ: 3 ngày 2 đêm)")
+            elif field_name == "trip.travelers":
+                missing_items.append("Số lượng thành viên / Bạn đồng hành")
+            elif field_name == "budget.total":
+                missing_items.append("Ngân sách dự kiến")
+
+        summary_lines: List[str] = []
+        if known_items:
+            summary_lines.append(f"THÔNG TIN ĐÃ BIẾT: {'; '.join(known_items)}")
+        if missing_items:
+            summary_lines.append(f"THÔNG TIN CÒN THIẾU: {'; '.join(missing_items)}")
+
+        return "\n".join(summary_lines)
 
     @classmethod
     def merge_contexts(

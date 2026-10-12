@@ -157,8 +157,13 @@ class ItineraryGenerationService:
         # 2. Duration
         duration_days = cls._get_duration_days(context)
         if duration_days is None or duration_days < 1:
-            missing_fields.append("trip.dates.duration_days")
-            messages.append("Chưa có thời lượng chuyến đi (số ngày) để tạo lịch trình.")
+            # Tự động gán mặc định 3 ngày nếu người dùng đã chọn điểm đến
+            if has_dest:
+                context.trip.dates.duration_days = 3
+                duration_days = 3
+            else:
+                missing_fields.append("trip.dates.duration_days")
+                messages.append("Chưa có thời lượng chuyến đi (số ngày) để tạo lịch trình.")
 
         is_ready = len(missing_fields) == 0
         return is_ready, missing_fields, messages
@@ -168,6 +173,12 @@ class ItineraryGenerationService:
         """Calculates duration in days from duration_days or start_date and end_date."""
         if context.trip.dates.duration_days and context.trip.dates.duration_days >= 1:
             return context.trip.dates.duration_days
+
+        if hasattr(context.trip, "duration") and getattr(context.trip.duration, "days", None):
+            return context.trip.duration.days
+
+        if hasattr(context, "duration_days") and getattr(context, "duration_days", None):
+            return context.duration_days
 
         if context.trip.dates.start_date and context.trip.dates.end_date:
             try:
@@ -188,6 +199,7 @@ class ItineraryGenerationService:
         trip_id: Optional[int] = None,
         llm: Optional[Any] = None,
         save_to_db: bool = True,
+        user_prompt: Optional[str] = None,
     ) -> ItineraryGenerationResponse:
         """Executes the full itinerary generation pipeline.
 
@@ -255,6 +267,7 @@ class ItineraryGenerationService:
             duration_days=duration_days,
             candidates=candidates,
             unresolved_search_items=unresolved_reqs,
+            user_prompt=user_prompt,
         )
 
         messages = [
@@ -340,6 +353,7 @@ class ItineraryGenerationService:
         duration_days: int,
         candidates: List[SearchPlaceItem],
         unresolved_search_items: List[str],
+        user_prompt: Optional[str] = None,
     ) -> str:
         """Constructs human prompt containing planning context and candidate places list."""
         # Destination & Dates
@@ -385,6 +399,21 @@ class ItineraryGenerationService:
             )
         places_block = "\n".join(places_lines)
 
+        user_req_block = ""
+        if user_prompt:
+            user_req_block = f"""
+=== YÊU CẦU ĐẶC BIỆT / ĐIỀU CHỈNH LỊCH TRÌNH TỪ DU KHÁCH ===
+Nội dung yêu cầu từ du khách: "{user_prompt}"
+QUY TẮC BẮT BUỘC KHI XỬ LÝ YÊU CẦU NÀY:
+1. Nếu yêu cầu có nhắc đến GIỜ BẮT ĐẦU (ví dụ: "10h", "10:00", "9h30", "cho lịch bắt đầu lúc 10h"):
+   - Hoạt động đầu tiên trong ngày (hoặc ngày được chỉ định) PHẢI có start_time đúng giờ này (ví dụ: "10:00").
+   - Tất cả các hoạt động sau đó phải được dời giờ phù hợp và không được trùng giờ.
+2. Nếu yêu cầu THAY ĐỔI / BỔ SUNG / BỎ ĐỊA ĐIỂM (ví dụ: đi biển, ăn hải sản, cafe, ngắm hoàng hôn...):
+   - Hãy ưu tiên chọn các địa điểm phù hợp trong DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây và cập nhật hoạt động.
+3. Nếu yêu cầu THAY ĐỔI NGÀY / SẮP XẾP LẠI:
+   - Hãy sắp xếp các hoạt động và thời lượng các ngày theo đúng mong muốn của du khách.
+"""
+
         prompt = f"""=== THÔNG TIN CHUYẾN ĐI CẦN LẬP LỊCH TRÌNH ===
 - Điểm đến chính: {city}
 - Điểm đến bổ sung: {add_dests or 'Không'}
@@ -398,7 +427,7 @@ class ItineraryGenerationService:
 - Tốc độ tham quan: {pace} (Tối đa hoạt động/ngày: {max_act or 'Tùy chỉnh'})
 - Địa điểm bắt buộc (Must-Visit): {', '.join(must_visit_names) or 'Không'}
 - Địa điểm cần tránh (Excluded): {', '.join(excluded_names) or 'Không'}
-
+{user_req_block}
 === DANH SÁCH ĐỊA ĐIỂM THỰC TẾ TRUY VẤN TỪ CƠ SỞ DỮ LIỆU (CHỈ ĐƯỢC CHỌN TỪ ĐÂY) ===
 {places_block}
 

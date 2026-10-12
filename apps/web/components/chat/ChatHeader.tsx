@@ -8,9 +8,17 @@ interface ChatHeaderProps {
   onClearHistory: () => void;
   messageCount: number;
   onOpenVoiceMode?: () => void;
+  onToggleCanvas?: () => void;
+  isCanvasOpen?: boolean;
 }
 
-export function ChatHeader({ onClearHistory, messageCount, onOpenVoiceMode }: ChatHeaderProps) {
+export function ChatHeader({
+  onClearHistory,
+  messageCount,
+  onOpenVoiceMode,
+  onToggleCanvas,
+  isCanvasOpen = true,
+}: ChatHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 shadow-lg">
@@ -85,6 +93,21 @@ export function ChatHeader({ onClearHistory, messageCount, onOpenVoiceMode }: Ch
               />
             </svg>
             <span className="hidden sm:inline">Làm mới</span>
+          </button>
+        )}
+
+        {onToggleCanvas && (
+          <button
+            onClick={onToggleCanvas}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              isCanvasOpen
+                ? "bg-teal-500/20 text-teal-300 border-teal-500/40"
+                : "bg-slate-800/60 text-slate-400 hover:text-slate-200 border-slate-700/60"
+            }`}
+            title="Bật/Tắt bảng kế hoạch & lịch trình bên phải"
+          >
+            <span>🗺️</span>
+            <span className="hidden sm:inline">Kế hoạch</span>
           </button>
         )}
 

@@ -27,6 +27,17 @@ def list_places(
     return PlaceService.list_places(session, category_id=category_id, skip=skip, limit=limit)
 
 
+@router.get("/search", response_model=List[PlaceResponse])
+def search_places(
+    q: str = Query(..., min_length=1, description="Từ khóa tìm kiếm địa điểm"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> List[PlaceResponse]:
+    """Tìm kiếm địa điểm du lịch theo từ khóa tên hoặc địa chỉ. Public."""
+    return PlaceService.search_places_by_keyword(session, query=q, skip=skip, limit=limit)
+
+
 @router.get("/{place_id}", response_model=PlaceDetailResponse)
 def get_place(
     place_id: int,

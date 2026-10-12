@@ -154,6 +154,40 @@ class ItineraryGenerationRequest(BaseModel):
     context: Optional[Any] = None
     save_to_db: bool = True
     allow_overwrite_confirmed: bool = False
+    user_prompt: Optional[str] = None
+    conversation_id: Optional[int] = None
+
+
+class ItineraryEditRequest(BaseModel):
+    """Request payload for conversational itinerary modification."""
+
+    change_prompt: str
+    target_day: Optional[int] = None
+    allow_overwrite: bool = True
+
+
+class TripCreateRequest(BaseModel):
+    """Request payload to create a new Trip entity from Web/API."""
+
+    name: Optional[str] = None
+    destination_city: str
+    destination_country: Optional[str] = "Việt Nam"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    duration_days: Optional[int] = 3
+    conversation_id: Optional[int] = None
+    context: Optional[Any] = None
+
+
+class TripUpdateRequest(BaseModel):
+    """Request payload to update trip metadata."""
+
+    name: Optional[str] = None
+    status: Optional[str] = None
+    destination_city: Optional[str] = None
+    destination_country: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 class ValidationResult(BaseModel):

@@ -17,6 +17,7 @@ export default function TripDetailPage() {
     isEditing,
     error,
     editItinerary,
+    confirmTrip,
   } = useItinerary(tripId);
 
   const [editPrompt, setEditPrompt] = useState("");
@@ -56,13 +57,36 @@ export default function TripDetailPage() {
             <span className="font-bold text-base text-slate-200">
               {itinerary?.name || `Chi tiết Chuyến đi #${tripId}`}
             </span>
+            {itinerary?.status && (
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${
+                itinerary.status === "CONFIRMED"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                  : "bg-teal-500/10 text-teal-300 border border-teal-500/20"
+              }`}>
+                {itinerary.status}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          {tripId && itinerary?.status !== "CONFIRMED" && (
+            <button
+              type="button"
+              onClick={async () => {
+                await confirmTrip(tripId);
+                setEditFeedback("Đã chốt lịch trình thành công! Chúc bạn có một chuyến đi tuyệt vời!");
+                setTimeout(() => setEditFeedback(null), 5000);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-xs font-bold hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer"
+            >
+              ✅ Chốt lịch trình
+            </button>
+          )}
+
           <Link
             href="/chat"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 text-xs font-semibold border border-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-teal-300 text-xs font-semibold border border-slate-700 transition-colors"
           >
             <span>💬</span>
             <span>Mở trong AI Tour Guide</span>

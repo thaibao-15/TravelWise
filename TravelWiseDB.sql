@@ -886,3 +886,8 @@ select * from places
 select * from knowledge
 select * from conversations where id =15
 select * from messages where conversation_id = 15
+select * from trips
+select * from trip_items
+select * from trip_preferences 
+select * from itinerary_days 
+select * from itinerary_activities 
