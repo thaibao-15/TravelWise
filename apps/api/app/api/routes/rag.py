@@ -238,10 +238,14 @@ async def ask_rag_stream(
             chat_history.append(AIMessage(content=msg.content))
 
     chain = get_rag_chain()
-    standalone_question = chain.contextualize_question(
-        question=user_question,
-        chat_history=chat_history,
-    )
+    # Tối ưu siêu tốc cho Voice Mode: Bỏ qua bước contextualize LLM tốn 1.5-2s vì voice_prompt đã tích hợp chat_history trực tiếp
+    if request.mode == "voice":
+        standalone_question = user_question
+    else:
+        standalone_question = chain.contextualize_question(
+            question=user_question,
+            chat_history=chat_history,
+        )
 
     planning_summary = ""
     try:

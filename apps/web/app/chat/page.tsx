@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState, Suspense } from "react";
+import React, { useRef, useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useChat } from "@/hooks/useChat";
 import { useVoiceCompanion } from "@/hooks/useVoiceCompanion";
@@ -11,6 +11,7 @@ import { SuggestedQuestions } from "@/components/chat/SuggestedQuestions";
 import { VoiceTourGuideBar } from "@/components/chat/VoiceTourGuideBar";
 import { VoiceChatModal } from "@/components/chat/VoiceChatModal";
 import { TripCanvas } from "@/components/canvas/TripCanvas";
+import { isCreateItineraryCommand } from "@/lib/utils";
 
 function ChatContent() {
   const {
@@ -35,14 +36,42 @@ function ChatContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
-  const [isCanvasOpen, setIsCanvasOpen] = useState(true);
+  // Mặc định thanh bên phải (Trip Canvas) KHÔNG hiển thị
+  const [isCanvasOpen, setIsCanvasOpen] = useState(false);
 
-  // Tự động mở thanh bên khi có lịch trình mới được tạo
+  // Tự động mở thanh bên khi có câu lệnh tạo lịch trình
+  const handleSendMessage = useCallback(
+    async (text: string, mode: "chat" | "voice" = "chat") => {
+      if (isCreateItineraryCommand(text)) {
+        setIsCanvasOpen(true);
+      }
+      return sendMessage(text, mode);
+    },
+    [sendMessage]
+  );
+
+  const handleGenerateProposal = useCallback(
+    async (proposalOrPrompt?: any, customPrompt?: string) => {
+      setIsCanvasOpen(true);
+      return generateFromProposal(proposalOrPrompt, customPrompt);
+    },
+    [generateFromProposal]
+  );
+
+  const handleRegenerateItinerary = useCallback(
+    async (promptText?: string) => {
+      setIsCanvasOpen(true);
+      return regenerateItinerary(promptText);
+    },
+    [regenerateItinerary]
+  );
+
+  // Tự động mở thanh bên khi hệ thống bắt đầu tạo / lập lịch trình
   useEffect(() => {
-    if (currentItinerary) {
+    if (isPlanning) {
       setIsCanvasOpen(true);
     }
-  }, [currentItinerary]);
+  }, [isPlanning]);
 
   // Hook điều khiển Voice Tour Guide thời gian thực
   const {
@@ -58,7 +87,7 @@ function ChatContent() {
     toggleAutoSpeak,
     toggleHandsFree,
   } = useVoiceCompanion({
-    onSendMessage: sendMessage,
+    onSendMessage: handleSendMessage,
     isLoadingChat: isLoading || isPlanning,
   });
 
@@ -93,9 +122,9 @@ function ChatContent() {
     const q = searchParams.get("q");
     if (q && !initialQuerySent.current) {
       initialQuerySent.current = true;
-      sendMessage(q);
+      handleSendMessage(q);
     }
-  }, [searchParams, sendMessage]);
+  }, [searchParams, handleSendMessage]);
 
   // Auto scroll to bottom when messages update
   const scrollToBottom = () => {
@@ -115,6 +144,7 @@ function ChatContent() {
           onClearHistory={() => {
             stopAudio();
             clearMessages();
+            setIsCanvasOpen(false);
           }}
           messageCount={messages.length}
           onOpenVoiceMode={() => setIsVoiceModalOpen(true)}
@@ -148,7 +178,7 @@ function ChatContent() {
                 planningContext={planningContext}
                 hasItinerary={Boolean(currentItinerary)}
                 onRetry={retryMessage}
-                onGenerateProposal={generateFromProposal}
+                onGenerateProposal={handleGenerateProposal}
                 onMoreChat={() => {
                   startListening();
                 }}
@@ -160,7 +190,7 @@ function ChatContent() {
             {/* Gợi ý câu hỏi khi mới bắt đầu */}
             {messages.length <= 1 && (
               <div className="pt-2">
-                <SuggestedQuestions onSelectQuestion={sendMessage} />
+                <SuggestedQuestions onSelectQuestion={handleSendMessage} />
               </div>
             )}
 
@@ -171,7 +201,7 @@ function ChatContent() {
 
         {/* Thanh nhập liệu tích hợp giọng nói */}
         <ChatInput
-          onSendMessage={sendMessage}
+          onSendMessage={handleSendMessage}
           isLoading={isLoading || isPlanning}
           onOpenVoiceMode={() => {
             if (isRecording) {
@@ -190,10 +220,10 @@ function ChatContent() {
             planningContext={planningContext}
             itinerary={currentItinerary}
             isPlanning={isPlanning}
-            onGenerateItinerary={() => generateFromProposal()}
+            onGenerateItinerary={() => handleGenerateProposal()}
             onClearItinerary={clearItinerary}
-            onRegenerateItinerary={() => regenerateItinerary()}
-            onSelectPrompt={sendMessage}
+            onRegenerateItinerary={() => handleRegenerateItinerary()}
+            onSelectPrompt={handleSendMessage}
             onClose={() => setIsCanvasOpen(false)}
           />
         </div>
@@ -209,16 +239,16 @@ function ChatContent() {
               itinerary={currentItinerary}
               isPlanning={isPlanning}
               onGenerateItinerary={() => {
-                generateFromProposal();
+                handleGenerateProposal();
                 setIsCanvasOpen(false);
               }}
               onClearItinerary={clearItinerary}
               onRegenerateItinerary={() => {
-                regenerateItinerary();
+                handleRegenerateItinerary();
                 setIsCanvasOpen(false);
               }}
               onSelectPrompt={(prompt) => {
-                sendMessage(prompt);
+                handleSendMessage(prompt);
                 setIsCanvasOpen(false);
               }}
               onClose={() => setIsCanvasOpen(false)}
@@ -231,7 +261,7 @@ function ChatContent() {
       <VoiceChatModal
         isOpen={isVoiceModalOpen}
         onClose={() => setIsVoiceModalOpen(false)}
-        onSendMessage={sendMessage}
+        onSendMessage={handleSendMessage}
         isLoadingChat={isLoading || isPlanning}
       />
     </div>

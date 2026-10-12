@@ -34,11 +34,11 @@ export default function TripsPage() {
 
         <div className="flex items-center gap-3">
           <Link
-            href="/chat"
+            href="/voice-guide"
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 text-xs font-bold shadow-md shadow-teal-900/30 hover:brightness-110 transition-all"
           >
-            <span>💬</span>
-            <span>Mở AI Tour Guide</span>
+            <span>🎙️</span>
+            <span>Mở AI Voice Guide</span>
           </Link>
         </div>
       </header>

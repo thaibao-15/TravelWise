@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 
 interface ChatHeaderProps {
@@ -17,131 +18,148 @@ export function ChatHeader({
   messageCount,
   onOpenVoiceMode,
   onToggleCanvas,
-  isCanvasOpen = true,
+  isCanvasOpen = false,
 }: ChatHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
-  return (
-    <header className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 shadow-lg">
-      <div className="flex items-center gap-3">
-        {/* Brand Icon Badge */}
-        <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 font-bold shadow-md shadow-teal-500/20">
-          <svg
-            className="w-6 h-6 text-slate-950"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
-          </svg>
-          <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-900"></span>
-          </span>
-        </div>
+  const searchParams = useSearchParams();
+  const conversationId = searchParams.get("conversation_id");
 
-        <div>
+  const chatUrl = conversationId ? `/chat?conversation_id=${conversationId}` : "/chat";
+  const voiceGuideUrl = conversationId
+    ? `/voice-guide?conversation_id=${conversationId}`
+    : "/voice-guide";
+
+  return (
+    <header className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 shadow-md">
+      {/* 1. Left: Brand Title & Mode Info */}
+      <div className="flex items-center gap-3 min-w-0">
+        <Link
+          href="/"
+          className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-tr from-teal-400 to-emerald-400 text-slate-950 font-bold shadow-md shadow-teal-500/20 hover:scale-105 transition-transform flex-shrink-0"
+          title="Trang chủ TravelWise"
+        >
+          <span className="text-xl">🌴</span>
+          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-slate-900" />
+        </Link>
+
+        <div className="min-w-0 hidden md:block">
           <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold text-slate-100 tracking-wide">
-              TravelWise AI Assistant
+            <h1 className="text-sm font-bold text-slate-100 tracking-wide truncate">
+              TravelWise AI
             </h1>
-            <span className="px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20">
-              AI Thông minh
+            <span className="px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/20">
+              CHAT BOX
             </span>
           </div>
-          <p className="text-xs text-slate-400">
-            Hỏi đáp tri thức du lịch & gợi ý lịch trình thông minh
+          <p className="text-[11px] text-slate-400 truncate">
+            Hỏi đáp tri thức & lập kế hoạch du lịch
           </p>
         </div>
       </div>
 
-      {/* Header Actions */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Back to Home Link */}
+      {/* 2. Center: Segmented Switcher for 2 Chat Modes (Chat Box & Voice Chat) */}
+      <nav
+        aria-label="Chuyển đổi chế độ trò chuyện"
+        className="flex items-center p-1 rounded-xl bg-slate-950/80 border border-slate-800 shadow-inner"
+      >
+        {/* Tab 1: Chat Box (Active) */}
         <Link
-          href="/"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-all"
-          title="Trở về trang chủ"
+          href={chatUrl}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 shadow-md shadow-teal-500/20 transition-all cursor-default"
+          title="Đang ở chế độ Chat Văn bản"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          <span className="hidden sm:inline">Trang chủ</span>
+          <span>💬</span>
+          <span>Chat Box</span>
         </Link>
 
+        {/* Tab 2: Voice Chat (Switchable) */}
+        <Link
+          href={voiceGuideUrl}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-teal-300 hover:bg-slate-800/60 active:scale-95 transition-all group"
+          title="Chuyển sang chế độ Voice Chat chuyên biệt"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-400"></span>
+          </span>
+          <span className="text-sm">🎙️</span>
+          <span>Voice Chat</span>
+        </Link>
+      </nav>
+
+      {/* 3. Right: Actions & Tools */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Làm mới (Reset chat) */}
         {messageCount > 1 && (
           <button
+            type="button"
             onClick={onClearHistory}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-lg transition-all duration-200"
-            title="Xóa lịch sử cuộc trò chuyện"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-100 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl transition-all cursor-pointer"
+            title="Làm mới cuộc trò chuyện"
           >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-            <span className="hidden sm:inline">Làm mới</span>
+            <span>🔄</span>
+            <span className="hidden lg:inline">Làm mới</span>
           </button>
         )}
 
+        {/* Kế hoạch (Trip Canvas) */}
         {onToggleCanvas && (
           <button
+            type="button"
             onClick={onToggleCanvas}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-sm ${
               isCanvasOpen
-                ? "bg-teal-500/20 text-teal-300 border-teal-500/40"
-                : "bg-slate-800/60 text-slate-400 hover:text-slate-200 border-slate-700/60"
+                ? "bg-teal-400 text-slate-950 border-teal-400 shadow-teal-400/30"
+                : "bg-slate-800/70 text-slate-300 border-slate-700/70 hover:border-teal-500/40 hover:text-teal-300"
             }`}
-            title="Bật/Tắt bảng kế hoạch & lịch trình bên phải"
+            title="Bật/Tắt bảng Kế hoạch & Lịch trình bên phải"
           >
             <span>🗺️</span>
             <span className="hidden sm:inline">Kế hoạch</span>
           </button>
         )}
 
+        {/* Voice Popup Modal (Phụ trợ) */}
         {onOpenVoiceMode && (
           <button
+            type="button"
             onClick={onOpenVoiceMode}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-teal-500/20 via-emerald-500/20 to-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-teal-500/30 hover:border-teal-400 active:scale-95 shadow-sm shadow-teal-500/20 transition-all cursor-pointer"
-            title="Mở chế độ trò chuyện giọng nói 2 chiều (Voice Mode)"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-800/60 text-slate-300 border border-slate-700/60 hover:text-slate-100 hover:bg-slate-800 active:scale-95 transition-all cursor-pointer"
+            title="Mở Voice Popup phụ trợ"
           >
-            <svg className="w-3.5 h-3.5 text-teal-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-            </svg>
-            <span className="hidden sm:inline">Chế độ Giọng nói</span>
-            <span className="sm:hidden">Voice</span>
+            <span className="text-xs">⚡</span>
+            <span>Popup</span>
           </button>
         )}
 
+        {/* Home Link */}
+        <Link
+          href="/"
+          className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-xl transition-all"
+          title="Trang chủ"
+        >
+          <span>🏠</span>
+        </Link>
+
+        {/* User Auth Info */}
         {isAuthenticated && user ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Link
               href="/profile"
-              className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 hover:border-teal-500/40 border border-slate-700/60 text-xs text-slate-200 transition-all group"
-              title="Xem thông tin cá nhân"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700/60 text-xs text-slate-200 transition-all group"
+              title="Thông tin cá nhân"
             >
-              <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-400 font-semibold flex items-center justify-center text-[10px] border border-teal-500/30 group-hover:scale-105 transition-transform">
+              <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-400 font-bold flex items-center justify-center text-[10px] border border-teal-500/30">
                 {(user.full_name || user.email)[0].toUpperCase()}
               </div>
-              <span className="hidden md:inline max-w-[100px] truncate font-medium group-hover:text-teal-300 transition-colors">
+              <span className="hidden xl:inline max-w-[80px] truncate font-medium">
                 {user.full_name || user.email}
               </span>
             </Link>
             <button
+              type="button"
               onClick={logout}
-              className="px-2.5 py-1 text-xs text-slate-400 hover:text-red-400 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-lg transition-colors"
+              className="hidden md:inline px-2 py-1 text-xs text-slate-400 hover:text-rose-400 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-xl transition-colors cursor-pointer"
               title="Đăng xuất"
             >
               Thoát
@@ -150,7 +168,7 @@ export function ChatHeader({
         ) : (
           <Link
             href="/login?redirect=/chat"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:from-teal-300 hover:to-emerald-200 rounded-lg shadow-sm shadow-teal-500/20 transition-all"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:brightness-105 rounded-xl shadow-sm shadow-teal-500/20 transition-all"
           >
             Đăng nhập
           </Link>

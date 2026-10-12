@@ -7,6 +7,7 @@ import {
   GeneratedItineraryData,
 } from "@/types/chat";
 import { chatService } from "@/services/chat.service";
+import { isCreateItineraryCommand } from "@/lib/utils";
 
 const INITIAL_WELCOME_MESSAGE: ChatMessage = {
   id: "welcome-1",
@@ -29,7 +30,7 @@ function cleanPromptText(text: string): string {
 
 // Mẫu câu nhận diện ý định đồng ý tạo lịch trình từ giọng nói hoặc văn bản (hỗ trợ kính ngữ, từ lóng, teencode, tiếng Anh)
 const AFFIRMATIVE_INTENT_REGEX =
-  /(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b/i;
+  /(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|tạo\s*lịch(?:\s*trình)?(?:\s*đi|\s*luôn|\s*ngay|\s*nha|\s*nhé|\s*cho\s*mình|\s*giúp)?|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b/i;
 
 /**
  * Nhận diện chính xác câu lệnh chỉnh sửa lịch trình hiện có.
@@ -395,7 +396,7 @@ export function useChat() {
         ctx.destination;
       if (!dest) return undefined;
 
-      // Chỉ tạo proposal khi người dùng đã cung cấp đủ thông tin cốt lõi (Điểm đến VÀ Thời gian/Số ngày)
+      // Chỉ tạo proposal khi người dùng đã có điểm đến (Số ngày nếu chưa có sẽ mặc định 3 ngày)
       const explicitDays =
         ctx.trip.duration?.days ||
         ctx.trip.dates?.duration_days ||
@@ -404,9 +405,9 @@ export function useChat() {
       const isReady =
         ctx.planning_state?.is_ready_to_generate !== undefined
           ? ctx.planning_state.is_ready_to_generate
-          : Boolean(explicitDays);
+          : Boolean(explicitDays || dest);
 
-      if (!isReady && !explicitDays) {
+      if (!isReady && !explicitDays && !dest) {
         return undefined;
       }
 
@@ -622,9 +623,12 @@ export function useChat() {
       const hasExplicitProposalCard = messages.some((m) => m.proposal && !m.itinerary);
       const hasPendingProposal = hasExplicitProposalCard || hasDestination;
 
+      const isCreateCommand = isCreateItineraryCommand(trimmed);
       const isAffirmative =
+        isCreateCommand ||
         AFFIRMATIVE_INTENT_REGEX.test(trimmed) ||
-        (trimmed.length <= 15 && /^(có|tạo|ok|được|làm|yes|đồng ý)/i.test(trimmed));
+        /(?:tạo|lên|lập)\s*(?:cho\s*[\w\s]+\s+)?(?:lịch\s*trình|kế\s*hoạch|lịch|tour)?\s*(?:đi|luôn|ngay|nha|nhé|giúp|hộ)/i.test(trimmed) ||
+        (trimmed.length <= 30 && /^(dạ\s+)?(có|tạo|ok|được|làm|yes|đồng ý|nhất trí|chốt|triển|hãy tạo|cứ tạo)/i.test(trimmed));
 
       // 1. Kiểm tra ý định XÓA / HỦY LỊCH TRÌNH
       const isClearItineraryIntent =
@@ -688,11 +692,19 @@ export function useChat() {
         }
       }
 
-      // CHỈ tự động kích hoạt tạo lịch trình khi:
+      // Tự động kích hoạt tạo lịch trình khi:
       // 1. Đã có Proposal Card rõ ràng được hiển thị, HOẶC
-      // 2. Ngữ cảnh đã đầy đủ thông tin cốt lõi (Điểm đến VÀ Thời gian/Số ngày)
-      // Nếu CHƯA ĐỦ THÔNG TIN, câu hỏi sẽ được gửi bình thường tới AI để AI chủ động hỏi các trường còn thiếu!
-      if ((hasExplicitProposalCard || (isReadyToGenerate && hasDestination && hasDuration)) && isAffirmative && !currentItineraryRef.current) {
+      // 2. Ngữ cảnh đã có điểm đến và người dùng đồng ý / yêu cầu tạo lịch trình (isAffirmative / isCreateCommand)
+      if (
+        (hasExplicitProposalCard || (hasDestination && (hasDuration || isReadyToGenerate || isCreateCommand))) &&
+        isAffirmative
+      ) {
+        // Nếu đã có lịch trình cũ hiển thị, xóa đi trước để tạo mới
+        if (currentItineraryRef.current) {
+          setCurrentItinerary(null);
+          currentItineraryRef.current = null;
+        }
+
         // 1. Thêm câu người dùng nói vào khung chat
         const userMsg: ChatMessage = {
           id: `user-${Date.now()}`,
@@ -704,7 +716,7 @@ export function useChat() {
         setMessages((prev) => [...prev, userMsg]);
 
         // 2. Tự động kích hoạt tạo lịch trình ngay lập tức
-        return await generateFromProposal();
+        return await generateFromProposal(undefined, trimmed);
       }
 
       // Tạo tin nhắn người dùng bình thường

@@ -226,7 +226,7 @@ class RAGChain:
             yield "Vui lòng nhập câu hỏi để TravelWise có thể hỗ trợ bạn."
             return
 
-        k = top_k or self.top_k
+        k = 2 if mode == "voice" else (top_k or self.top_k)
         search_query = (standalone_question or clean_question).strip()
 
         try:

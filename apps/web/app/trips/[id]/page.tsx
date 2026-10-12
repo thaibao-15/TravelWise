@@ -85,11 +85,11 @@ export default function TripDetailPage() {
           )}
 
           <Link
-            href="/chat"
+            href="/voice-guide"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-teal-300 text-xs font-semibold border border-slate-700 transition-colors"
           >
-            <span>💬</span>
-            <span>Mở trong AI Tour Guide</span>
+            <span>🎙️</span>
+            <span>Mở Voice AI Guide</span>
           </Link>
         </div>
       </header>

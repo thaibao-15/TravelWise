@@ -13,9 +13,9 @@ export default function Home() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (quickQuery.trim()) {
-      router.push(`/chat?q=${encodeURIComponent(quickQuery.trim())}`);
+      router.push(`/voice-guide?q=${encodeURIComponent(quickQuery.trim())}`);
     } else {
-      router.push("/chat");
+      router.push("/voice-guide");
     }
   };
 
@@ -88,8 +88,15 @@ export default function Home() {
             <Link href="/places" className="hover:text-teal-400 transition-colors">
               Điểm đến
             </Link>
-            <Link href="/chat" className="hover:text-teal-400 transition-colors">
-              Trợ lý AI
+            <Link
+              href="/voice-guide"
+              className="text-teal-300 hover:text-teal-200 font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <span>🎙️</span>
+              <span>Voice Guide</span>
+            </Link>
+            <Link href="/chat" className="text-slate-400 hover:text-slate-200 transition-colors">
+              Chat Box
             </Link>
           </nav>
 
@@ -111,7 +118,7 @@ export default function Home() {
                 </Link>
                 <button
                   onClick={logout}
-                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-400 bg-slate-900/80 hover:bg-slate-900 border border-slate-800 rounded-xl transition-colors"
+                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-400 bg-slate-900/80 hover:bg-slate-900 border border-slate-800 rounded-xl transition-colors cursor-pointer"
                   title="Đăng xuất"
                 >
                   Đăng xuất
@@ -135,14 +142,12 @@ export default function Home() {
             )}
 
             <Link
-              href="/chat"
+              href="/voice-guide"
               className="flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-emerald-300 hover:from-teal-300 hover:to-emerald-200 rounded-xl shadow-md shadow-teal-500/20 hover:scale-105 active:scale-95 transition-all duration-200"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
-              <span className="hidden sm:inline">Phòng Chat AI</span>
-              <span className="sm:hidden">Chat</span>
+              <span className="text-sm">🎙️</span>
+              <span className="hidden sm:inline">Trò chuyện Voice AI</span>
+              <span className="sm:hidden">Voice AI</span>
             </Link>
           </div>
         </div>
@@ -201,13 +206,13 @@ export default function Home() {
             </form>
           </div>
 
-          {/* Quick Popular Topic Pills */}
+            {/* Quick Popular Topic Pills */}
           <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl mx-auto">
             <span className="text-xs text-slate-500 font-medium">Gợi ý nhanh:</span>
             {popularTopics.map((topic, i) => (
               <button
                 key={i}
-                onClick={() => router.push(`/chat?q=${encodeURIComponent(topic.query)}`)}
+                onClick={() => router.push(`/voice-guide?q=${encodeURIComponent(topic.query)}`)}
                 className="px-3 py-1 text-xs rounded-full bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-teal-300 border border-slate-800 hover:border-teal-500/40 transition-all duration-200 cursor-pointer"
               >
                 {topic.label}
@@ -313,13 +318,11 @@ export default function Home() {
                 </div>
 
                 <button
-                  onClick={() => router.push(`/chat?q=${encodeURIComponent(`Hãy giới thiệu chi tiết về du lịch tại ${dest.name}`)}`)}
+                  onClick={() => router.push(`/voice-guide?q=${encodeURIComponent(`Hãy giới thiệu chi tiết về du lịch tại ${dest.name}`)}`)}
                   className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-teal-300 border border-slate-700/60 hover:border-teal-500/40 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <svg className="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <span>Hỏi AI về {dest.name}</span>
+                  <span className="text-sm">🎙️</span>
+                  <span>Hỏi Voice AI về {dest.name}</span>
                 </button>
               </div>
             ))}
@@ -327,27 +330,25 @@ export default function Home() {
         </section>
       </main>
 
-      {/* Floating Chat Box Button (Fixed Bottom-Right) */}
+      {/* Floating Voice Guide Button (Fixed Bottom-Right) */}
       <div className="fixed bottom-6 right-6 z-50">
         <Link
-          href="/chat"
-          className="group relative flex items-center gap-3 px-5 py-3.5 rounded-full bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-400 text-slate-950 font-bold shadow-2xl shadow-teal-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-teal-300/40"
-          title="Mở hộp thoại Trợ lý Du lịch AI"
+          href="/voice-guide"
+          className="group relative flex items-center gap-3 px-5 py-3.5 rounded-full bg-gradient-to-r from-teal-500 via-cyan-400 to-teal-400 text-slate-950 font-bold shadow-2xl shadow-teal-500/40 hover:scale-105 active:scale-95 transition-all duration-300 border border-teal-300/40"
+          title="Mở hướng dẫn viên du lịch bằng giọng nói (Voice Guide)"
         >
           {/* Pulsing Glow Effect */}
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-slate-950"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-300 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-teal-400 border-2 border-slate-950"></span>
           </span>
 
           <div className="w-6 h-6 flex items-center justify-center">
-            <svg className="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
+            <span className="text-xl">🎙️</span>
           </div>
 
           <span className="text-sm tracking-wide font-extrabold text-slate-950">
-            Chat với AI
+            Voice Guide AI
           </span>
         </Link>
       </div>
@@ -357,8 +358,11 @@ export default function Home() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} TravelWise. Nền tảng Du lịch Thông minh cùng Trợ lý AI.</p>
           <div className="flex items-center gap-4">
+            <Link href="/voice-guide" className="text-teal-300 hover:text-teal-200 font-medium transition-colors">
+              Voice Tour Guide
+            </Link>
             <Link href="/chat" className="hover:text-teal-400 transition-colors">
-              Trợ lý AI
+              Chat Box
             </Link>
             <Link href="/places" className="hover:text-teal-400 transition-colors">
               Điểm đến

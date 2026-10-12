@@ -26,6 +26,15 @@ export function useVoiceCompanion({
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastTranscriptRef = useRef("");
 
+  // Refs to prevent stale closure issues in audio/async callbacks
+  const isSessionActiveRef = useRef(false);
+  const isHandsFreeRef = useRef(true);
+  isHandsFreeRef.current = isHandsFree;
+  const autoSpeakRef = useRef(true);
+  autoSpeakRef.current = autoSpeak;
+  const onSendMessageRef = useRef(onSendMessage);
+  onSendMessageRef.current = onSendMessage;
+
   // Stop any active audio playback
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
@@ -37,15 +46,17 @@ export function useVoiceCompanion({
       nativeCancelRef.current();
       nativeCancelRef.current = null;
     }
-    setVoiceState((prev) => (prev === "speaking" ? "idle" : prev));
   }, []);
 
   // Handle incoming STT transcript
   const handleTranscript = useCallback((text: string, _isFinal: boolean) => {
-    if (voiceState === "thinking" || voiceState === "speaking") return;
-    setTranscript(text);
-    lastTranscriptRef.current = text;
-  }, [voiceState]);
+    setVoiceState((currentState) => {
+      if (currentState === "thinking" || currentState === "speaking") return currentState;
+      setTranscript(text);
+      lastTranscriptRef.current = text;
+      return "listening";
+    });
+  }, []);
 
   const {
     isRecording,
@@ -56,24 +67,64 @@ export function useVoiceCompanion({
     onTranscript: handleTranscript,
   });
 
-  // Start listening
+  const startRecordingRef = useRef(startRecording);
+  startRecordingRef.current = startRecording;
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+
+  // Start listening (sets state to listening immediately to eliminate intermediate delay)
   const startListening = useCallback(async () => {
+    isSessionActiveRef.current = true;
     stopAudio();
     setTranscript("");
     lastTranscriptRef.current = "";
-    await startRecording();
     setVoiceState("listening");
     setStatusMessage("Đang lắng nghe giọng nói của bạn...");
-  }, [stopAudio, startRecording]);
 
-  // Stop listening
-  const stopListening = useCallback(() => {
-    stopRecording();
-    if (voiceState === "listening") {
+    try {
+      await startRecordingRef.current?.();
+    } catch (err) {
+      console.warn("Failed to start audio recording:", err);
+      setStatusMessage("Không thể truy cập microphone. Vui lòng cấp quyền.");
       setVoiceState("idle");
-      setStatusMessage("Đã tạm dừng lắng nghe.");
+      isSessionActiveRef.current = false;
     }
-  }, [stopRecording, voiceState]);
+  }, [stopAudio]);
+
+  const startListeningRef = useRef(startListening);
+  startListeningRef.current = startListening;
+
+  // Stop listening explicitly (User paused or stopped conversation)
+  const stopListening = useCallback(() => {
+    isSessionActiveRef.current = false;
+    stopRecordingRef.current?.();
+    setVoiceState("idle");
+    setStatusMessage("Đã tạm dừng. Nhấn micro để tiếp tục trò chuyện.");
+  }, []);
+
+  // Helper to resume listening seamlessly when speech playback ends (Zero intermediate step)
+  const resumeListeningAfterSpeech = useCallback(() => {
+    audioRef.current = null;
+    if (nativeCancelRef.current) {
+      nativeCancelRef.current();
+      nativeCancelRef.current = null;
+    }
+
+    if (isSessionActiveRef.current && isHandsFreeRef.current) {
+      // Chuyển thẳng sang nghe người dùng nói tiếp, không qua bước trung gian Bấm để nói!
+      setTranscript("");
+      lastTranscriptRef.current = "";
+      setVoiceState("listening");
+      setStatusMessage("Đang lắng nghe câu hỏi tiếp theo của bạn...");
+      startRecordingRef.current?.().catch(() => {});
+    } else {
+      setVoiceState("idle");
+      setStatusMessage("Sẵn sàng lắng nghe tiếp...");
+    }
+  }, []);
+
+  const resumeListeningRef = useRef(resumeListeningAfterSpeech);
+  resumeListeningRef.current = resumeListeningAfterSpeech;
 
   // Commit speech to AI chat
   const commitSpeech = useCallback(
@@ -81,71 +132,75 @@ export function useVoiceCompanion({
       const trimmed = spokenText.trim();
       if (!trimmed) return;
 
-      stopRecording();
+      stopRecordingRef.current?.();
       setVoiceState("thinking");
-      setStatusMessage("AI đang suy nghĩ và chuẩn bị phản hồi...");
+      setStatusMessage("AI đang chuẩn bị câu trả lời...");
 
       try {
-        const spokenAnswer = await onSendMessage(trimmed, "voice");
+        const spokenAnswer = await onSendMessageRef.current(trimmed, "voice");
 
-        if (autoSpeak && spokenAnswer) {
+        if (autoSpeakRef.current && spokenAnswer && typeof spokenAnswer === "string") {
+          const cleanAnswer = ttsService.cleanText(spokenAnswer);
           setVoiceState("speaking");
           setStatusMessage("AI Tour Guide đang đọc câu trả lời...");
 
+          // Luôn sử dụng giọng đọc Blaze AI chuẩn (DaNang-Nu-1-BL cấu hình trong .env)
           try {
-            const audioUrl = await ttsService.synthesize(spokenAnswer);
-            const audio = new Audio(audioUrl);
+            const streamUrl =
+              cleanAnswer.length <= 1800
+                ? ttsService.getStreamUrl(cleanAnswer)
+                : await ttsService.synthesize(cleanAnswer);
+
+            const audio = new Audio(streamUrl);
+            audio.preload = "auto";
             audioRef.current = audio;
 
             audio.onended = () => {
-              audioRef.current = null;
-              setVoiceState("idle");
-              setStatusMessage("Sẵn sàng lắng nghe tiếp...");
-              if (isHandsFree) {
-                setTimeout(() => {
-                  startListening();
-                }, 400);
-              }
+              resumeListeningRef.current();
             };
 
             audio.onerror = () => {
-              const res = ttsService.speakWebSpeech(spokenAnswer, () => {
-                setVoiceState("idle");
-                setStatusMessage("Sẵn sàng lắng nghe tiếp...");
-                if (isHandsFree) {
-                  setTimeout(() => startListening(), 400);
-                }
-              });
+              console.warn("Blaze TTS stream error, fallback to Web Speech");
+              const res = ttsService.speakWebSpeech(
+                cleanAnswer,
+                () => resumeListeningRef.current(),
+                () => resumeListeningRef.current()
+              );
               nativeCancelRef.current = res.cancel;
             };
 
-            await audio.play();
-          } catch {
-            const res = ttsService.speakWebSpeech(spokenAnswer, () => {
-              setVoiceState("idle");
-              setStatusMessage("Sẵn sàng lắng nghe tiếp...");
-              if (isHandsFree) {
-                setTimeout(() => startListening(), 400);
-              }
+            await audio.play().catch((playErr) => {
+              console.warn("Audio play() blocked, fallback to Web Speech:", playErr);
+              const res = ttsService.speakWebSpeech(
+                cleanAnswer,
+                () => resumeListeningRef.current(),
+                () => resumeListeningRef.current()
+              );
+              nativeCancelRef.current = res.cancel;
             });
+          } catch (ttsErr) {
+            console.warn("TTS synthesize failed, fallback to Web Speech:", ttsErr);
+            const res = ttsService.speakWebSpeech(
+              cleanAnswer,
+              () => resumeListeningRef.current(),
+              () => resumeListeningRef.current()
+            );
             nativeCancelRef.current = res.cancel;
           }
         } else {
-          setVoiceState("idle");
-          setStatusMessage("Đã nhận câu trả lời.");
-          if (isHandsFree) {
-            setTimeout(() => startListening(), 600);
-          }
+          // Không đọc giọng hoặc không có nội dung: nghe tiếp ngay lập tức
+          resumeListeningRef.current();
         }
-      } catch {
-        setVoiceState("idle");
+      } catch (chatErr) {
+        console.error("Chat error during speech commit:", chatErr);
         setStatusMessage("Lỗi kết nối khi gửi giọng nói.");
+        resumeListeningRef.current();
       }
     },
-    [stopRecording, onSendMessage, autoSpeak, isHandsFree, startListening]
+    []
   );
 
-  // Auto silence commit in hands-free mode
+  // Auto silence commit in hands-free mode (750ms để bắt câu nói siêu nhạy)
   useEffect(() => {
     if (!isRecording || voiceState !== "listening") return;
 
@@ -154,10 +209,10 @@ export function useVoiceCompanion({
     }
 
     if (transcript && transcript.trim().length > 1) {
-      // If user pauses for 1.8s, automatically submit speech
+      // Khi người dùng ngừng nói 750ms, tự động gửi câu hỏi ngay lập tức
       silenceTimerRef.current = setTimeout(() => {
         commitSpeech(transcript);
-      }, 1800);
+      }, 750);
     }
 
     return () => {
@@ -167,11 +222,23 @@ export function useVoiceCompanion({
     };
   }, [transcript, isRecording, voiceState, commitSpeech]);
 
-  // Update status on chat loading
+  // Update status on chat loading and restore listening when done
   useEffect(() => {
-    if (isLoadingChat && voiceState !== "thinking" && voiceState !== "speaking") {
-      setVoiceState("thinking");
-      setStatusMessage("Đang xử lý yêu cầu du lịch...");
+    if (isLoadingChat) {
+      if (voiceState !== "thinking" && voiceState !== "speaking") {
+        setVoiceState("thinking");
+        setStatusMessage("Đang chuẩn bị câu trả lời...");
+      }
+    } else {
+      // Khi chat xử lý xong
+      if (voiceState === "thinking") {
+        if (isSessionActiveRef.current) {
+          resumeListeningRef.current();
+        } else {
+          setVoiceState("idle");
+          setStatusMessage("Sẵn sàng lắng nghe bạn...");
+        }
+      }
     }
   }, [isLoadingChat, voiceState]);
 
@@ -179,9 +246,12 @@ export function useVoiceCompanion({
   useEffect(() => {
     if (sttError) {
       setStatusMessage(`Microphone: ${sttError}`);
-      setVoiceState("idle");
+      if (voiceState === "listening") {
+        setVoiceState("idle");
+        isSessionActiveRef.current = false;
+      }
     }
-  }, [sttError]);
+  }, [sttError, voiceState]);
 
   return {
     voiceState,
@@ -192,7 +262,10 @@ export function useVoiceCompanion({
     statusMessage,
     startListening,
     stopListening,
-    stopAudio,
+    stopAudio: () => {
+      stopAudio();
+      setVoiceState((prev) => (prev === "speaking" ? "idle" : prev));
+    },
     toggleAutoSpeak: () => setAutoSpeak((prev) => !prev),
     toggleHandsFree: () => setIsHandsFree((prev) => !prev),
   };

@@ -1,10 +1,44 @@
 /**
  * Text-to-Speech (TTS) Service using TravelWise FastAPI /api/v1/tts endpoint
+ * and Web Speech API (zero-latency instant browser speech).
  */
 
 const audioCache = new Map<string, string>();
 
+// Pre-cached Vietnamese voice
+let cachedViVoice: SpeechSynthesisVoice | null = null;
+
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  const findViVoice = () => {
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      cachedViVoice =
+        voices.find((v) => v.lang === "vi-VN" || v.lang.startsWith("vi") || v.lang.includes("VN")) ||
+        voices.find((v) => /vietnam|tiếng việt/i.test(v.name)) ||
+        null;
+    } catch {
+      // Ignore
+    }
+  };
+
+  findViVoice();
+  if (typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
+    window.speechSynthesis.onvoiceschanged = findViVoice;
+  }
+}
+
 export const ttsService = {
+  /**
+   * Khởi động sớm giọng đọc trình duyệt ngay khi vào trang
+   */
+  warmup(): void {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.getVoices();
+      } catch { }
+    }
+  },
+
   /**
    * Làm sạch văn bản trước khi đưa vào bộ đọc TTS (bỏ markdown, links, emojis)
    */
@@ -66,7 +100,8 @@ export const ttsService = {
   speakWebSpeech(
     text: string,
     onEnd?: () => void,
-    onError?: () => void
+    onError?: () => void,
+    onStart?: () => void
   ): { cancel: () => void } {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       onError?.();
@@ -75,28 +110,46 @@ export const ttsService = {
 
     window.speechSynthesis.cancel();
     const cleaned = this.cleanText(text);
+    if (!cleaned) {
+      onEnd?.();
+      return { cancel: () => {} };
+    }
+
     const utterance = new SpeechSynthesisUtterance(cleaned);
 
-    // Tìm giọng tiếng Việt nếu có trong trình duyệt
-    const voices = window.speechSynthesis.getVoices();
-    const viVoice = voices.find(
-      (v) => v.lang.startsWith("vi") || v.lang.includes("VN")
-    );
-    if (viVoice) {
-      utterance.voice = viVoice;
+    // Ưu tiên dùng giọng tiếng Việt đã cache
+    if (cachedViVoice) {
+      utterance.voice = cachedViVoice;
+    } else {
+      const voices = window.speechSynthesis.getVoices();
+      const viVoice =
+        voices.find((v) => v.lang === "vi-VN" || v.lang.startsWith("vi") || v.lang.includes("VN")) ||
+        voices.find((v) => /vietnam|tiếng việt/i.test(v.name));
+      if (viVoice) {
+        cachedViVoice = viVoice;
+        utterance.voice = viVoice;
+      }
     }
+
     utterance.lang = "vi-VN";
-    utterance.rate = 1.05;
+    utterance.rate = 1.08; // Tốc độ phản hồi tự nhiên, không rề rà
     utterance.pitch = 1.0;
 
+    utterance.onstart = () => onStart?.();
     utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onError?.();
+    utterance.onerror = (e) => {
+      if (e.error !== "canceled" && e.error !== "interrupted") {
+        onError?.();
+      }
+    };
 
     window.speechSynthesis.speak(utterance);
 
     return {
       cancel: () => {
-        window.speechSynthesis.cancel();
+        try {
+          window.speechSynthesis.cancel();
+        } catch { }
       },
     };
   },

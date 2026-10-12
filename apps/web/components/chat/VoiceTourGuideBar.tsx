@@ -153,11 +153,14 @@ export function VoiceTourGuideBar({
             {isSpeaking && (
               <button
                 type="button"
-                onClick={onStopSpeaking}
+                onClick={() => {
+                  onStopSpeaking();
+                  onStartListening();
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-semibold transition-all cursor-pointer"
-                title="Dừng phát giọng đọc"
+                title="Dừng phát giọng đọc và lắng nghe ngay"
               >
-                <span>⏹ Dừng phát</span>
+                <span>⏹ Dừng & nói tiếp</span>
               </button>
             )}
 
@@ -185,7 +188,7 @@ export function VoiceTourGuideBar({
                   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm"
                   : "bg-slate-800/80 text-slate-400 border-slate-700/80 hover:text-slate-200"
               }`}
-              title="Chế độ đối thoại 2 chiều rảnh tay"
+              title="Chế độ đối thoại 2 chiều rảnh tay liên tục"
             >
               <span>⚡</span>
               <span className="hidden md:inline">Rảnh tay 2 chiều</span>
@@ -193,10 +196,21 @@ export function VoiceTourGuideBar({
 
             <button
               type="button"
-              onClick={isListening ? onStopListening : onStartListening}
+              onClick={
+                isSpeaking
+                  ? () => {
+                      onStopSpeaking();
+                      onStartListening();
+                    }
+                  : isListening
+                  ? onStopListening
+                  : onStartListening
+              }
               className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs shadow-lg transition-all cursor-pointer active:scale-95 ${
                 isListening
                   ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40 animate-pulse"
+                  : isSpeaking
+                  ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-900/40"
                   : "bg-gradient-to-r from-teal-500 via-cyan-400 to-teal-400 hover:brightness-110 text-slate-950 shadow-teal-900/40"
               }`}
             >
@@ -208,7 +222,7 @@ export function VoiceTourGuideBar({
                   d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
                 />
               </svg>
-              <span>{isListening ? "Dừng nghe" : "Nói chuyện"}</span>
+              <span>{isListening ? "Dừng nghe" : isSpeaking ? "Nói ngay" : "Nói chuyện"}</span>
             </button>
           </div>
         </div>
