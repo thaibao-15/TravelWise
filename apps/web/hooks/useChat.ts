@@ -70,7 +70,14 @@ function isItineraryEditIntent(prompt: string): boolean {
     /ngày\s*\d\s*(?:thay|đổi|sửa|chỉnh|thêm|bớt|bỏ|xoá|xóa|dời|chuyển)/i.test(lower) ||
     /(?:sửa|đổi|chỉnh|cập nhật)\s+ngày\s*\d/i.test(lower);
 
-  return Boolean(hasTimeAdjustment || hasActionWithTarget || hasDayEdit);
+  // 4d. Yêu cầu chỉnh sửa lịch trình: "sửa lại lịch trình", "chỉnh sửa lịch trình", "sửa lịch trình cho mình", "thay đổi lịch trình"...
+  const hasGeneralEdit =
+    /(?:sửa|chỉnh|chỉnh sửa|thay đổi|cập nhật|điều chỉnh|sắp xếp lại)\s*(?:lại\s*)?(?:lịch|lịch trình|chuyến đi|kế hoạch)/i.test(lower) ||
+    /(?:lịch|lịch trình|chuyến đi|kế hoạch)\s*(?:này\s*)?(?:cần\s*)?(?:sửa|chỉnh|thay đổi|cập nhật|điều chỉnh)/i.test(lower) ||
+    /(?:sửa|chỉnh|thay đổi|cập nhật|điều chỉnh)\s*(?:giúp|hộ|cho)\s*mình(?:\s*(?:lịch|lịch trình|chuyến đi))?/i.test(lower) ||
+    /(?:sửa|chỉnh|chỉnh sửa)\s+(?:lại|giúp|cho|hộ)/i.test(lower);
+
+  return Boolean(hasTimeAdjustment || hasActionWithTarget || hasDayEdit || hasGeneralEdit);
 }
 
 function applyItineraryEdit(
@@ -200,6 +207,14 @@ function applyItineraryEdit(
       }
       summary = `Mình đã bổ sung quán cafe view đẹp ngắm hoàng hôn vào Ngày ${targetDay.day_number} cho bạn nhé! ☕🌇`;
     } else {
+      const isGenericEdit = /^(?:sửa lại|chỉnh sửa|sửa|thay đổi|cập nhật|điều chỉnh)(?:\s+lại)?(?:\s+(?:lịch|lịch trình|chuyến đi))?(?:\s+(?:này|cho mình|giúp mình))?$/i.test(lower.trim());
+      if (isGenericEdit) {
+        summary = `Dạ bạn muốn chỉnh sửa phần nào trong lịch trình hiện tại? Bạn có thể yêu cầu cụ thể như:\n• "Dời giờ bắt đầu ngày 1 sang 9h sáng"\n• "Thêm quán cafe view đẹp ngắm hoàng hôn vào ngày 2"\n• "Bỏ chợ đêm và thay bằng hoạt động khác"\nHoặc nếu muốn đổi số ngày hay đổi thành phố khác, bạn hãy nhắn "tạo lại lịch trình" nhé! 😊`;
+        return {
+          itinerary: current,
+          summary,
+        };
+      }
       targetDay.description = `Lịch trình đã được AI điều chỉnh theo yêu cầu: "${prompt}".`;
       if (newActivities.length > 0) {
         newActivities[newActivities.length - 1] = {
@@ -272,14 +287,14 @@ function normalizeItineraryData(
         estimated_cost: a.estimated_cost || null,
         place: a.place
           ? {
-              name: a.place.name,
-              address: a.place.address || null,
-              category: a.place.category || null,
-            }
+            name: a.place.name,
+            address: a.place.address || null,
+            category: a.place.category || null,
+          }
           : {
-              name: a.title,
-              address: dest,
-            },
+            name: a.title,
+            address: dest,
+          },
       })),
     })),
   };
@@ -362,8 +377,8 @@ export function useChat() {
           (ctx.trip.travelers?.adults
             ? `${ctx.trip.travelers.adults} người`
             : ctx.trip.travelers?.total
-            ? `${ctx.trip.travelers.total} người`
-            : undefined),
+              ? `${ctx.trip.travelers.total} người`
+              : undefined),
         interests: ctx.preferences?.interests || ctx.trip.preferences?.interests || [],
         tripId: ctx.trip.trip_id,
       };
@@ -480,7 +495,7 @@ export function useChat() {
         if (!finalItineraryData || !finalItineraryData.days || finalItineraryData.days.length === 0) {
           throw new Error(
             genErr?.message ||
-              `Hệ thống chưa thể lấy dữ liệu địa điểm và tạo lịch trình cho ${destName}. Vui lòng thử lại sau giây lát.`
+            `Hệ thống chưa thể lấy dữ liệu địa điểm và tạo lịch trình cho ${destName}. Vui lòng thử lại sau giây lát.`
           );
         }
 
@@ -494,11 +509,11 @@ export function useChat() {
           prev.map((msg) =>
             msg.id === statusMsgId
               ? {
-                  ...msg,
-                  content: `🎉 ${speechSummary}`,
-                  status: "success",
-                  itinerary: finalItineraryData!,
-                }
+                ...msg,
+                content: `🎉 ${speechSummary}`,
+                status: "success",
+                itinerary: finalItineraryData!,
+              }
               : msg
           )
         );
@@ -514,11 +529,11 @@ export function useChat() {
           prev.map((msg) =>
             msg.id === statusMsgId
               ? {
-                  ...msg,
-                  content: `Lỗi khi tạo lịch trình: ${errorMsg}`,
-                  status: "error",
-                  errorMessage: errorMsg,
-                }
+                ...msg,
+                content: `Lỗi khi tạo lịch trình: ${errorMsg}`,
+                status: "error",
+                errorMessage: errorMsg,
+              }
               : msg
           )
         );
@@ -685,32 +700,44 @@ export function useChat() {
         setIsPlanning(true);
 
         try {
+          let serverRes: any = null;
           if (activeTripId) {
-            const serverRes = await chatService.editItinerary(activeTripId, trimmed);
-            if (serverRes && (serverRes.itinerary || serverRes.status === "EDITED")) {
-              const normalized = normalizeItineraryData(
-                serverRes.itinerary || serverRes,
-                optimisticItinerary.destination || optimisticItinerary.destination_city || "chuyến đi",
-                optimisticItinerary.duration_days || 3,
-                activeTripId
+            serverRes = await chatService.editItinerary(activeTripId, trimmed);
+          } else {
+            // Nếu chưa có activeTripId thì gọi generateItineraryDirect kèm user_prompt điều chỉnh
+            serverRes = await chatService.generateItineraryDirect({
+              context: planningContextRef.current,
+              conversation_id: conversationId,
+              save_to_db: true,
+              user_prompt: trimmed,
+            });
+          }
+
+          if (serverRes && (serverRes.itinerary || serverRes.days || serverRes.status === "EDITED" || serverRes.status === "GENERATED")) {
+            const resTripId = serverRes.trip_id || activeTripId;
+            const normalized = normalizeItineraryData(
+              serverRes.itinerary || serverRes,
+              optimisticItinerary.destination || optimisticItinerary.destination_city || "chuyến đi",
+              optimisticItinerary.duration_days || 3,
+              resTripId
+            );
+            if (normalized && normalized.days && normalized.days.length > 0) {
+              setCurrentItinerary(normalized);
+              if (resTripId) setCurrentTripId(resTripId);
+              const finalMsg = serverRes.message || optimisticSummary;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === editAssistantMsgId
+                    ? {
+                      ...m,
+                      content: finalMsg,
+                      status: "success",
+                      itinerary: normalized,
+                    }
+                    : m
+                )
               );
-              if (normalized) {
-                setCurrentItinerary(normalized);
-                const finalMsg = serverRes.message || optimisticSummary;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === editAssistantMsgId
-                      ? {
-                          ...m,
-                          content: finalMsg,
-                          status: "success",
-                          itinerary: normalized,
-                        }
-                      : m
-                  )
-                );
-                return finalMsg;
-              }
+              return finalMsg;
             }
           }
         } catch (serverErr) {
@@ -724,11 +751,11 @@ export function useChat() {
           prev.map((m) =>
             m.id === editAssistantMsgId
               ? {
-                  ...m,
-                  content: optimisticSummary,
-                  status: "success",
-                  itinerary: optimisticItinerary,
-                }
+                ...m,
+                content: optimisticSummary,
+                status: "success",
+                itinerary: optimisticItinerary,
+              }
               : m
           )
         );
@@ -766,11 +793,11 @@ export function useChat() {
                 prev.map((m) =>
                   m.id === editAssistantMsgId
                     ? {
-                        ...m,
-                        content: finalMsg,
-                        status: "success",
-                        itinerary: normalized,
-                      }
+                      ...m,
+                      content: finalMsg,
+                      status: "success",
+                      itinerary: normalized,
+                    }
                     : m
                 )
               );
@@ -788,6 +815,23 @@ export function useChat() {
       if (!activeItin && !activeTripId && hasPendingProposal && isEditRequest) {
         setMessages((prev) => [...prev, userMessage]);
         return await generateFromProposal(trimmed);
+      }
+
+      // Trường hợp 4: Chưa tạo lịch trình nào nhưng người dùng yêu cầu sửa lịch trình
+      if (!activeItin && !activeTripId && !hasPendingProposal && isEditRequest) {
+        const noItinMsg = "Hiện tại bạn chưa tạo lịch trình nào để chỉnh sửa. Bạn có muốn mình thiết kế lịch trình mới ngay bây giờ không? Hãy chia sẻ điểm đến và số ngày dự kiến nhé! 🗺️✨";
+        setMessages((prev) => [
+          ...prev,
+          userMessage,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: noItinMsg,
+            timestamp: new Date(),
+            status: "success",
+          },
+        ]);
+        return noItinMsg;
       }
 
       // Tạo placeholder đang suy nghĩ của AI
@@ -845,12 +889,12 @@ export function useChat() {
                 prev.map((msg) =>
                   msg.id === assistantMsgId
                     ? {
-                        ...msg,
-                        id: `msg-${data.message_id}`,
-                        content: data.content,
-                        status: "success",
-                        proposal,
-                      }
+                      ...msg,
+                      id: `msg-${data.message_id}`,
+                      content: data.content,
+                      status: "success",
+                      proposal,
+                    }
                     : msg
                 )
               );
@@ -887,17 +931,17 @@ export function useChat() {
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
-                    ...msg,
-                    id: response.message
-                      ? `msg-${response.message.id}`
-                      : assistantMsgId,
-                    content: answerContent,
-                    timestamp: response.message
-                      ? new Date(response.message.created_at)
-                      : new Date(),
-                    status: "success",
-                    proposal,
-                  }
+                  ...msg,
+                  id: response.message
+                    ? `msg-${response.message.id}`
+                    : assistantMsgId,
+                  content: answerContent,
+                  timestamp: response.message
+                    ? new Date(response.message.created_at)
+                    : new Date(),
+                  status: "success",
+                  proposal,
+                }
                 : msg
             )
           );
@@ -913,11 +957,11 @@ export function useChat() {
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
-                    ...msg,
-                    content: "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
-                    status: "error",
-                    errorMessage: errorMsg,
-                  }
+                  ...msg,
+                  content: "Rất tiếc, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
+                  status: "error",
+                  errorMessage: errorMsg,
+                }
                 : msg
             )
           );
@@ -982,16 +1026,16 @@ export function useChat() {
           prev.map((m) =>
             m.id === messageId
               ? {
-                  ...m,
-                  id: response.message
-                    ? `msg-${response.message.id}`
-                    : messageId,
-                  content: answerContent,
-                  timestamp: response.message
-                    ? new Date(response.message.created_at)
-                    : new Date(),
-                  status: "success",
-                }
+                ...m,
+                id: response.message
+                  ? `msg-${response.message.id}`
+                  : messageId,
+                content: answerContent,
+                timestamp: response.message
+                  ? new Date(response.message.created_at)
+                  : new Date(),
+                status: "success",
+              }
               : m
           )
         );
@@ -1003,10 +1047,10 @@ export function useChat() {
           prev.map((m) =>
             m.id === messageId
               ? {
-                  ...m,
-                  status: "error",
-                  errorMessage: errorMsg,
-                }
+                ...m,
+                status: "error",
+                errorMessage: errorMsg,
+              }
               : m
           )
         );

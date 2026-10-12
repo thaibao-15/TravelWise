@@ -150,8 +150,15 @@ class RAGChain:
             logger.error("RAG retrieval failed: %s", type(e).__name__)
             retrieved_docs = []
 
-        # 3. Handle documents found or fallback to conversational guide
+        # 3. Handle documents found or fallback
         if not retrieved_docs:
+            if not chat_history and not planning_summary:
+                return {
+                    "question": clean_question,
+                    "standalone_question": search_query,
+                    "answer": "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn.",
+                    "sources": [],
+                }
             context_text = (
                 "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
                 "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
