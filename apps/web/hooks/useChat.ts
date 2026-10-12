@@ -17,67 +17,113 @@ const INITIAL_WELCOME_MESSAGE: ChatMessage = {
   status: "success",
 };
 
-// Mẫu câu nhận diện ý định đồng ý tạo lịch trình từ giọng nói hoặc văn bản
+// Tiền xử lý chuẩn hóa chuỗi đầu vào (loại bỏ emoji, dấu câu thừa, chuẩn hóa khoảng trắng)
+function cleanPromptText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/[.,?!:;~^`'"()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Mẫu câu nhận diện ý định đồng ý tạo lịch trình từ giọng nói hoặc văn bản (hỗ trợ kính ngữ, từ lóng, teencode, tiếng Anh)
 const AFFIRMATIVE_INTENT_REGEX =
-  /^(có|tạo đi|tạo cho mình|đồng ý|ok|ừ|dạ có|lên lịch trình|yes|chốt|làm đi|lên kế hoạch đi|tạo luôn đi|tạo ngay đi|được đấy|tạo đi bạn|lên lịch đi|ừ tạo đi|nhờ bạn tạo|hãy tạo lịch trình|tạo giùm mình|tạo hộ mình)/i;
+  /(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b/i;
 
 /**
  * Nhận diện chính xác câu lệnh chỉnh sửa lịch trình hiện có.
- * Loại trừ triệt để câu hỏi hướng dẫn viên, câu hỏi FAQ du lịch và yêu cầu tạo lại từ đầu.
+ * Phân lớp lọc chặt chẽ: Loại trừ thắc mắc/FAQ -> Nhận diện các biến thể chỉnh sửa đa dạng.
  */
 function isItineraryEditIntent(prompt: string): boolean {
-  const lower = prompt.toLowerCase().trim();
+  const lower = cleanPromptText(prompt);
   if (!lower) return false;
 
-  // 1. Phủ định: Câu hỏi về danh tính, vai trò của hướng dẫn viên
+  // =========================================================================
+  // BƯỚC 1: BỘ LỌC PHỦ ĐỊNH (Tuyệt đối không phải lệnh sửa lịch trình)
+  // =========================================================================
+
+  // 1a. Câu hỏi về danh tính, vai trò bot, chào hỏi, cảm ơn đơn thuần
   if (
-    /hướng dẫn viên|bạn là ai|giới thiệu bản thân|bạn có thể làm gì|bạn tên gì|vai trò của bạn/i.test(lower)
+    /^(xin\s*chào|chào\s*bạn|hi|hello|cảm\s*ơn|thanks|thank\s*you|tạm\s*biệt)\b/i.test(lower) ||
+    /hướng\s*dẫn\s*viên|bạn\s*là\s*ai|giới\s*thiệu\s*bản\s*thân|bạn\s*có\s*thể\s*làm\s*gì|bạn\s*tên\s*gì|vai\s*trò\s*của\s*bạn/i.test(lower)
   ) {
     return false;
   }
 
-  // 2. Phủ định: Yêu cầu tạo lại từ đầu / làm lại mới toàn bộ
+  // 1b. Yêu cầu tạo mới từ đầu / làm lại hoàn toàn (thuộc luồng isRegenerateIntent)
   if (
-    /(tạo lại|làm lại|lên lại|thiết kế lại|lập lại|tạo mới|lên mới|xóa hết làm lại|chuyến đi mới|reset)/i.test(lower)
+    /(?:tạo\s*lại|làm\s*lại|lên\s*lại|thiết\s*kế\s*lại|lập\s*lại|tạo\s*mới|lên\s*mới|xóa\s*hết\s*làm\s*lại|chuyến\s*đi\s*mới|reset)/i.test(lower) &&
+    !/(?:thêm|bớt|sửa|chỉnh|ngày\s*\d)/i.test(lower)
   ) {
     return false;
   }
 
-  // 3. Phủ định: Các câu hỏi tham khảo thông tin địa danh, hỏi giờ mở cửa, giá vé, hỏi quán ăn chung
-  const isGeneralQuery =
-    /(mấy giờ (mở|đóng)|(mở|đóng) cửa lúc mấy giờ|vé bao nhiêu|giá vé|giá bao nhiêu|bao nhiêu tiền|ở đâu|cách bao xa|đi thế nào|đi bằng gì|có gì (ngon|chơi|đẹp|đặc sắc)|quán nào|chỗ nào|nơi nào|thời tiết|kinh nghiệm)\b/i.test(lower) ||
-    (/^(cho mình hỏi|hỏi xíu|hỏi chút|bạn ơi)/i.test(lower) && !/(đổi|thêm|bớt|xóa|dời)/i.test(lower));
+  // 1c. Các câu hỏi tham khảo FAQ du lịch, khoảng cách, review, mẹo, thời tiết
+  const isGeneralInquiry =
+    /(?:mấy\s*giờ\s*(?:mở|đóng)|(?:mở|đóng)\s*cửa\s*lúc\s*mấy\s*giờ|vé\s*bao\s*nhiêu|giá\s*vé|bao\s*nhiêu\s*tiền|mất\s*bao\s*lâu|cách\s*bao\s*xa|khoảng\s*cách|đi\s*hết\s*mấy\s*tiếng)\b/i.test(lower) ||
+    /(?:thời\s*tiết|có\s*mưa\s*không|mùa\s*này|mang\s*theo\s*gì|mặc\s*đồ\s*gì|trang\s*phục|kinh\s*nghiệm\s*đi|lưu\s*ý\s*gì)\b/i.test(lower) ||
+    /(?:có\s*ngon\s*không|có\s*đẹp\s*không|review|đánh\s*giá|nên\s*đi\s*không|có\s*gì\s*(?:chơi|ngon|hot|đặc\s*sắc))\b/i.test(lower) ||
+    /(?:nên\s*đi\s*[\w\s]+\s*hay\s*[\w\s]+|so\s*sánh|cái\s*nào\s*tốt\s*hơn)\b/i.test(lower);
 
-  if (isGeneralQuery) {
+  // Nếu là câu hỏi FAQ thuần túy và không kèm động từ hành động sửa đổi
+  const hasStrongEditVerb = /(?:thay|đổi|thêm|bớt|bỏ|xoá|xóa|dời|chuyển|sửa|chỉnh|cập\s*nhật|giãn|tối\s*ưu)/i.test(lower);
+  if (isGeneralInquiry && !hasStrongEditVerb) {
     return false;
   }
 
-  // 4. Khẳng định: Các mẫu câu lệnh chỉnh sửa lịch trình rõ ràng
-  // 4a. Thay đổi giờ giấc: "bắt đầu lúc 9h", "dời sang 10h", "lùi 1 tiếng", "sớm hơn", "muộn hơn"
+  // =========================================================================
+  // BƯỚC 2: BỘ LỌC KHẲNG ĐỊNH (Nhận diện các trường hợp chỉnh sửa)
+  // =========================================================================
+
+  // 2a. Thay đổi giờ giấc / thời gian
   const hasTimeAdjustment =
-    /(?:bắt đầu|khởi hành|xuất phát|dời|lùi|chuyển|đổi|sang)\s*(?:lúc|sang|vào|từ)?\s*\d{1,2}(?:h|:|\s*giờ)/i.test(lower) ||
-    /(?:sớm hơn|muộn hơn|trễ hơn|nhanh hơn|chậm hơn)\s*\d+/i.test(lower) ||
-    /(?:cho|để)\s+lịch\s+(?:bắt đầu|khởi hành)\s+lúc/i.test(lower);
+    /(?:bắt\s*đầu|khởi\s*hành|xuất\s*phát|dời|lùi|chuyển|đổi|sang|kéo\s*dài|rút\s*ngắn)\s*(?:lúc|sang|vào|từ)?\s*\d{1,2}(?:h|:|\s*giờ)/i.test(lower) ||
+    /(?:sớm\s*hơn|muộn\s*hơn|trễ\s*hơn|nhanh\s*hơn|chậm\s*hơn|ngủ\s*nướng)\b/i.test(lower) ||
+    /(?:cho|để)\s+(?:lịch|chuyến\s*đi)\s+(?:bắt\s*đầu|khởi\s*hành)\s+lúc/i.test(lower) ||
+    /(?:tăng|thêm|bớt|giảm)\s*\d+\s*(?:tiếng|giờ|phút)/i.test(lower);
 
-  // 4b. Thêm / Bớt / Xóa / Hoán đổi hoạt động hoặc địa điểm cụ thể
+  // 2b. Thêm / Bớt / Xóa / Bỏ qua hoạt động hoặc địa điểm cụ thể
   const hasActionWithTarget =
-    /(?:thêm|bổ sung|bớt|bỏ|xoá|xóa|thay thế|hoán đổi|đổi|chuyển)\s+(?:vào\s+ngày\s*\d|khỏi\s+lịch|ngày\s*\d|hoạt động|địa điểm|quán|biển|cafe|khách sạn|resort)/i.test(lower) ||
-    /(?:bỏ|xóa|xoá)\s+[a-zà-ỹ0-9\s]+(?:đi|khỏi lịch|ra)/i.test(lower) ||
-    /(?:thêm|ghé thêm)\s+[a-zà-ỹ0-9\s]+(?:vào ngày|vào buổi|vào lịch)/i.test(lower);
+    /(?:thêm|bổ\s*sung|bớt|bỏ|xoá|xóa|cắt\s*bớt|ghé\s*thêm|chèn\s*thêm)\s+(?:vào\s+ngày\s*\d|khỏi\s+lịch|ngày\s*\d|hoạt\s*động|địa\s*điểm|quán|biển|cafe|cà\s*phê|khách\s*sạn|resort|chợ|chùa|bảo\s*tàng|điểm)/i.test(lower) ||
+    /(?:bỏ|xóa|xoá|bỏ\s*qua|không\s*đi|ngưng\s*đi)\s+[\w\s]+(?:đi|khỏi\s*lịch|ra|nữa)/i.test(lower) ||
+    /(?:thêm|ghé\s*thêm|chèn)\s+[\w\s]+(?:vào\s*ngày|vào\s*buổi|vào\s*lịch|cho\s*mình)/i.test(lower);
 
-  // 4c. Chỉnh sửa ngày cụ thể: "ngày 1 đổi sang...", "sửa ngày 2..."
-  const hasDayEdit =
-    /ngày\s*\d\s*(?:thay|đổi|sửa|chỉnh|thêm|bớt|bỏ|xoá|xóa|dời|chuyển)/i.test(lower) ||
-    /(?:sửa|đổi|chỉnh|cập nhật)\s+ngày\s*\d/i.test(lower);
+  // 2c. Thay thế / Hoán đổi (Thay A bằng B, đổi thứ tự, đảo ngày)
+  const hasSwapOrReplace =
+    /(?:thay|đổi|chuyển)\s+[\w\s]+(?:bằng|thành|sang)\s+[\w\s]+/i.test(lower) ||
+    /(?:đảo|hoán\s*đổi|đổi\s*thứ\s*tự)\s+(?:ngày|buổi|hoạt\s*động|địa\s*điểm|\d)/i.test(lower) ||
+    /ngày\s*\d\s*(?:đổi|hoán\s*đổi|đảo)\s*(?:với|cho)\s*ngày\s*\d/i.test(lower);
 
-  // 4d. Yêu cầu chỉnh sửa lịch trình: "sửa lại lịch trình", "chỉnh sửa lịch trình", "sửa lịch trình cho mình", "thay đổi lịch trình"...
+  // 2d. Chỉnh sửa theo ngày hoặc theo buổi cụ thể
+  const hasDayOrSessionEdit =
+    /(?:ngày\s*\d|hôm\s*\d)\s*(?:thay|đổi|sửa|chỉnh|thêm|bớt|bỏ|xoá|xóa|dời|chuyển|ưu\s*tiên|tối\s*ưu)/i.test(lower) ||
+    /(?:sửa|đổi|chỉnh|cập\s*nhật|update)\s+(?:ngày\s*\d|hôm\s*\d)/i.test(lower) ||
+    /(?:buổi\s*)?(?:sáng|trưa|chiều|tối|đêm)\s*(?:ngày\s*\d|hôm\s*\d)?\s*(?:đổi|thay|thêm|bớt|bỏ|chuyển|cho\s*đi|ghé)/i.test(lower);
+
+  // 2e. Điều chỉnh nhịp độ, phong cách, đối tượng, phương tiện
+  const hasPacingOrStyleEdit =
+    /(?:dày\s*đặc|kín\s*quá|gấp\s*quá|nhiều\s*điểm\s*quá|mệt\s*quá)\s*(?:giãn|bớt|chỉnh|sửa|giảm)/i.test(lower) ||
+    /(?:giãn\s*(?:lịch|thời\s*gian|ra)|thong\s*thả\s*hơn|nhẹ\s*nhàng\s*hơn|nghỉ\s*ngơi\s*nhiều\s*hơn)/i.test(lower) ||
+    /(?:đổi|chuyển|chỉnh|sửa)\s*(?:sang|theo)?\s*(?:phong\s*cách\s*)?(?:nghỉ\s*dưỡng|chill|tiết\s*kiệm|sang\s*chảnh|trải\s*nghiệm)/i.test(lower) ||
+    /(?:đi\s*cùng|có)\s*(?:người\s*già|người\s*lớn\s*tuổi|trẻ\s*(?:em|nhỏ|con))\s*(?:nên|sửa|chỉnh|giảm)/i.test(lower) ||
+    /(?:đổi\s*phương\s*tiện|thuê\s*xe\s*máy|đi\s*taxi|đi\s*grab)/i.test(lower);
+
+  // 2f. Yêu cầu sửa lịch trình tổng quát
   const hasGeneralEdit =
-    /(?:sửa|chỉnh|chỉnh sửa|thay đổi|cập nhật|điều chỉnh|sắp xếp lại)\s*(?:lại\s*)?(?:lịch|lịch trình|chuyến đi|kế hoạch)/i.test(lower) ||
-    /(?:lịch|lịch trình|chuyến đi|kế hoạch)\s*(?:này\s*)?(?:cần\s*)?(?:sửa|chỉnh|thay đổi|cập nhật|điều chỉnh)/i.test(lower) ||
-    /(?:sửa|chỉnh|thay đổi|cập nhật|điều chỉnh)\s*(?:giúp|hộ|cho)\s*mình(?:\s*(?:lịch|lịch trình|chuyến đi))?/i.test(lower) ||
-    /(?:sửa|chỉnh|chỉnh sửa)\s+(?:lại|giúp|cho|hộ)/i.test(lower);
+    /(?:sửa|chỉnh|chỉnh\s*sửa|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|sắp\s*xếp\s*lại|tối\s*ưu\s*lại|update|edit|fix)\s*(?:lại\s*)?(?:lịch|lịch\s*trình|chuyến\s*đi|kế\s*hoạch)/i.test(lower) ||
+    /(?:lịch|lịch\s*trình|chuyến\s*đi|kế\s*hoạch)\s*(?:này\s*)?(?:cần\s*)?(?:sửa|chỉnh|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|update|edit)/i.test(lower) ||
+    /(?:sửa|chỉnh|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|update|edit|fix)\s*(?:giúp|hộ|cho|giùm)\s*mình/i.test(lower) ||
+    /(?:sửa|chỉnh|chỉnh\s*sửa|update|edit)\s+(?:lại|giúp|cho|hộ|giùm|tí|chút|xíu)/i.test(lower);
 
-  return Boolean(hasTimeAdjustment || hasActionWithTarget || hasDayEdit || hasGeneralEdit);
+  return Boolean(
+    hasTimeAdjustment ||
+    hasActionWithTarget ||
+    hasSwapOrReplace ||
+    hasDayOrSessionEdit ||
+    hasPacingOrStyleEdit ||
+    hasGeneralEdit
+  );
 }
 
 function applyItineraryEdit(
