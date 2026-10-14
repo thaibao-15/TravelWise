@@ -12,6 +12,7 @@ import '../widgets/location_suggestions.dart';
 import '../widgets/conversation_drawer.dart';
 import '../widgets/place_recommendation_card.dart';
 import '../widgets/assistant_input_bar.dart';
+import '../widgets/map_gps_card.dart';
 
 /// TravelSense Voice AI — full-screen demo.
 /// All data is mock / local. No API calls.
@@ -66,6 +67,11 @@ class TravelAssistantScreen extends ConsumerWidget {
 
                     // ── Location suggestions ────────────────────────────────
                     const LocationSuggestions(),
+
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // ── Map & GPS action card ────────────────────────────────
+                    const MapGpsCard(),
 
                     const SizedBox(height: AppSpacing.lg),
 

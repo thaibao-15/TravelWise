@@ -77,6 +77,9 @@ class CustomBottomNavBar extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.primary,
               shape: BoxShape.circle,
+              border: isSelected
+                  ? Border.all(color: Colors.white, width: 2)
+                  : null,
               boxShadow: [
                 BoxShadow(
                   color: AppColors.primary.withOpacity(0.3),
