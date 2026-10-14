@@ -51,7 +51,6 @@ class FeaturedTripCard extends StatelessWidget {
   }
 
   Widget _buildImageHeader() {
-    final dateFormat = DateFormat('dd - dd MMM, yyyy');
     return Stack(
       children: [
         ClipRRect(
