@@ -7,6 +7,7 @@ import {
   GeneratedItineraryData,
 } from "@/types/chat";
 import { chatService } from "@/services/chat.service";
+import { ttsService } from "@/services/tts.service";
 import { isCreateItineraryCommand } from "@/lib/utils";
 
 const INITIAL_WELCOME_MESSAGE: ChatMessage = {
@@ -596,7 +597,11 @@ export function useChat() {
    * Gửi tin nhắn (Văn bản hoặc Giọng nói STT)
    */
   const sendMessage = useCallback(
-    async (queryText: string, mode: "chat" | "voice" = "chat"): Promise<string | null | void> => {
+    async (
+      queryText: string,
+      mode: "chat" | "voice" = "chat",
+      onSentence?: (sentence: string) => void
+    ): Promise<string | null | void> => {
       const trimmed = queryText.trim();
       if (!trimmed || isLoading || isPlanning) return;
 
@@ -908,6 +913,8 @@ export function useChat() {
       let currentStreamContent = "";
 
       try {
+        let sentenceBuffer = "";
+
         // Ưu tiên truyền phát dữ liệu thời gian thực (SSE Streaming)
         const finalAnswer = await chatService.askStream(
           trimmed,
@@ -926,8 +933,23 @@ export function useChat() {
                     : msg
                 )
               );
+
+              // Trong chế độ voice: đẩy từng câu vào hàng đợi phát NGAY KHI CÂU ĐÓ KẾT THÚC
+              if (mode === "voice" && onSentence) {
+                sentenceBuffer += token;
+                const match = sentenceBuffer.match(/^(.*?[\.\!\?\n])(\s+|$)/);
+                if (match && match[1].trim().length >= 25) {
+                  onSentence(match[1].trim());
+                  sentenceBuffer = sentenceBuffer.slice(match[0].length);
+                }
+              }
             },
             onDone: (data: any) => {
+              if (mode === "voice" && onSentence && sentenceBuffer.trim()) {
+                onSentence(sentenceBuffer.trim());
+                sentenceBuffer = "";
+              }
+
               if (data.conversation_id) {
                 setConversationId(data.conversation_id);
               }

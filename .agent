@@ -1,0 +1,64 @@
+# TravelWise — AI Agent Rules & Code Optimization Standards
+
+Tài liệu này chứa các quy tắc, tiêu chuẩn kiến trúc và hướng dẫn tối ưu code dành cho AI Assistant trong toàn bộ dự án **TravelWise**.
+
+---
+
+## 1. Nguyên tắc cốt lõi (Core Principles)
+- **Tối ưu hiệu năng & trải nghiệm thời gian thực (Real-time First)**: Ưu tiên streaming, non-blocking I/O, pipeline song song, tránh blocking main thread hoặc đợi tải trọn gói tài nguyên lớn.
+- **Tính toàn vẹn & Không phá vỡ chức năng cũ**: Khi sửa lỗi hoặc thêm tính năng, bảo toàn nguyên vẹn các comment, docstring và luồng logic không liên quan.
+- **Type Safety tuyệt đối**:
+  - Frontend: TypeScript `strict: true`, không dùng `any` bừa bãi.
+  - Backend: Khai báo Type Hints đầy đủ trong Python (`Optional`, `list`, `dict`, Pydantic models).
+- **Phân tách trách nhiệm (Separation of Concerns)**:
+  - UI Component không chứa trực tiếp logic gọi API phức tạp hoặc state machine âm thanh -> Tách vào Hooks (`useVoiceCompanion`, `useChat`) và Services (`chat.service.ts`, `tts.service.ts`).
+  - Backend Route handlers chỉ validate và điều hướng -> Logic nghiệp vụ nằm ở `app/services/` hoặc `app/rag/`.
+
+---
+
+## 2. Dev Stack & Lệnh Thực Thi Chuẩn
+- **Frontend** (`apps/web`):
+  - Package manager: `bun` (hoặc `npm`)
+  - Chạy dev: `bun run dev`
+  - Build & Kiểm tra type: `bun run build`
+- **Backend** (`apps/api`):
+  - Package & Env manager: `uv`
+  - Chạy dev: `uv run uvicorn app.main:app --reload`
+  - Chạy script / test: `uv run python <file.py>`
+  - Cài package: `uv add <package-name>`
+
+---
+
+## 3. Tiêu chuẩn Frontend (Next.js App Router & React)
+1. **Quản lý Bất đồng bộ & Event Callbacks**:
+   - Khi làm việc với Streaming SSE (chat) hoặc Audio playback: Luôn sử dụng `useRef` kết hợp `useCallback` để tránh bug **Stale Closure** khi callback được gọi bất đồng bộ.
+   - Tránh race condition giữa các state cập nhật lệch pha (như `isLoadingChat` vs `voiceState`). Sử dụng pending refs (`isTTSPendingRef`) để chốt trạng thái tức thì.
+2. **Audio & Realtime TTS**:
+   - Sử dụng cơ chế hàng đợi streaming (`StreamingTTSQueue` trong `tts.service.ts`): Cắt nhỏ câu đầu tiên phát ngay trong vòng < 1s, đồng thời prefetch nền các câu tiếp theo.
+   - Luôn ngắt microphone (`stopRecording()`) trước khi phát âm thanh ra loa để tránh mic thu lại tiếng bot gây vòng lặp âm thanh vô hạn.
+3. **UI / Styling**:
+   - Tailwind CSS với dark mode tinh tế (`slate-950`, `slate-900`, `cyan-400`, `indigo-500`).
+   - Tối ưu UI cho thiết bị di động, bổ sung hiệu ứng mượt mà (transitions, ripple, pulse animation cho voice orb).
+
+---
+
+## 4. Tiêu chuẩn Backend (FastAPI, Python, SQLModel & RAG)
+1. **Async / Non-blocking**:
+   - Các tác vụ I/O (WebSocket, HTTP requests ra ngoài, truy vấn DB) bắt buộc dùng hàm `async def` và client bất đồng bộ (`httpx.AsyncClient`).
+   - Sử dụng Request Coalescing (`asyncio.Future`) khi nhận nhiều request cùng nội dung nhằm tái sử dụng kết quả, tránh gọi trùng lặp lên các dịch vụ AI bên ngoài (như TTS / LLM).
+2. **Cấu hình & Bí mật**:
+   - Đọc toàn bộ biến môi trường qua `app.core.config.settings`. Tuyệt đối không hardcode API key vào code.
+3. **Voice Guide RAG Prompting**:
+   - Prompt dành riêng cho Voice (`RAG_VOICE_SYSTEM_INSTRUCTION`):
+     - Câu trả lời tự nhiên, độ dài 3–4 câu (80–150 từ), cung cấp đầy đủ thông tin hữu ích nhưng cô đọng.
+     - **Tuyệt đối KHÔNG lặp lại câu chào** "Chào bạn tôi là TravelWise AI..." ở đầu mỗi câu trả lời.
+     - **Tuyệt đối KHÔNG dùng định dạng markdown** (`**`, `#`, `-`, `1.`, emoji) để TTS đọc tự nhiên, mượt mà.
+     - Đảm bảo danh tính là **TravelWise AI**, không dùng profile/thương hiệu của công ty du lịch bên thứ ba.
+
+---
+
+## 5. Quy trình Kiểm thử (Pre-flight Checklist)
+Trước khi kết thúc bất kỳ chỉnh sửa nào:
+1. Chạy `bun run build` trong `apps/web` để kiểm tra compile & typecheck.
+2. Kiểm tra cú pháp và import Python bằng `uv run python` trong `apps/api`.
+3. Kiểm tra tính năng realtime không bị delay hoặc nghẽn thread.

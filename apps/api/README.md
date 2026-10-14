@@ -1,419 +1,368 @@
-# TravelWise API
+# 🚀 TravelWise API — Backend Service
 
-Backend REST API cho ứng dụng du lịch **TravelWise**, xây dựng bằng **FastAPI** + **SQLModel** + **SQL Server**.
-
----
-
-## 🛠️ Tech Stack
-
-| Thành phần | Công nghệ |
-|---|---|
-| Web framework | FastAPI |
-| ORM | SQLModel + SQLAlchemy |
-| Database | Microsoft SQL Server |
-| DB Driver | pyodbc (ODBC Driver 17) |
-| Migration | Alembic |
-| Auth | PyJWT + pwdlib (BCrypt) |
-| Config | Pydantic Settings |
-| Runtime | Python ≥ 3.14 |
-| Package manager | [uv](https://docs.astral.sh/uv/) |
+Backend REST API & AI Engine cho nền tảng du lịch **TravelWise**, được xây dựng với **FastAPI**, **SQLModel**, **Microsoft SQL Server**, **Chroma Vector DB**, **Google Gemini LLM** và **Blaze AI Realtime Voice**.
 
 ---
 
-## ⚙️ Yêu cầu hệ thống
+## 🛠️ Công nghệ Sử dụng (Tech Stack)
+
+| Thành phần | Công nghệ | Mô tả |
+|---|---|---|
+| **Web Framework** | [FastAPI](https://fastapi.tiangolo.com/) (Async) | High-performance, Swagger UI tự động, Non-blocking I/O |
+| **ORM & Database** | [SQLModel](https://sqlmodel.tiangolo.com/) + SQLAlchemy | Type-safe ORM kết nối Microsoft SQL Server qua `pyodbc` |
+| **Database Migrations** | [Alembic](https://alembic.sqlalchemy.org/) | Quản lý lịch sử và phiên bản cấu trúc database |
+| **RAG & Vector DB** | [ChromaDB](https://www.trychroma.com/) + LangChain | Lưu trữ vector embeddings, Semantic Search tri thức du lịch |
+| **LLM Engine** | [Google Gemini](https://ai.google.dev/) (`gemini-3.5-flash-lite`) | Hỏi đáp RAG thông minh, lập kế hoạch lịch trình tự động |
+| **Realtime TTS** | [Blaze AI](https://blaze.vn/) (WebSocket + Streaming HTTP) | Chuyển văn bản thành giọng nói tiếng Việt với độ trễ < 1s |
+| **Authentication** | PyJWT + pwdlib (BCrypt) | Bảo mật JWT token, phân quyền người dùng |
+| **Runtime & Package** | Python ≥ 3.14 + [uv](https://docs.astral.sh/uv/) | Quản lý virtual environment và dependencies siêu tốc |
+
+---
+
+## ⚙️ Yêu cầu Hệ thống
 
 - **Python** ≥ 3.14
-- **uv** — package manager ([cài đặt](https://docs.astral.sh/uv/getting-started/installation/))
-- **Microsoft SQL Server** (local hoặc remote)
-- **ODBC Driver 17 for SQL Server** — [tải tại đây](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
+- **uv** — Trình quản lý gói và môi trường ([Hướng dẫn cài đặt uv](https://docs.astral.sh/uv/getting-started/installation/))
+- **Microsoft SQL Server** (Bản Local, Docker hoặc Remote Cloud)
+- **ODBC Driver 17 for SQL Server** — [Tải ODBC Driver 17](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
 
 ---
 
-## 🚀 Hướng dẫn chạy dự án
+## 🚀 Hướng dẫn Cài đặt & Khởi chạy
 
-### 1. Clone & di chuyển vào thư mục API
+### 1. Di chuyển vào thư mục API
 
 ```bash
-git clone <repo-url>
 cd TravelWise/apps/api
 ```
 
-### 2. Cài đặt dependencies
+### 2. Cài đặt Dependencies với `uv`
 
 ```bash
 uv sync
 ```
+> `uv` sẽ tự động tạo virtual environment (`.venv`) và đồng bộ toàn bộ dependencies từ file `pyproject.toml`.
 
-> `uv` sẽ tự tạo virtual environment (`.venv`) và cài đặt toàn bộ dependencies từ `pyproject.toml`.
+### 3. Cấu hình Biến môi trường
 
-### 3. Cấu hình biến môi trường
-
-Copy file mẫu và chỉnh sửa thông số kết nối:
+Sao chép file cấu hình mẫu:
 
 ```bash
+# Trên Windows PowerShell:
+copy .env.example .env
+
+# Trên Linux / macOS:
 cp .env.example .env
 ```
 
-Mở file `.env` và cập nhật:
+Mở file `.env` và điền các thông số:
 
 ```env
-# SQL Server Database Configuration
+# 1. SQL Server Database
 SQLSERVER_SERVER=localhost
 SQLSERVER_PORT=1433
 SQLSERVER_USER=sa
-SQLSERVER_PASSWORD=YourPassword
+SQLSERVER_PASSWORD=YourPassword123!
 SQLSERVER_DB=TravelWiseDB
 SQLSERVER_DRIVER=ODBC Driver 17 for SQL Server
 SQLSERVER_TRUST_CERT=yes
 
-# JWT Configuration
+# 2. JWT Security
 JWT_SECRET=your-super-secret-key-change-this-in-production
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 
-# LLM Configuration (Google Gemini miễn phí hoặc OpenAI)
+# 3. LLM Configuration (Google Gemini)
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-api-key-here
 GEMINI_MODEL=gemini-3.5-flash-lite
 
-# RAG Embedding Configuration (local = miễn phí 100%, không tốn quota)
-EMBEDDING_PROVIDER=local
+# 4. Blaze AI Realtime TTS (Voice Companion)
+BLAZE_API_KEY=your-blaze-api-key-here
+BLAZE_TTS_WS_URL=wss://api.blaze.vn/v1/tts/realtime
+BLAZE_TTS_SPEAKER_ID=DaNang-Nu-1-BL
+BLAZE_TTS_MODEL=2.0-realtime
+BLAZE_TTS_AUDIO_FORMAT=mp3
+
+# 5. Chroma Vector DB
+CHROMA_PERSIST_DIRECTORY=data/chroma
+CHROMA_COLLECTION_NAME=travelwise_knowledge
+EMBEDDING_PROVIDER=auto
 ```
 
-> ⚠️ **Quan trọng:** 
-> - Đổi `JWT_SECRET` thành một chuỗi ngẫu nhiên mạnh trước khi deploy production.
-> - Lấy `GEMINI_API_KEY` miễn phí tại [Google AI Studio](https://aistudio.google.com/apikey).
+> 💡 **Lấy API Key:**
+> - `GEMINI_API_KEY`: Miễn phí tại [Google AI Studio](https://aistudio.google.com/apikey).
+> - `BLAZE_API_KEY`: Đăng ký tài khoản tại [Blaze AI](https://blaze.vn/).
 
-### 4. Tạo database trên SQL Server
+### 4. Khởi tạo Database & Chạy Migrations
 
-Kết nối vào SQL Server và chạy lệnh sau để tạo database và bảng:
-
+Kết nối vào SQL Server và tạo cơ sở dữ liệu:
 ```sql
 CREATE DATABASE TravelWiseDB;
 GO
-
-USE TravelWiseDB;
-GO
-
-CREATE TABLE users (
-    id          BIGINT IDENTITY PRIMARY KEY,
-    email       NVARCHAR(255) UNIQUE NOT NULL,
-    password    NVARCHAR(MAX),
-    full_name   NVARCHAR(255),
-    avatar_url  NVARCHAR(MAX),
-    role        NVARCHAR(20)  DEFAULT 'USER',
-    is_active   BIT           DEFAULT 1,
-    created_at  DATETIME      DEFAULT GETDATE(),
-    updated_at  DATETIME      DEFAULT GETDATE()
-);
-GO
 ```
 
-### 5. Chạy migration với Alembic
-
+Áp dụng các migration của Alembic:
 ```bash
-# Tạo migration mới (nếu có thay đổi model)
-uv run alembic revision --autogenerate -m "initial"
-
-# Áp dụng migration lên database
 uv run alembic upgrade head
 ```
 
-### 6. Khởi tạo dữ liệu mẫu (Seeding)
+### 5. Nạp dữ liệu mẫu (Seeding) & Tri thức RAG
 
-Nạp dữ liệu các địa điểm du lịch, danh mục và bài viết tri thức vào SQL Server:
-
+Nạp dữ liệu ban đầu về danh mục, địa điểm và bài viết:
 ```bash
 uv run python seed.py
 ```
 
-### 7. Nạp dữ liệu từ SQL Server vào Chroma Vector Database (RAG Ingestion)
-
-Để hệ thống RAG có thể tìm kiếm và trả lời thông minh, chạy lệnh sau để chuyển đổi các bài viết tri thức từ SQL Server sang vector embeddings và lưu vào Chroma:
-
+Nạp dữ liệu từ SQL Server vào Chroma Vector DB:
 ```bash
 uv run python scripts/ingest_rag.py
 ```
 
-> 💡 **Cơ chế hoạt động:**
-> 1. Đọc toàn bộ các bài viết từ bảng `Knowledge` trong SQL Server.
-> 2. Chia bài viết thành các đoạn nhỏ (`chunk_size=500`, `overlap=100`) bằng `RecursiveCharacterTextSplitter`.
-> 3. Tạo vector embeddings (mặc định dùng model local `all-MiniLM-L6-v2` miễn phí, không tốn quota API).
-> 4. Lưu và đánh index vào thư mục `data/chroma`.
-> 5. Script sử dụng ID cố định (`knowledge_{id}_chunk_{index}`) nên có thể **chạy lại bất kỳ lúc nào** khi có bài viết mới mà không lo trùng lặp dữ liệu.
+*(Tùy chọn)* Nạp thêm dữ liệu cào du lịch Đà Nẵng:
+```bash
+uv run python scripts/ingest_crawled_knowledge.py
+```
 
-### 8. Khởi chạy server
+### 6. Khởi chạy Server Development
 
-**Development (auto-reload):**
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
-**Production:**
-```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-Server sẽ chạy tại: `http://127.0.0.1:8000`
+Server sẽ lắng nghe tại: **`http://localhost:8000`**
 
 ---
 
-## 📋 Cấu trúc thư mục
+## 📂 Cấu trúc Thư mục (Directory Structure)
 
-```
+```text
 apps/api/
-├── alembic/                  # Alembic migrations
-│   ├── versions/             # Các file migration
-│   └── env.py                # Cấu hình Alembic
+├── alembic/                      # Quản lý migration cơ sở dữ liệu
+│   ├── versions/                 # Các file migration tự động
+│   └── env.py                    # Cấu hình kết nối Alembic
+│
 ├── app/
-│   ├── api/
-│   │   ├── deps.py           # FastAPI dependencies (auth)
-│   │   └── routes/
-│   │       ├── auth.py       # Endpoints: /register, /login, /me
-│   │       └── users.py      # Endpoints: /users
-│   ├── core/
-│   │   ├── config.py         # Pydantic Settings (đọc .env)
-│   │   └── security.py       # BCrypt hashing + JWT utilities
-│   ├── db/
-│   │   └── session.py        # SQLModel engine & session
-│   ├── models/
-│   │   └── user.py           # SQLModel User model
-│   ├── schemas/
-│   │   ├── auth.py           # RegisterRequest, LoginRequest, TokenResponse
-│   │   └── user.py           # UserResponse
-│   ├── services/
-│   │   └── auth_service.py   # Business logic tầng Service
-│   └── main.py               # FastAPI app entry point
-├── .env                      # Biến môi trường (không commit)
-├── .env.example              # Mẫu biến môi trường
-├── alembic.ini               # Cấu hình Alembic
-└── pyproject.toml            # Dependencies & metadata
+│   ├── api/                      # Tầng Presentation / HTTP Routes
+│   │   ├── deps.py               # Dependency Injection (Auth, Session, Permissions)
+│   │   └── routes/               # API Endpoints
+│   │       ├── auth.py           # Đăng ký, Đăng nhập, /me
+│   │       ├── users.py          # Quản lý tài khoản người dùng
+│   │       ├── places.py         # Tìm kiếm, lọc và xem chi tiết địa điểm
+│   │       ├── categories.py     # Danh mục du lịch
+│   │       ├── conversations.py  # Quản lý lịch sử phòng chat
+│   │       ├── rag.py            # RAG Ask (Chat/Voice), RAG Semantic Search
+│   │       ├── trips.py          # Lập lịch trình AI, Day plans, Activities
+│   │       ├── tts.py            # Realtime TTS stream, status, websocket probe
+│   │       └── stt.py            # Nhận diện giọng nói STT
+│   │
+│   ├── core/                     # Cấu hình lõi & Bảo mật
+│   │   ├── config.py             # Pydantic Settings đọc biến môi trường (.env)
+│   │   └── security.py           # Hashing BCrypt, mã hóa & giải mã JWT Token
+│   │
+│   ├── db/                       # Kết nối cơ sở dữ liệu
+│   │   └── session.py            # SQLModel Engine & Session generator
+│   │
+│   ├── models/                   # SQLModel Database Models (Ánh xạ bảng)
+│   │   ├── user.py               # Bảng Users
+│   │   ├── place.py              # Bảng Places, Reviews, Knowledge
+│   │   ├── category.py           # Bảng Categories
+│   │   ├── conversation.py       # Bảng Conversations, Messages
+│   │   └── trip.py               # Bảng Trips, TripDays, TripActivities
+│   │
+│   ├── rag/                      # RAG Core Engine
+│   │   ├── chain.py              # LangChain RAG pipeline & LLM chain
+│   │   ├── prompt.py             # Prompts chuyên biệt cho Chat vs Voice Guide
+│   │   ├── retriever.py          # Bộ truy xuất tài liệu tương đồng ngữ nghĩa
+│   │   ├── vectorstore.py        # Quản lý kết nối Chroma Vector DB
+│   │   └── embeddings.py         # Module sinh vector embeddings
+│   │
+│   ├── schemas/                  # Pydantic Request / Response Schemas
+│   │   ├── auth.py, user.py, place.py, category.py
+│   │   ├── conversation.py, trip.py, rag.py, tts.py, stt.py
+│   │
+│   ├── services/                 # Tầng Business Logic
+│   │   ├── auth_service.py       # Nghiệp vụ xác thực & tài khoản
+│   │   ├── conversation_service.py # Quản lý tin nhắn & ngữ cảnh hội thoại
+│   │   ├── trip_planning.py      # Sinh lịch trình du lịch thông minh qua LLM
+│   │   ├── itinerary_persistence.py # Lưu trữ cấu trúc lịch trình vào SQL Server
+│   │   ├── tts_service.py        # Blaze AI Realtime TTS WebSocket & Pipelining
+│   │   └── stt_service.py        # Dịch vụ nhận dạng giọng nói
+│   │
+│   └── main.py                   # FastAPI Application initialization & Middlewares
+│
+├── data/                         # Lưu trữ Chroma DB & file dữ liệu cào
+│   ├── chroma/                   # Chroma Vector DB Storage
+│   └── crawled_pages.jsonl       # Dữ liệu cào tri thức du lịch
+│
+├── scripts/                      # Các tiện ích bổ trợ
+│   ├── crawl_danang_tourism.py   # Script cào bài viết du lịch
+│   ├── ingest_crawled_knowledge.py # Nạp dữ liệu cào vào Chroma DB
+│   └── ingest_rag.py             # Nạp dữ liệu Knowledge từ SQL Server vào Chroma
+│
+├── tests/                        # 11 Test Suites tự động (100% Pass)
+│   ├── test_tts.py, test_ask_api.py, test_chain.py, test_prompt.py
+│   ├── test_llm.py, test_stt.py, test_place_search.py, test_itinerary_generation.py
+│   ├── test_conversation_memory.py, test_trip_planning_context.py, test_itinerary_persistence.py
+│
+├── .env.example                  # Mẫu biến môi trường
+├── alembic.ini                   # Cấu hình Alembic
+└── pyproject.toml                # Dependencies & Metadata dự án
 ```
 
 ---
 
-## 📖 API Documentation
+## 📖 Tài liệu API (Interactive Documentation)
 
-Sau khi chạy server, truy cập:
+Khi server đang chạy, truy cập tài liệu tương tác:
 
-| URL | Mô tả |
-|---|---|
-| `http://127.0.0.1:8000/docs` | **Swagger UI** (interactive docs) |
-| `http://127.0.0.1:8000/redoc` | **ReDoc** (readable docs) |
-| `http://127.0.0.1:8000/openapi.json` | OpenAPI JSON schema |
-
----
-
-## 🔐 Authentication
-
-### Đăng ký tài khoản
-
-```http
-POST /api/v1/auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "123456",
-  "full_name": "Nguyen Van A"
-}
-```
-
-**Response `201 Created`:**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "full_name": "Nguyen Van A",
-  "avatar_url": null,
-  "role": "USER",
-  "is_active": true,
-  "created_at": "2026-10-02T10:00:00Z",
-  "updated_at": "2026-10-02T10:00:00Z"
-}
-```
+| Đường dẫn | Công cụ | Chức năng |
+|---|---|---|
+| **`http://localhost:8000/docs`** | **Swagger UI** | Thử nghiệm trực tiếp các API ngay trên trình duyệt |
+| **`http://localhost:8000/redoc`** | **ReDoc** | Đọc tài liệu chi tiết, trực quan hóa Schemas |
+| **`http://localhost:8000/openapi.json`** | **OpenAPI Schema** | File cấu hình chuẩn OpenAPI 3.1 |
 
 ---
 
-### Đăng nhập
+## 🌐 Danh sách Endpoint Chính (Key Endpoints)
 
-```http
-POST /api/v1/auth/login
-Content-Type: application/json
+### 1. Trợ lý AI Du lịch (RAG Assistant)
 
-{
-  "email": "user@example.com",
-  "password": "123456"
-}
-```
+#### `POST /api/v1/rag/ask`
+Gửi câu hỏi của người dùng để RAG AI truy xuất tài liệu và trả lời.
 
-**Response `200 OK`:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer"
-}
-```
-
----
-
-### Lấy thông tin người dùng hiện tại
-
-```http
-GET /api/v1/auth/me
-Authorization: Bearer <access_token>
-```
-
-**Response `200 OK`:**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "full_name": "Nguyen Van A",
-  "avatar_url": null,
-  "role": "USER",
-  "is_active": true,
-  "created_at": "2026-10-02T10:00:00Z",
-  "updated_at": "2026-10-02T10:00:00Z"
-}
-```
-
----
-
-### HTTP Status Codes
-
-| Code | Ý nghĩa |
-|---|---|
-| `200` | Thành công |
-| `201` | Tạo mới thành công |
-| `401` | Sai email/password hoặc token không hợp lệ |
-| `403` | Tài khoản bị vô hiệu hóa |
-| `409` | Email đã tồn tại |
-| `422` | Request body không hợp lệ |
-
----
-
----
-
-## 🤖 RAG & AI Assistant APIs
-
-TravelWise tích hợp hệ thống RAG (Retrieval-Augmented Generation) kết hợp Chroma Vector Database và Gemini Chat Model.
-
-### 1. Hỏi đáp du lịch thông minh (RAG Ask)
-
-Gửi câu hỏi của người dùng, hệ thống tự động tìm kiếm tài liệu liên quan nhất và sinh câu trả lời chính xác, thân thiện:
-
-```http
-POST /api/v1/rag/ask
-Content-Type: application/json
-
-{
-  "message": "Chùa Linh Ứng có gì đặc biệt?"
-}
-```
-
-**Response `200 OK`:**
-```json
-{
-  "conversation_id": 15,
-  "message": {
-    "id": 42,
-    "sender": "AI",
-    "content": "Chùa Linh Ứng - Bãi Bụt nổi bật với tượng Phật Quan Thế Âm cao 67m (tương đương tòa nhà 30 tầng), là một trong những tượng Phật cao nhất Việt Nam...",
-    "created_at": "2026-10-05T08:00:00Z",
-    "audio_url": null
+- **Request Body:**
+  ```json
+  {
+    "query": "Thời tiết Đà Nẵng mùa này thế nào?",
+    "conversation_id": 15,
+    "mode": "voice"
   }
-}
-```
+  ```
+  - `mode="voice"`: Phản hồi súc tích 3–4 câu văn xuôi, không markdown, chuẩn bị sẵn cho TTS đọc ngay.
+  - `mode="chat"`: Phản hồi chi tiết, hỗ trợ markdown, gạch đầu dòng và đề xuất lịch trình.
 
----
+- **Response `200 OK`:**
+  ```json
+  {
+    "conversation_id": 15,
+    "message": {
+      "id": 2055,
+      "sender": "AI",
+      "content": "Thời tiết Đà Nẵng hiện tại đang rất tuyệt vời với bầu trời quang đãng...",
+      "created_at": "2026-10-14T09:24:58.263Z",
+      "audio_url": null
+    },
+    "planning_context": null
+  }
+  ```
 
-### 2. Tìm kiếm ngữ nghĩa tri thức (Semantic Search)
-
-Tìm kiếm các đoạn tri thức liên quan dựa trên độ tương đồng ngữ nghĩa:
-
-```http
-POST /rag/search
-Content-Type: application/json
-
+#### `POST /api/v1/rag/search`
+Tìm kiếm ngữ nghĩa trực tiếp từ Chroma Vector Database:
+```json
 {
   "query": "Bà Nà Hills",
   "top_k": 3
 }
 ```
 
-**Response `200 OK`:**
+---
+
+### 2. Dịch vụ Giọng nói Realtime (TTS & STT)
+
+#### `GET /api/v1/tts/status`
+Kiểm tra cấu hình và tình trạng kết nối Blaze AI Realtime WebSocket:
 ```json
 {
-  "query": "Bà Nà Hills",
-  "results": [
-    {
-      "content": "Khu du lịch Bà Nà Hills nằm trên đỉnh núi Chúa...",
-      "score": 0.8524,
-      "metadata": {
-        "place_name": "Bà Nà Hills",
-        "knowledge_id": 1,
-        "chunk_index": 0
-      }
-    }
-  ]
+  "is_configured": true,
+  "speaker_id": "DaNang-Nu-1-BL",
+  "model": "2.0-realtime",
+  "audio_format": "mp3",
+  "ws_url": "wss://api.blaze.vn/v1/tts/realtime"
 }
 ```
 
+#### `GET /api/v1/tts/stream?text=...`
+Tạo và stream trực tiếp dữ liệu âm thanh MP3 với độ trễ tối thiểu (hỗ trợ HEAD request preflight).
+
+#### `POST /api/v1/stt/transcribe`
+Tải file audio (`.wav`, `.mp3`, `.m4a`) để chuyển đổi thành văn bản tiếng Việt.
+
 ---
 
-### 3. Kiểm tra kết nối LLM (Health Check)
+### 3. Lập Kế hoạch Chuyến đi AI (Trip Planner)
 
-```http
-POST /rag/test-llm
-Content-Type: application/json
-
+#### `POST /api/v1/trips/generate`
+Tự động lập lịch trình du lịch trọn gói dựa trên điểm đến, số ngày, ngân sách và sở thích:
+```json
 {
-  "prompt": "Xin chào"
+  "destination": "Đà Nẵng - Hội An",
+  "duration_days": 3,
+  "budget_level": "trung bình",
+  "travel_style": "khám phá ẩm thực & biển"
 }
 ```
 
----
+#### `POST /api/v1/trips/from-proposal`
+Chuyển đổi trực tiếp đề xuất lịch trình từ cuộc trò chuyện RAG thành chuyến đi chính thức.
 
-## 🧪 Test nhanh trên Swagger UI
-
-1. Mở `http://127.0.0.1:8000/docs`
-2. Đăng ký & Đăng nhập để lấy `access_token` nếu cần gọi các API bảo vệ.
-3. Thử nghiệm ngay các endpoint `/rag/search` và `/rag/ask` trực tiếp trên Swagger.
+#### `GET /api/v1/trips` & `GET /api/v1/trips/{id}`
+Xem danh sách và chi tiết chuyến đi kèm hoạt động từng ngày (`TripDays`, `TripActivities`).
 
 ---
 
-## 📦 Các lệnh hữu ích
+### 4. Xác thực Tài khoản (Authentication)
+
+- `POST /api/v1/auth/register`: Đăng ký tài khoản mới.
+- `POST /api/v1/auth/login`: Đăng nhập lấy Bearer JWT access token.
+- `GET /api/v1/auth/me`: Lấy thông tin tài khoản hiện tại (Cần header `Authorization: Bearer <token>`).
+
+---
+
+## 🧪 Kiểm thử Tự động (Testing)
+
+Hệ thống đi kèm **11 test suites** kiểm thử toàn diện từ Unit test đến Integration test:
 
 ```bash
-# Khởi chạy server development
-uv run uvicorn app.main:app --reload
+# Chạy toàn bộ 100 test cases tự động:
+uv run python -m unittest discover -s tests -p "test_*.py"
 
-# Seed dữ liệu vào SQL Server
-uv run python seed.py
+# Chạy riêng kiểm thử TTS Realtime:
+uv run python -m unittest tests/test_tts.py
 
-# Nạp dữ liệu từ SQL Server vào Chroma Vector Database
-uv run python scripts/ingest_rag.py
-
-# Kiểm tra kết nối LLM
-uv run python scripts/test_llm.py
-
-# Chạy toàn bộ test suites tự động
-uv run python -m unittest discover tests
-
-# Cài thêm dependency
-uv add <package-name>
-
-# Tạo migration mới
-uv run alembic revision --autogenerate -m "mô tả thay đổi"
-
-# Áp dụng migration
-uv run alembic upgrade head
-
-# Rollback migration
-uv run alembic downgrade -1
-
-# Xem lịch sử migration
-uv run alembic history
+# Chạy riêng kiểm thử RAG Chain:
+uv run python -m unittest tests/test_chain.py
 ```
 
+Kết quả kiểm thử tiêu chuẩn:
+```text
+Ran 100 tests in 38.428s
+OK (100% tests passed)
+```
+
+---
+
+## 📦 Các Lệnh Thường Dùng (Cheatsheet)
+
+```bash
+# Chạy Server dev tự động reload
+uv run uvicorn app.main:app --reload
+
+# Nạp dữ liệu ban đầu
+uv run python seed.py
+
+# Nạp dữ liệu vào Chroma Vector Store
+uv run python scripts/ingest_rag.py
+
+# Tạo file migration Alembic mới
+uv run alembic revision --autogenerate -m "ten_migration"
+
+# Nâng cấp database lên bản migration mới nhất
+uv run alembic upgrade head
+
+# Hạ cấp database về bản migration trước
+uv run alembic downgrade -1
+
+# Cài đặt thêm thư viện mới
+uv add <ten_package>
+```

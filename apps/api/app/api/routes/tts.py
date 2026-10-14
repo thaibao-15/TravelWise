@@ -47,6 +47,21 @@ def get_tts_status() -> TTSStatusResponse:
     )
 
 
+@router.head(
+    "/stream",
+    summary="Kiểm tra endpoint stream TTS",
+)
+async def head_stream_text_to_speech():
+    return Response(
+        status_code=status.HTTP_200_OK,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes",
+        },
+    )
+
+
 @router.get(
     "/stream",
     summary="Stream giọng đọc Realtime qua HTTP (GET)",

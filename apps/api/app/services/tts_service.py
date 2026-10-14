@@ -26,6 +26,7 @@ class BlazeTTSService:
     """Service to handle Realtime Text-to-Speech synthesis with Blaze AI via WebSocket."""
 
     _audio_cache: dict[str, bytes] = {}
+    _inflight_futures: dict[str, asyncio.Future] = {}
 
     def __init__(
         self,
@@ -68,16 +69,8 @@ class BlazeTTSService:
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
-    @staticmethod
-    async def _recv_json(ws: websockets.ClientConnection, timeout: float = 15.0) -> dict:
-        """Helper to receive and parse a JSON message frame from Blaze WebSocket."""
-        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-        if isinstance(raw, bytes):
-            raise ValueError(f"Expected JSON text message, but received {len(raw)} bytes binary data.")
-        return json.loads(raw)
-
     async def stream_speech(self, text: str) -> AsyncGenerator[bytes, None]:
-        """Stream synthesized audio chunks in real-time from Blaze WebSocket API."""
+        """Stream synthesized audio chunks in real-time from Blaze WebSocket API with full pipelining."""
         self.validate_configuration()
 
         cleaned_text = self.clean_text(text)
@@ -88,14 +81,30 @@ class BlazeTTSService:
             f"{cleaned_text}:{self.speaker_id}:{self.model}:{self.speed}:{self.audio_format}".encode("utf-8")
         ).hexdigest()
 
-        # Check in-memory audio cache
+        # 1. Fast in-memory cache hit (0ms)
         if cache_key in self._audio_cache:
-            logger.info("Serving realtime TTS from memory cache (key=%s)", cache_key[:8])
             cached_audio = self._audio_cache[cache_key]
-            chunk_size = 8192
+            chunk_size = 16384
             for i in range(0, len(cached_audio), chunk_size):
                 yield cached_audio[i : i + chunk_size]
             return
+
+        # 2. In-flight coalescing: If another request for the same text is in progress, wait for it
+        if cache_key in self._inflight_futures:
+            logger.info("Coalescing concurrent TTS request for key %s", cache_key[:8])
+            try:
+                full_audio = await asyncio.shield(self._inflight_futures[cache_key])
+                chunk_size = 16384
+                for i in range(0, len(full_audio), chunk_size):
+                    yield full_audio[i : i + chunk_size]
+                return
+            except Exception:
+                # If the in-flight one failed, continue to do our own fetch
+                pass
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        self._inflight_futures[cache_key] = future
 
         query_payload = {
             "query": cleaned_text,
@@ -117,37 +126,12 @@ class BlazeTTSService:
 
         try:
             async with websockets.connect(self.ws_url, ping_interval=None) as ws:
-                # 1. Wait for connection handshake
-                conn_msg = await self._recv_json(ws, timeout=10.0)
-                if conn_msg.get("type") != "successful-connection":
-                    logger.error("Blaze TTS connection handshake failed: %s", conn_msg)
-                    raise BlazeTTSError("Không thể kết nối đến máy chủ Blaze TTS Realtime.", status_code=502)
-
-                # 2. Authenticate
+                # Send auth and query immediately in parallel (zero-roundtrip pipelining)
                 await ws.send(json.dumps(auth_payload))
-                auth_msg = await self._recv_json(ws, timeout=10.0)
-                if auth_msg.get("type") != "successful-authentication":
-                    logger.error("Blaze TTS authentication rejected: %s", auth_msg)
-                    raise BlazeTTSError("Blaze API Key không hợp lệ hoặc đã hết hạn.", status_code=401)
-
-                # 3. Send TTS Query
                 await ws.send(json.dumps(query_payload))
 
-                # 4. Processing acknowledgment
-                proc_msg = await self._recv_json(ws, timeout=15.0)
-                if proc_msg.get("type") not in ("processing-request", "started-byte-stream"):
-                    logger.warning("Unexpected Blaze response after query: %s", proc_msg)
-
-                # 5. Wait for started-byte-stream event
-                if proc_msg.get("status") != "started-byte-stream":
-                    start_msg = await self._recv_json(ws, timeout=15.0)
-                    if start_msg.get("status") != "started-byte-stream":
-                        logger.error("Blaze did not start byte stream: %s", start_msg)
-                        raise BlazeTTSError("Máy chủ Blaze TTS không bắt đầu stream âm thanh.", status_code=502)
-
-                # 6. Stream binary chunks in real-time
                 while True:
-                    frame = await asyncio.wait_for(ws.recv(), timeout=30.0)
+                    frame = await asyncio.wait_for(ws.recv(), timeout=20.0)
                     if isinstance(frame, bytes):
                         collected_chunks.append(frame)
                         yield frame
@@ -162,24 +146,35 @@ class BlazeTTSService:
                         logger.error("Blaze TTS stream error: %s", data)
                         raise BlazeTTSError(err_msg, status_code=502)
 
+            full_audio = b"".join(collected_chunks)
+            if full_audio:
+                # Limit cache size to 200 items
+                if len(self._audio_cache) > 200:
+                    self._audio_cache.pop(next(iter(self._audio_cache)))
+                self._audio_cache[cache_key] = full_audio
+                if not future.done():
+                    future.set_result(full_audio)
+
         except ConnectionClosed as e:
-            logger.error("Blaze TTS WebSocket connection closed unexpectedly: %s", e)
+            logger.error("Blaze TTS WebSocket connection closed: %s", e)
             if not collected_chunks:
+                if not future.done():
+                    future.set_exception(e)
                 raise BlazeTTSError("Mất kết nối với máy chủ Blaze TTS Realtime.", status_code=502)
         except WebSocketException as e:
             logger.error("Blaze TTS WebSocket error: %s", e)
             if not collected_chunks:
+                if not future.done():
+                    future.set_exception(e)
                 raise BlazeTTSError(f"Lỗi WebSocket Blaze TTS: {str(e)}", status_code=502)
-        except asyncio.TimeoutError:
-            logger.error("Blaze TTS WebSocket request timed out.")
+        except asyncio.TimeoutError as e:
+            logger.error("Blaze TTS WebSocket timed out.")
             if not collected_chunks:
+                if not future.done():
+                    future.set_exception(e)
                 raise BlazeTTSError("Quá thời gian chờ phản hồi từ Blaze TTS Realtime.", status_code=504)
-
-        # Cache complete audio if successfully received
-        full_audio = b"".join(collected_chunks)
-        if full_audio:
-            self._audio_cache[cache_key] = full_audio
-            logger.info("Blaze TTS audio cached successfully (%d bytes, %d chunks)", len(full_audio), len(collected_chunks))
+        finally:
+            self._inflight_futures.pop(cache_key, None)
 
     async def synthesize_speech(self, text: str) -> bytes:
         """Synthesize text into complete audio bytes (MP3) using Realtime WebSocket stream."""

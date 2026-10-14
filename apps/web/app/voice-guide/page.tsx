@@ -8,10 +8,35 @@ import { useVoiceCompanion } from "@/hooks/useVoiceCompanion";
 import { VoiceGuideHeader } from "@/components/voice-guide/VoiceGuideHeader";
 import { VoiceMicButton } from "@/components/voice-guide/VoiceMicButton";
 import { VoiceMessageBubble } from "@/components/voice-guide/VoiceMessageBubble";
-import { TextInputModal } from "@/components/voice-guide/TextInputModal";
 import { TripCanvas } from "@/components/canvas/TripCanvas";
-import { SuggestedQuestions } from "@/components/chat/SuggestedQuestions";
 import { isCreateItineraryCommand } from "@/lib/utils";
+
+const QUICK_VOICE_SUGGESTIONS = [
+  {
+    icon: "🏝️",
+    title: "Lên lịch trình du lịch",
+    query: "Lên lịch trình 3 ngày 2 đêm tại Đà Nẵng và Hội An cho 2 người",
+    tag: "Lịch trình",
+  },
+  {
+    icon: "🍜",
+    title: "Đặc sản & Quán ngon",
+    query: "Những món ăn đặc sản ngon nức tiếng tại Đà Nẵng kèm địa chỉ",
+    tag: "Ẩm thực",
+  },
+  {
+    icon: "🚗",
+    title: "Di chuyển & Kinh nghiệm",
+    query: "Kinh nghiệm đi Bà Nà Hills tự túc tiết kiệm nhất",
+    tag: "Kinh nghiệm",
+  },
+  {
+    icon: "🌤️",
+    title: "Thời tiết & Mùa đẹp",
+    query: "Thời điểm nào trong năm đi du lịch Đà Nẵng đẹp và ít mưa nhất?",
+    tag: "Thời tiết",
+  },
+];
 
 function VoiceGuideContent() {
   const {
@@ -35,16 +60,18 @@ function VoiceGuideContent() {
 
   // Mặc định thanh bên phải (Trip Canvas) KHÔNG hiển thị
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
-  // Modal nhập liệu bàn phím dự phòng (tách biệt hoàn toàn với giao diện voice chính)
-  const [isTextInputModalOpen, setIsTextInputModalOpen] = useState(false);
 
   // Tự động mở thanh bên khi có câu lệnh tạo lịch trình
   const handleSendMessage = useCallback(
-    async (text: string, mode: "chat" | "voice" = "voice") => {
+    async (
+      text: string,
+      mode: "chat" | "voice" = "voice",
+      onSentence?: (sentence: string) => void
+    ) => {
       if (isCreateItineraryCommand(text)) {
         setIsCanvasOpen(true);
       }
-      return sendMessage(text, mode);
+      return sendMessage(text, mode, onSentence);
     },
     [sendMessage]
   );
@@ -136,7 +163,6 @@ function VoiceGuideContent() {
   // Xử lý khi nhấn nút Micro tròn lớn ở giữa
   const handleMicClick = () => {
     if (voiceState === "speaking") {
-      // Ngắt lời AI đang nói và lắng nghe người dùng tiếp tục ngay lập tức
       stopAudio();
       startListening();
     } else if (voiceState === "listening" || isRecording) {
@@ -146,10 +172,15 @@ function VoiceGuideContent() {
     }
   };
 
+
   return (
     <div className="flex h-screen max-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Background Ambient Glows */}
+      <div className="fixed top-1/4 left-1/4 w-[400px] h-[400px] bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed bottom-1/4 right-1/4 w-[450px] h-[450px] bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
       {/* Cột chính: Voice AI Guide */}
-      <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden bg-slate-950">
+      <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden bg-slate-950/60 backdrop-blur-sm relative z-10">
         {/* 1. Header Voice Guide */}
         <VoiceGuideHeader
           onClearHistory={() => {
@@ -159,11 +190,15 @@ function VoiceGuideContent() {
           }}
           isCanvasOpen={isCanvasOpen}
           onToggleCanvas={() => setIsCanvasOpen((prev) => !prev)}
+          autoSpeak={autoSpeak}
+          onToggleAutoSpeak={toggleAutoSpeak}
         />
 
         {/* 2. Danh sách tin nhắn đối thoại qua lại */}
         <main className="flex-1 overflow-y-auto custom-scrollbar px-3 sm:px-6 py-4">
           <div className="max-w-3xl mx-auto space-y-4">
+
+            {/* Danh sách tin nhắn */}
             {messages.map((message) => (
               <VoiceMessageBubble
                 key={message.id}
@@ -172,28 +207,54 @@ function VoiceGuideContent() {
               />
             ))}
 
-            {/* Transcript hiển thị thời gian thực khi đang nói */}
-            {transcript && (
-              <div className="w-full max-w-2xl mx-auto rounded-2xl bg-slate-900/40 border border-teal-500/30 p-3.5 animate-pulse">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping" />
-                  <span className="text-xs text-teal-300 font-medium">Đang nhận diện giọng nói...</span>
+            {/* 4 Quick Voice Cards khi cuộc trò chuyện mới bắt đầu */}
+            {messages.length <= 1 && (
+              <div className="pt-3 pb-1 animate-in fade-in">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <span className="text-xs font-semibold text-teal-400">💡 Gợi ý câu hỏi nhanh:</span>
+                  <span className="text-[11px] text-slate-500">(Bấm vào hoặc nói trực tiếp)</span>
                 </div>
-                <p className="text-sm text-slate-200 italic pl-4">
-                  &ldquo;{transcript}&rdquo;
-                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
+                  {QUICK_VOICE_SUGGESTIONS.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        stopAudio();
+                        handleSendMessage(item.query);
+                      }}
+                      className="p-3 rounded-2xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800/80 hover:border-teal-500/40 shadow-sm transition-all text-left cursor-pointer group flex items-start gap-3 active:scale-[0.98]"
+                    >
+                      <span className="text-xl flex-shrink-0 mt-0.5">{item.icon}</span>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block mb-0.5">
+                          {item.tag}
+                        </span>
+                        <p className="text-xs font-medium text-slate-200 group-hover:text-teal-200 line-clamp-2 leading-snug">
+                          {item.query}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Gợi ý câu hỏi khi mới bắt đầu */}
-            {messages.length <= 1 && (
-              <div className="pt-2">
-                <SuggestedQuestions
-                  onSelectQuestion={(q) => {
-                    stopAudio();
-                    handleSendMessage(q);
-                  }}
-                />
+            {/* Transcript hiển thị thời gian thực khi đang nói */}
+            {transcript && (
+              <div className="w-full max-w-2xl mx-auto rounded-2xl bg-gradient-to-r from-slate-900/90 to-teal-950/30 border border-teal-400/40 p-4 shadow-xl shadow-teal-950/30 backdrop-blur-md animate-pulse">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-teal-400" />
+                  </span>
+                  <span className="text-xs text-teal-300 font-bold uppercase tracking-wider">
+                    Đang nhận diện giọng nói của bạn...
+                  </span>
+                </div>
+                <p className="text-sm text-slate-100 font-medium pl-4 italic leading-relaxed">
+                  &ldquo;{transcript}&rdquo;
+                </p>
               </div>
             )}
 
@@ -201,7 +262,7 @@ function VoiceGuideContent() {
           </div>
         </main>
 
-        {/* 3. Khu vực tương tác Voice-First ở đáy màn hình (Hoàn toàn bỏ thanh gõ phím) */}
+        {/* 3. Khu vực tương tác Voice-First ở đáy màn hình */}
         <div className="flex-shrink-0 flex flex-col items-center justify-center pt-2 pb-6 px-4 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent z-20">
           {/* Nút Micro tròn lớn phát sáng: BẤM ĐỂ NÓI */}
           <VoiceMicButton
@@ -211,21 +272,34 @@ function VoiceGuideContent() {
             disabled={isLoading || isPlanning}
           />
 
-          {/* Dòng chữ hướng dẫn trạng thái */}
-          <p className="mt-3 text-xs sm:text-sm text-slate-400 font-medium text-center">
-            {statusMessage || "Nhấn vào micro để trò chuyện trực tiếp với hướng dẫn viên"}
-          </p>
+          {/* Dòng chữ hướng dẫn trạng thái đàm thoại */}
+          <div className="mt-3.5 flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                voiceState === "speaking"
+                  ? "bg-emerald-400 animate-ping"
+                  : voiceState === "listening"
+                  ? "bg-rose-400 animate-ping"
+                  : voiceState === "thinking"
+                  ? "bg-amber-400 animate-spin"
+                  : "bg-teal-400"
+              }`}
+            />
+            <p className="text-xs sm:text-sm text-slate-300 font-medium text-center">
+              {statusMessage || "Nhấn vào micro để trò chuyện trực tiếp"}
+            </p>
+          </div>
 
-          {/* Nút chuyển sang Chat Box khi không tiện nói */}
+          {/* Nút chuyển sang Chat Box văn bản truyền thống */}
           <Link
             href={
               searchParams.get("conversation_id")
                 ? `/chat?conversation_id=${searchParams.get("conversation_id")}`
                 : "/chat"
             }
-            className="mt-2 flex items-center gap-1.5 px-3 py-1 text-xs text-slate-400 hover:text-teal-300 bg-slate-900/60 hover:bg-slate-900 border border-slate-800 rounded-full transition-all cursor-pointer group"
+            className="mt-2.5 flex items-center gap-1.5 px-3 py-1 text-xs text-slate-400 hover:text-teal-300 transition-all cursor-pointer group"
           >
-            <span>💬 Không tiện nói?</span>
+            <span>💬 Muốn chat văn bản truyền thống?</span>
             <span className="underline underline-offset-2 font-semibold text-teal-400 group-hover:text-teal-300">
               Chuyển sang Chat Box
             </span>
@@ -276,17 +350,6 @@ function VoiceGuideContent() {
           </div>
         </div>
       )}
-
-      {/* 5. Modal nhập liệu bàn phím dự phòng tách biệt hoàn toàn */}
-      <TextInputModal
-        isOpen={isTextInputModalOpen}
-        onClose={() => setIsTextInputModalOpen(false)}
-        onSendMessage={(text) => {
-          stopAudio();
-          handleSendMessage(text);
-        }}
-        isLoading={isLoading || isPlanning}
-      />
     </div>
   );
 }

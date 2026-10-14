@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
-import { ttsService } from "@/services/tts.service";
+import { ttsService, StreamingTTSQueue } from "@/services/tts.service";
 
 export type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 
 interface UseVoiceCompanionOptions {
-  onSendMessage: (text: string, mode?: "chat" | "voice") => Promise<string | null | void>;
+  onSendMessage: (
+    text: string,
+    mode?: "chat" | "voice",
+    onSentence?: (sentence: string) => void
+  ) => Promise<string | null | void>;
   isLoadingChat?: boolean;
 }
 
@@ -22,6 +26,8 @@ export function useVoiceCompanion({
   const [transcript, setTranscript] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const cancelAudioRef = useRef<(() => void) | null>(null);
+  const activeQueueRef = useRef<StreamingTTSQueue | null>(null);
   const nativeCancelRef = useRef<(() => void) | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastTranscriptRef = useRef("");
@@ -34,9 +40,19 @@ export function useVoiceCompanion({
   autoSpeakRef.current = autoSpeak;
   const onSendMessageRef = useRef(onSendMessage);
   onSendMessageRef.current = onSendMessage;
+  const isTTSPendingRef = useRef(false);
 
   // Stop any active audio playback
   const stopAudio = useCallback(() => {
+    isTTSPendingRef.current = false;
+    if (activeQueueRef.current) {
+      activeQueueRef.current.stop();
+      activeQueueRef.current = null;
+    }
+    if (cancelAudioRef.current) {
+      cancelAudioRef.current();
+      cancelAudioRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -104,7 +120,9 @@ export function useVoiceCompanion({
 
   // Helper to resume listening seamlessly when speech playback ends (Zero intermediate step)
   const resumeListeningAfterSpeech = useCallback(() => {
+    isTTSPendingRef.current = false;
     audioRef.current = null;
+    cancelAudioRef.current = null;
     if (nativeCancelRef.current) {
       nativeCancelRef.current();
       nativeCancelRef.current = null;
@@ -116,7 +134,7 @@ export function useVoiceCompanion({
       lastTranscriptRef.current = "";
       setVoiceState("listening");
       setStatusMessage("Đang lắng nghe câu hỏi tiếp theo của bạn...");
-      startRecordingRef.current?.().catch(() => {});
+      startRecordingRef.current?.().catch(() => { });
     } else {
       setVoiceState("idle");
       setStatusMessage("Sẵn sàng lắng nghe tiếp...");
@@ -133,67 +151,57 @@ export function useVoiceCompanion({
       if (!trimmed) return;
 
       stopRecordingRef.current?.();
+      isTTSPendingRef.current = true;
       setVoiceState("thinking");
       setStatusMessage("AI đang chuẩn bị câu trả lời...");
 
-      try {
-        const spokenAnswer = await onSendMessageRef.current(trimmed, "voice");
-
-        if (autoSpeakRef.current && spokenAnswer && typeof spokenAnswer === "string") {
-          const cleanAnswer = ttsService.cleanText(spokenAnswer);
+      // Tạo hàng đợi âm thanh phát câu song song (Streaming Audio Queue)
+      const queue = new StreamingTTSQueue(
+        () => {
+          // Khi toàn bộ câu đã đọc xong
+          isTTSPendingRef.current = false;
+          activeQueueRef.current = null;
+          resumeListeningRef.current();
+        },
+        (err) => {
+          console.warn("Streaming TTS queue error:", err);
+        },
+        () => {
+          // Kích hoạt ngay khi CÂU ĐẦU TIÊN bắt đầu phát ra loa (Zero Latency!)
           setVoiceState("speaking");
           setStatusMessage("AI Tour Guide đang đọc câu trả lời...");
+          stopRecordingRef.current?.();
+        }
+      );
+      activeQueueRef.current = queue;
 
-          // Luôn sử dụng giọng đọc Blaze AI chuẩn (DaNang-Nu-1-BL cấu hình trong .env)
-          try {
-            const streamUrl =
-              cleanAnswer.length <= 1800
-                ? ttsService.getStreamUrl(cleanAnswer)
-                : await ttsService.synthesize(cleanAnswer);
-
-            const audio = new Audio(streamUrl);
-            audio.preload = "auto";
-            audioRef.current = audio;
-
-            audio.onended = () => {
-              resumeListeningRef.current();
-            };
-
-            audio.onerror = () => {
-              console.warn("Blaze TTS stream error, fallback to Web Speech");
-              const res = ttsService.speakWebSpeech(
-                cleanAnswer,
-                () => resumeListeningRef.current(),
-                () => resumeListeningRef.current()
-              );
-              nativeCancelRef.current = res.cancel;
-            };
-
-            await audio.play().catch((playErr) => {
-              console.warn("Audio play() blocked, fallback to Web Speech:", playErr);
-              const res = ttsService.speakWebSpeech(
-                cleanAnswer,
-                () => resumeListeningRef.current(),
-                () => resumeListeningRef.current()
-              );
-              nativeCancelRef.current = res.cancel;
-            });
-          } catch (ttsErr) {
-            console.warn("TTS synthesize failed, fallback to Web Speech:", ttsErr);
-            const res = ttsService.speakWebSpeech(
-              cleanAnswer,
-              () => resumeListeningRef.current(),
-              () => resumeListeningRef.current()
-            );
-            nativeCancelRef.current = res.cancel;
+      try {
+        const spokenAnswer = await onSendMessageRef.current(
+          trimmed,
+          "voice",
+          (sentence) => {
+            if (autoSpeakRef.current) {
+              queue.enqueue(sentence);
+            }
           }
+        );
+
+        if (autoSpeakRef.current && spokenAnswer && typeof spokenAnswer === "string") {
+          queue.markStreamDone();
         } else {
-          // Không đọc giọng hoặc không có nội dung: nghe tiếp ngay lập tức
+          queue.stop();
+          activeQueueRef.current = null;
+          isTTSPendingRef.current = false;
           resumeListeningRef.current();
         }
       } catch (chatErr) {
         console.error("Chat error during speech commit:", chatErr);
         setStatusMessage("Lỗi kết nối khi gửi giọng nói.");
+        if (activeQueueRef.current) {
+          activeQueueRef.current.stop();
+          activeQueueRef.current = null;
+        }
+        isTTSPendingRef.current = false;
         resumeListeningRef.current();
       }
     },
@@ -230,8 +238,8 @@ export function useVoiceCompanion({
         setStatusMessage("Đang chuẩn bị câu trả lời...");
       }
     } else {
-      // Khi chat xử lý xong
-      if (voiceState === "thinking") {
+      // Khi chat xử lý xong: chỉ nghe lại nếu KHÔNG có tác vụ TTS đang chuẩn bị phát
+      if (voiceState === "thinking" && !isTTSPendingRef.current) {
         if (isSessionActiveRef.current) {
           resumeListeningRef.current();
         } else {

@@ -27,6 +27,8 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
   }
 }
 
+const inFlightPrefetch = new Map<string, Promise<string>>();
+
 export const ttsService = {
   /**
    * Khởi động sớm giọng đọc trình duyệt ngay khi vào trang
@@ -54,7 +56,7 @@ export const ttsService = {
   },
 
   /**
-   * Lấy URL streaming HTTP trực tiếp từ server để thẻ Audio phát tức thì (TTFB < 500ms)
+   * Lấy URL streaming HTTP trực tiếp từ server để thẻ Audio phát tức thì
    */
   getStreamUrl(text: string): string {
     const cleaned = this.cleanText(text);
@@ -64,7 +66,166 @@ export const ttsService = {
   },
 
   /**
-   * Request TTS synthesis and return object audio URL
+   * Tách đoạn văn thành danh sách các câu hoàn chỉnh tự nhiên
+   * Giúp phát âm thanh câu đầu tiên ngay lập tức (Zero Latency) trong khi các câu sau nạp nền
+   */
+  splitSentences(text: string): string[] {
+    const cleaned = this.cleanText(text);
+    if (!cleaned) return [];
+
+    // Tách theo dấu câu . ! ? hoặc xuống dòng
+    const raw = cleaned.split(/(?<=[.!?\n])\s+/);
+    const sentences: string[] = [];
+    let current = "";
+
+    for (const part of raw) {
+      const p = part.trim();
+      if (!p) continue;
+      // Nếu câu quá ngắn (< 45 ký tự), ghép với câu trước để đọc tự nhiên, tránh bị ngắt vụn
+      if (current.length > 0 && current.length + p.length < 55) {
+        current += " " + p;
+      } else {
+        if (current) sentences.push(current);
+        current = p;
+      }
+    }
+    if (current) sentences.push(current);
+    return sentences.length > 0 ? sentences : [cleaned];
+  },
+
+  /**
+   * Nạp trước (Pre-fetch) 1 câu đơn lẻ vào bộ nhớ đệm Blob
+   */
+  async prefetchSingle(sentence: string): Promise<string> {
+    const cleaned = this.cleanText(sentence);
+    if (!cleaned) return "";
+
+    if (audioCache.has(cleaned)) {
+      return audioCache.get(cleaned)!;
+    }
+
+    if (inFlightPrefetch.has(cleaned)) {
+      return inFlightPrefetch.get(cleaned)!;
+    }
+
+    const streamUrl = this.getStreamUrl(cleaned);
+    const fetchPromise = (async () => {
+      try {
+        const res = await fetch(streamUrl);
+        if (!res.ok) {
+          throw new Error(`TTS Stream HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        audioCache.set(cleaned, blobUrl);
+        return blobUrl;
+      } finally {
+        inFlightPrefetch.delete(cleaned);
+      }
+    })();
+
+    inFlightPrefetch.set(cleaned, fetchPromise);
+    return fetchPromise;
+  },
+
+  /**
+   * Nạp trước âm thanh của đoạn văn: tách câu và nạp song song từng câu
+   * Trả về blob URL của câu đầu tiên để phát ngay lập tức
+   */
+  async prefetch(text: string): Promise<string> {
+    const sentences = this.splitSentences(text);
+    if (sentences.length === 0) return "";
+
+    // Kích hoạt tải song song tất cả các câu
+    const promises = sentences.map((s) => this.prefetchSingle(s));
+
+    // Trả về câu đầu tiên ngay khi câu đầu sẵn sàng (không chờ toàn bộ đoạn)
+    return await promises[0];
+  },
+
+  /**
+   * Phát toàn bộ đoạn văn theo luồng nối tiếp từng câu (Sentence Queue)
+   * Câu 1 phát NGAY LẬP TỨC (< 10ms nếu đã prefetch), các câu sau nối tiếp mượt mà
+   */
+  async playAudio(
+    text: string,
+    onEnd?: () => void,
+    onError?: (err: any) => void
+  ): Promise<{ cancel: () => void }> {
+    const sentences = this.splitSentences(text);
+    if (sentences.length === 0) {
+      onEnd?.();
+      return { cancel: () => { } };
+    }
+
+    let isCancelled = false;
+    let currentAudio: HTMLAudioElement | null = null;
+    let currentIndex = 0;
+
+    // Nạp trước tất cả các câu song song dưới nền
+    sentences.forEach((s) => this.prefetchSingle(s).catch(() => { }));
+
+    const playNext = async () => {
+      if (isCancelled) return;
+      if (currentIndex >= sentences.length) {
+        onEnd?.();
+        return;
+      }
+
+      const currentSentence = sentences[currentIndex];
+      currentIndex++;
+
+      try {
+        const audioUrl = await this.prefetchSingle(currentSentence);
+        if (isCancelled) return;
+
+        const audio = new Audio(audioUrl);
+        audio.preload = "auto";
+        currentAudio = audio;
+
+        audio.onended = () => {
+          if (!isCancelled) {
+            playNext();
+          }
+        };
+
+        audio.onerror = (e) => {
+          if (!isCancelled) {
+            console.warn(`TTS error on sentence ${currentIndex}/${sentences.length}:`, e);
+            playNext();
+          }
+        };
+
+        await audio.play();
+      } catch (err) {
+        if (!isCancelled) {
+          console.warn("Play sentence failed, skipping to next:", err);
+          if (currentIndex >= sentences.length) {
+            onError?.(err);
+          } else {
+            playNext();
+          }
+        }
+      }
+    };
+
+    // Bắt đầu phát câu đầu tiên
+    playNext();
+
+    return {
+      cancel: () => {
+        isCancelled = true;
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+          currentAudio = null;
+        }
+      },
+    };
+  },
+
+  /**
+   * Request TTS synthesis and return object audio URL (fallback POST)
    */
   async synthesize(text: string): Promise<string> {
     const cleaned = this.cleanText(text);
@@ -105,14 +266,14 @@ export const ttsService = {
   ): { cancel: () => void } {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       onError?.();
-      return { cancel: () => {} };
+      return { cancel: () => { } };
     }
 
     window.speechSynthesis.cancel();
     const cleaned = this.cleanText(text);
     if (!cleaned) {
       onEnd?.();
-      return { cancel: () => {} };
+      return { cancel: () => { } };
     }
 
     const utterance = new SpeechSynthesisUtterance(cleaned);
@@ -154,3 +315,112 @@ export const ttsService = {
     };
   },
 };
+
+/**
+ * Hàng đợi âm thanh phát câu song song theo luồng thời gian thực (Streaming TTS Queue)
+ * Cho phép phát âm thanh câu đầu tiên NGAY LẬP TỨC trong khi LLM vẫn đang stream các câu sau!
+ */
+export class StreamingTTSQueue {
+  private queue: string[] = [];
+  private isPlaying = false;
+  private currentAudio: HTMLAudioElement | null = null;
+  private isStopped = false;
+  private isStreamDone = false;
+  private onFinishedCallback: (() => void) | null = null;
+  private onErrorCallback: ((err: any) => void) | null = null;
+  private onStartedCallback: (() => void) | null = null;
+  private hasStarted = false;
+
+  constructor(
+    onFinished?: () => void,
+    onError?: (err: any) => void,
+    onStarted?: () => void
+  ) {
+    this.onFinishedCallback = onFinished || null;
+    this.onErrorCallback = onError || null;
+    this.onStartedCallback = onStarted || null;
+  }
+
+  enqueue(sentence: string) {
+    if (this.isStopped) return;
+    const clean = ttsService.cleanText(sentence);
+    if (!clean) return;
+
+    this.queue.push(clean);
+    // Kích hoạt tải trước câu này ngay lập tức dưới nền
+    ttsService.prefetchSingle(clean).catch(() => {});
+
+    if (!this.isPlaying) {
+      this.playNext();
+    }
+  }
+
+  markStreamDone() {
+    this.isStreamDone = true;
+    if (!this.isPlaying && this.queue.length === 0) {
+      this.onFinishedCallback?.();
+    }
+  }
+
+  private async playNext() {
+    if (this.isStopped) return;
+
+    if (this.queue.length === 0) {
+      this.isPlaying = false;
+      if (this.isStreamDone) {
+        this.onFinishedCallback?.();
+      }
+      return;
+    }
+
+    this.isPlaying = true;
+    const sentence = this.queue.shift()!;
+
+    try {
+      const audioUrl = await ttsService.prefetchSingle(sentence);
+      if (this.isStopped) return;
+
+      const audio = new Audio(audioUrl);
+      audio.preload = "auto";
+      this.currentAudio = audio;
+
+      audio.onplay = () => {
+        if (!this.hasStarted) {
+          this.hasStarted = true;
+          this.onStartedCallback?.();
+        }
+      };
+
+      audio.onended = () => {
+        if (!this.isStopped) {
+          this.playNext();
+        }
+      };
+
+      audio.onerror = (e) => {
+        if (!this.isStopped) {
+          console.warn("Streaming audio error on chunk:", e);
+          this.playNext();
+        }
+      };
+
+      await audio.play();
+    } catch (err) {
+      if (!this.isStopped) {
+        console.warn("Play streaming chunk error:", err);
+        this.playNext();
+      }
+    }
+  }
+
+  stop() {
+    this.isStopped = true;
+    this.queue = [];
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
+    }
+  }
+}
+

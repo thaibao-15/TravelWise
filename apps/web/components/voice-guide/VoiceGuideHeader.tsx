@@ -10,6 +10,8 @@ interface VoiceGuideHeaderProps {
   onOpenTextInput?: () => void;
   isCanvasOpen: boolean;
   onToggleCanvas: () => void;
+  autoSpeak?: boolean;
+  onToggleAutoSpeak?: () => void;
 }
 
 export function VoiceGuideHeader({
@@ -17,6 +19,8 @@ export function VoiceGuideHeader({
   onOpenTextInput,
   isCanvasOpen,
   onToggleCanvas,
+  autoSpeak = true,
+  onToggleAutoSpeak,
 }: VoiceGuideHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
   const searchParams = useSearchParams();
@@ -46,11 +50,11 @@ export function VoiceGuideHeader({
               TravelWise Guide
             </h1>
             <span className="px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/20">
-              VOICE CHAT
+              VOICE COMPANION
             </span>
           </div>
           <p className="text-[11px] text-slate-400 truncate">
-            Hướng dẫn viên bản địa trực tiếp qua giọng nói
+            Hướng dẫn viên bản địa trực tiếp qua giọng nói AI
           </p>
         </div>
       </div>
@@ -85,34 +89,41 @@ export function VoiceGuideHeader({
         </Link>
       </nav>
 
-      {/* 3. Right: Action Buttons */}
-      <div className="flex items-center gap-1 sm:gap-2">
+      {/* 3. Right: Action Controls */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Auto-Speak Toggle */}
+        {onToggleAutoSpeak && (
+          <button
+            type="button"
+            onClick={onToggleAutoSpeak}
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+              autoSpeak
+                ? "bg-teal-500/15 text-teal-300 border-teal-500/30 hover:bg-teal-500/25"
+                : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:text-slate-200"
+            }`}
+            title={autoSpeak ? "Tắt đọc giọng nói" : "Bật đọc giọng nói"}
+          >
+            <span>{autoSpeak ? "🔊" : "🔇"}</span>
+            <span className="hidden xl:inline">{autoSpeak ? "Đọc: Bật" : "Đọc: Tắt"}</span>
+          </button>
+        )}
+
         {/* Làm mới Button */}
         <button
           type="button"
           onClick={onClearHistory}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-100 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-slate-100 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl transition-all cursor-pointer active:scale-95"
           title="Làm mới cuộc trò chuyện"
         >
           <span>🔄</span>
-          <span className="hidden lg:inline">Làm mới</span>
+          <span className="hidden sm:inline">Làm mới</span>
         </button>
-
-        {/* Nút chuyển qua Chat Box */}
-        <Link
-          href={chatUrl}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-slate-100 hover:text-white bg-slate-800/90 hover:bg-slate-750 border border-slate-700/90 hover:border-teal-400/50 rounded-xl shadow-sm transition-all active:scale-95 group"
-          title="Chuyển sang Chat Box (Chat bằng văn bản)"
-        >
-          <span className="text-sm group-hover:scale-110 transition-transform">💬</span>
-          <span>Chat Box</span>
-        </Link>
 
         {/* Kế hoạch Button */}
         <button
           type="button"
           onClick={onToggleCanvas}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-sm ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer shadow-sm active:scale-95 ${
             isCanvasOpen
               ? "bg-teal-400 text-slate-950 border-teal-400 shadow-teal-400/30"
               : "bg-slate-800/70 text-slate-300 border-slate-700/70 hover:border-teal-500/40 hover:text-teal-300"
@@ -143,7 +154,7 @@ export function VoiceGuideHeader({
               <div className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-400 font-bold flex items-center justify-center text-[10px] border border-teal-500/30">
                 {(user.full_name || user.email)[0].toUpperCase()}
               </div>
-              <span className="hidden xl:inline max-w-[80px] truncate font-medium">
+              <span className="hidden 2xl:inline max-w-[80px] truncate font-medium">
                 {user.full_name || user.email}
               </span>
             </Link>
