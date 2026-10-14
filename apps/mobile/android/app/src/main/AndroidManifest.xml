@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Location permissions for GPS -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
     <application
-        android:label="mobile"
+        android:label="TravelWise"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -25,6 +31,30 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!--
+          GOOGLE MAPS SDK FOR ANDROID
+          ────────────────────────────────────────────────────────────
+          Replace ANDROID_MAPS_API_KEY with your actual Maps SDK key.
+
+          Required APIs to enable in Google Cloud Console:
+            • Maps SDK for Android
+            • Geolocation API
+
+          How to get the key:
+            1. https://console.cloud.google.com/
+            2. APIs & Services → Library → Enable "Maps SDK for Android"
+            3. APIs & Services → Credentials → Create API Key
+            4. Restrict by App (use your package name + SHA-1 fingerprint)
+            5. Replace the value below
+
+          SECURITY: Always restrict Android keys to your app's package name.
+          ────────────────────────────────────────────────────────────
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="ANDROID_MAPS_API_KEY"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

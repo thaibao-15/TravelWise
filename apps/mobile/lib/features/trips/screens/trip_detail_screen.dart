@@ -5,7 +5,6 @@ import '../../../../core/constants/spacing.dart';
 import '../models/trip_model.dart';
 import '../providers/trip_provider.dart';
 import '../widgets/trip_hero_header.dart';
-import '../widgets/trip_stats_card.dart';
 import '../widgets/trip_day_selector.dart';
 import '../widgets/trip_day_header.dart';
 import '../widgets/itinerary_timeline.dart';

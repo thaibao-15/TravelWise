@@ -1,7 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
-import 'package:lucide_flutter/lucide_flutter.dart';
 
 class TripPlacesSection extends StatelessWidget {
   const TripPlacesSection({super.key});

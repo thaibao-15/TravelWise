@@ -1,10 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../models/trip_model.dart';
 import '../../screens/trip_detail_screen.dart';
-import 'package:intl/intl.dart';
 
 class TripListCard extends StatelessWidget {
   final Trip trip;
@@ -118,9 +117,9 @@ class TripListCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('\ - \ • \ ngày', style: AppTextStyles.label),
+              Text('- • ngày', style: AppTextStyles.label),
               const SizedBox(height: 4),
-              Text('\ hoạt động đã lưu', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
+              Text('hoạt động đã lưu', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
             ],
           ),
           Row(
