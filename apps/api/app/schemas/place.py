@@ -31,10 +31,16 @@ class PlaceImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PlaceImageCreate(BaseModel):
+    url: str
+    description: Optional[str] = None
+    is_primary: bool = False
+
+
 # ─── Place schemas ───────────────────────────────────────────────────────────
 
 class PlaceResponse(BaseModel):
-    """Flat Place response (list endpoints)."""
+    """Place response with associated images."""
     id: int
     name: str
     description: Optional[str] = None
@@ -45,6 +51,7 @@ class PlaceResponse(BaseModel):
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
+    images: list[PlaceImageResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,7 +60,6 @@ class PlaceDetailResponse(PlaceResponse):
     """Detailed Place response — includes nested relations."""
     restaurant_detail: Optional[RestaurantDetailResponse] = None
     hotel_detail: Optional[HotelDetailResponse] = None
-    images: list[PlaceImageResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

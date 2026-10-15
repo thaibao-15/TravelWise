@@ -1,5 +1,13 @@
 import { apiFetch } from "@/services/api";
 
+export interface PlaceImageItem {
+  id: number;
+  place_id?: number;
+  url?: string | null;
+  description?: string | null;
+  is_primary: boolean;
+}
+
 export interface PlaceItem {
   id: number;
   name: string;
@@ -8,6 +16,9 @@ export interface PlaceItem {
   latitude?: number | null;
   longitude?: number | null;
   category_id?: number | null;
+  images?: PlaceImageItem[];
+  restaurant_detail?: any;
+  hotel_detail?: any;
 }
 
 export const placeService = {
@@ -40,6 +51,13 @@ export const placeService = {
    */
   async getPlace(placeId: number): Promise<PlaceItem> {
     return await apiFetch<PlaceItem>(`/api/v1/places/${placeId}`);
+  },
+
+  /**
+   * Lấy danh sách hình ảnh của một địa điểm
+   */
+  async getPlaceImages(placeId: number): Promise<PlaceImageItem[]> {
+    return await apiFetch<PlaceImageItem[]>(`/api/v1/places/${placeId}/images`);
   },
 
   /**

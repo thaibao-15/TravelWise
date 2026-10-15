@@ -409,13 +409,14 @@ class ItineraryPersistenceService:
             for db_act in sorted_acts:
                 total_acts += 1
                 place_summary: Optional[ItineraryPlaceSummary] = None
-                if db_act.place:
+                if db_act.place and not getattr(db_act.place, "is_deleted", False):
                     cat_name = db_act.place.category.name if db_act.place.category else None
                     place_summary = ItineraryPlaceSummary(
                         place_id=db_act.place.id,
                         name=db_act.place.name,
                         category=cat_name,
                         address=db_act.place.address,
+                        description=db_act.place.description,
                         latitude=db_act.place.latitude,
                         longitude=db_act.place.longitude,
                     )

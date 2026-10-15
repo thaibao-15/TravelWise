@@ -206,6 +206,7 @@ class ItineraryPlaceSummary(BaseModel):
     name: str
     category: Optional[str] = None
     address: Optional[str] = None
+    description: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 

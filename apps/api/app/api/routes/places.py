@@ -6,7 +6,13 @@ from sqlmodel import Session
 from app.api.deps import get_current_user, get_session
 from app.models.user import User
 from app.schemas.knowledge import KnowledgeCreate, KnowledgeResponse
-from app.schemas.place import PlaceCreate, PlaceDetailResponse, PlaceResponse
+from app.schemas.place import (
+    PlaceCreate,
+    PlaceDetailResponse,
+    PlaceImageCreate,
+    PlaceImageResponse,
+    PlaceResponse,
+)
 from app.services.knowledge_service import KnowledgeService
 from app.services.place_service import PlaceService
 
@@ -81,6 +87,31 @@ def create_place_knowledge(
     # Ensure place_id in body matches the URL param
     data.place_id = place_id
     return KnowledgeService.create_knowledge(session, data)
+
+
+@router.get("/{place_id}/images", response_model=List[PlaceImageResponse])
+def get_place_images(
+    place_id: int,
+    session: Session = Depends(get_session),
+) -> List[PlaceImageResponse]:
+    """Lấy danh sách hình ảnh của một địa điểm du lịch. Public."""
+    place = PlaceService.get_place_by_id(session, place_id)
+    return place.images
+
+
+@router.post(
+    "/{place_id}/images",
+    response_model=PlaceImageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_place_image(
+    place_id: int,
+    data: PlaceImageCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> PlaceImageResponse:
+    """Thêm hình ảnh cho một địa điểm du lịch. Yêu cầu đăng nhập."""
+    return PlaceService.add_image_to_place(session, place_id, data)
 
 
 from app.schemas.place_search import PlaceSearchRequest, PlaceSearchResponse
