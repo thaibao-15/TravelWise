@@ -61,7 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (next is AuthAuthenticated) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => const MainShell(),
+            builder: (_) => MainShell(key: MainShell.shellKey),
           ),
           (route) => false,
         );

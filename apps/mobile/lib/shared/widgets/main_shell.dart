@@ -10,6 +10,19 @@ import '../../features/trips/screens/trips_screen.dart';
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
+  /// Global key used to access the MainShell state from external routes.
+  static final GlobalKey<_MainShellState> shellKey =
+      GlobalKey<_MainShellState>();
+
+  /// Navigate back to MainShell and switch to the given tab index.
+  /// Call this from pushed routes (e.g. MapScreen) to return to a tab.
+  static void switchToTab(BuildContext context, int index) {
+    // Pop all routes until we reach the MainShell route
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    // Switch to the requested tab
+    shellKey.currentState?._setTab(index);
+  }
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -25,6 +38,12 @@ class _MainShellState extends State<MainShell> {
     const TripsScreen(),
     const ProfilePlaceholderScreen(),
   ];
+
+  void _setTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   void _onBottomNavTap(int index) {
     setState(() {
