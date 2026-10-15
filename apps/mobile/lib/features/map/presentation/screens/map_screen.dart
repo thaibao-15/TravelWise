@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
+import '../../../../shared/widgets/bottom_nav_bar.dart';
+import '../../../../shared/widgets/main_shell.dart';
 import '../providers/location_provider.dart';
 import '../widgets/current_location_marker.dart';
 import '../widgets/location_info_card.dart';
@@ -168,10 +170,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             children: [
               // OpenStreetMap Tile Layer with compliant User-Agent
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.travelwise.mobile',
-                maxZoom: 19,
-              ),
+              urlTemplate:
+                  'https://server.arcgisonline.com/ArcGIS/rest/services/'
+                  'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+              maxNativeZoom: 19,
+            ),  
+             MarkerLayer(
+              markers: [
+                Marker(
+                  point: LatLng(16.5, 112.0),
+                  width: 190,
+                  height: 45,
+                  child: Text(
+                    'Quần đảo Hoàng Sa (Việt Nam)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Marker(
+                  point: LatLng(10.0, 114.0),
+                  width: 190,
+                  height: 45,
+                  child: Text(
+                    'Quần đảo Trường Sa (Việt Nam)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
 
               // GPS Accuracy Circle
               if (currentPosition != null && accuracy != null)
@@ -326,6 +362,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
         ],
       ),
+      bottomNavigationBar: CustomBottomNavBar(
+        currentIndex: -1, // No tab selected on Map screen
+        onTap: (index) => MainShell.switchToTab(context, index),
+      ),
     );
   }
 
@@ -349,15 +389,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ),
         tooltip: 'Quay lại',
-        onPressed: () {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          } else if (Navigator.of(context, rootNavigator: true).canPop()) {
-            Navigator.of(context, rootNavigator: true).pop();
-          } else {
-            Navigator.maybePop(context);
-          }
-        },
+        onPressed: () => Navigator.of(context).pop(),
       ),
       title: const Column(
         children: [

@@ -37,10 +37,8 @@ class _MapGpsCardState extends State<MapGpsCard>
   }
 
   void _navigate() {
-    Navigator.of(
-      context,
-      rootNavigator: true,
-    ).push(MaterialPageRoute(builder: (_) => const MapScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const MapScreen()));
   }
 
   @override
