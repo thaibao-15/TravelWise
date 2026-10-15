@@ -351,8 +351,11 @@ uv run uvicorn app.main:app --reload
 # Nạp dữ liệu ban đầu
 uv run python seed.py
 
-# Nạp dữ liệu vào Chroma Vector Store
+# Nạp tiếp dữ liệu mới vào Chroma Vector Store (Mặc định: Bỏ qua bài cũ, chỉ nhúng bài mới)
 uv run python scripts/ingest_rag.py
+
+# Xóa sạch và nạp lại toàn bộ từ đầu vào Chroma
+uv run python scripts/ingest_rag.py --reset
 
 # Tạo file migration Alembic mới
 uv run alembic revision --autogenerate -m "ten_migration"
