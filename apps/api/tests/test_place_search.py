@@ -102,6 +102,92 @@ class TestPlaceSearchService(unittest.TestCase):
             else:
                 pref_a.raw_context_snapshot = ctx_a.model_dump_json()
                 session.add(pref_a)
+
+            # Ensure categories needed by scenarios exist
+            cat_beach = session.exec(select(Category).where(Category.name == "Beach")).first()
+            if not cat_beach:
+                cat_beach = Category(name="Beach", description="Bãi biển")
+                session.add(cat_beach)
+                session.commit()
+                session.refresh(cat_beach)
+
+            cat_museum = session.exec(select(Category).where(Category.name == "Museum")).first()
+            if not cat_museum:
+                cat_museum = Category(name="Museum", description="Bảo tàng")
+                session.add(cat_museum)
+                session.commit()
+                session.refresh(cat_museum)
+
+            # Ensure places needed across scenarios 1-14 exist
+            places_to_seed = [
+                {
+                    "name": "Bà Nà Hills",
+                    "description": "Khu du lịch Bà Nà Hills",
+                    "address": "Hòa Vang, Đà Nẵng",
+                    "latitude": 15.998,
+                    "longitude": 107.995,
+                    "category_id": None,
+                },
+                {
+                    "name": "Bãi biển Mỹ Khê",
+                    "description": "Bãi biển đẹp và nổi tiếng",
+                    "address": "Sơn Trà, Đà Nẵng",
+                    "latitude": 16.060,
+                    "longitude": 108.246,
+                    "category_id": cat_beach.id,
+                },
+                {
+                    "name": "Bảo tàng Điêu khắc Chăm Đà Nẵng",
+                    "description": "Bảo tàng nghệ thuật Chăm",
+                    "address": "Hải Châu, Đà Nẵng",
+                    "latitude": 16.061,
+                    "longitude": 108.223,
+                    "category_id": cat_museum.id,
+                },
+                {
+                    "name": "Cầu Rồng",
+                    "description": "Cầu Rồng bắc qua sông Hàn",
+                    "address": "Hải Châu, Đà Nẵng",
+                    "latitude": 16.061,
+                    "longitude": 108.227,
+                    "category_id": None,
+                },
+                {
+                    "name": "Chợ Hàn",
+                    "description": "Chợ truyền thống lâu đời",
+                    "address": "Hải Châu, Đà Nẵng",
+                    "latitude": 16.068,
+                    "longitude": 108.224,
+                    "category_id": None,
+                },
+                {
+                    "name": "Đèo Hải Vân",
+                    "description": "Đèo Hải Vân hùng vĩ nối Đà Nẵng và Huế",
+                    "address": "Thừa Thiên Huế",
+                    "latitude": 16.191,
+                    "longitude": 108.131,
+                    "category_id": None,
+                },
+            ]
+
+            for p_data in places_to_seed:
+                p = session.exec(select(Place).where(Place.name == p_data["name"])).first()
+                if not p:
+                    p = Place(
+                        name=p_data["name"],
+                        description=p_data["description"],
+                        address=p_data["address"],
+                        latitude=p_data["latitude"],
+                        longitude=p_data["longitude"],
+                        category_id=p_data["category_id"],
+                        is_deleted=False,
+                    )
+                    session.add(p)
+                else:
+                    if p_data["category_id"] and p.category_id != p_data["category_id"]:
+                        p.category_id = p_data["category_id"]
+                        session.add(p)
+
             session.commit()
 
         self.token_a = create_access_token(subject=self.user_a_id, email="search_user_a@example.com", role="USER")
