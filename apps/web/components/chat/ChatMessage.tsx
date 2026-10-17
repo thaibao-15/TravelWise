@@ -66,6 +66,8 @@ export function ChatMessage({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
 
+  const cancelPlayRef = useRef<(() => void) | null>(null);
+
   const isUser = message.role === "user";
   const isSending = message.status === "sending";
   const isError = message.status === "error";
@@ -73,6 +75,10 @@ export function ChatMessage({
   // Stop audio on unmount
   useEffect(() => {
     return () => {
+      if (cancelPlayRef.current) {
+        cancelPlayRef.current();
+        cancelPlayRef.current = null;
+      }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -94,6 +100,10 @@ export function ChatMessage({
   const handleToggleTts = async () => {
     // 1. If currently playing, stop playback
     if (ttsState === "playing") {
+      if (cancelPlayRef.current) {
+        cancelPlayRef.current();
+        cancelPlayRef.current = null;
+      }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -103,44 +113,25 @@ export function ChatMessage({
     }
 
     setTtsError(null);
+    setTtsState("playing");
 
-    // 2. If audio was already fetched, replay directly
-    if (audioUrlRef.current && audioRef.current) {
-      try {
-        audioRef.current.currentTime = 0;
-        await audioRef.current.play();
-        setTtsState("playing");
-      } catch (err) {
-        console.error("Audio playback error:", err);
-        setTtsState("idle");
-      }
-      return;
-    }
-
-    // 3. Request TTS synthesis from backend
-    setTtsState("loading");
     try {
-      const streamUrl =
-        message.content.length <= 1800
-          ? ttsService.getStreamUrl(message.content)
-          : await ttsService.synthesize(message.content);
-      audioUrlRef.current = streamUrl;
-
-      const audio = new Audio(streamUrl);
-      audio.preload = "auto";
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        setTtsState("idle");
-      };
-
-      audio.onerror = () => {
-        setTtsState("idle");
-        setTtsError("Lỗi khi phát âm thanh.");
-      };
-
-      await audio.play();
-      setTtsState("playing");
+      // Sử dụng playAudio để câu đầu tiên phát ra loa tức thì (< 300ms) trong khi các câu sau nạp nền
+      const { cancel } = await ttsService.playAudio(
+        message.content,
+        () => {
+          setTtsState("idle");
+          cancelPlayRef.current = null;
+        },
+        (err) => {
+          console.error("TTS playback error:", err);
+          setTtsState("idle");
+          setTtsError("Lỗi khi phát âm thanh.");
+          cancelPlayRef.current = null;
+          setTimeout(() => setTtsError(null), 4000);
+        }
+      );
+      cancelPlayRef.current = cancel;
     } catch (err: unknown) {
       console.error("TTS synthesis error:", err);
       setTtsState("idle");

@@ -609,7 +609,8 @@ export function useChat() {
               if (mode === "voice" && onSentence) {
                 sentenceBuffer += token;
                 const match = sentenceBuffer.match(/^(.*?[\.\!\?\n])(\s+|$)/);
-                if (match && match[1].trim().length >= 25) {
+                // Ngưỡng 6 ký tự giúp các câu chào ngắn ("Chào bạn!", "Dạ được chứ!") được phát ngay
+                if (match && match[1].trim().length >= 6) {
                   onSentence(match[1].trim());
                   sentenceBuffer = sentenceBuffer.slice(match[0].length);
                 }
