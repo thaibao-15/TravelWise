@@ -166,6 +166,22 @@ class ItineraryEditRequest(BaseModel):
     allow_overwrite: bool = True
 
 
+class ItineraryDetectIntentRequest(BaseModel):
+    """Request payload to determine whether a message is an itinerary edit request."""
+
+    message: str
+    conversation_id: Optional[int] = None
+
+
+class ItineraryDetectIntentResponse(BaseModel):
+    """Response returned from LLM & RAG intent classification."""
+
+    is_edit_intent: bool
+    confidence: str = "HIGH"
+    change_prompt: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class TripCreateRequest(BaseModel):
     """Request payload to create a new Trip entity from Web/API."""
 
