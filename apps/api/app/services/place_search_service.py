@@ -218,7 +218,7 @@ class PlaceSearchService:
         session: Session,
         context: TripPlanningContext,
         skip: int = 0,
-        limit: int = 20,
+        limit: int = 100,
         reference_lat: Optional[float] = None,
         reference_lon: Optional[float] = None,
     ) -> PlaceSearchResponse:
