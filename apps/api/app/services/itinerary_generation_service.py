@@ -42,6 +42,7 @@ from app.schemas.itinerary import (
     ItineraryActivityItem,
     ItineraryDayItem,
     ItineraryGenerationResponse,
+    ItineraryPlaceSummary,
     ItineraryStatusEnum,
 )
 from app.schemas.place_search import PlaceSearchResponse, SearchPlaceItem
@@ -625,10 +626,24 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
                 elif clean_place_id and candidate_map[clean_place_id].price is not None:
                     est_cost = candidate_map[clean_place_id].price
 
+                place_summary: Optional[ItineraryPlaceSummary] = None
+                if clean_place_id and clean_place_id in candidate_map:
+                    cand = candidate_map[clean_place_id]
+                    place_summary = ItineraryPlaceSummary(
+                        place_id=cand.place_id,
+                        name=cand.name,
+                        category=cand.category,
+                        address=cand.address,
+                        description=getattr(cand, "description", None),
+                        latitude=cand.latitude,
+                        longitude=cand.longitude,
+                    )
+
                 item = ItineraryActivityItem(
                     order_index=order_counter,
                     activity_type=act_type,
                     place_id=clean_place_id,
+                    place=place_summary,
                     title=act_title,
                     description=act_raw.get("description"),
                     start_time=start_time_str,

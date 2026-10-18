@@ -167,6 +167,9 @@ class RAGAskResponse(BaseModel):
     conversation_id: int
     message: MessageResponse
     planning_context: Optional[TripPlanningContext] = None
+    planning_status: Optional[str] = None
+    is_ready_to_generate: Optional[bool] = None
+    planning_action: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,
