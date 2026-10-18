@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     BLAZE_TTS_NORMALIZATION: str = "basic"
 
     # -------------------------------------------------------------------------
+    # Weather Configuration
+    # -------------------------------------------------------------------------
+    OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
+    WEATHER_TIMEZONE: str = "Asia/Ho_Chi_Minh"
+    WEATHER_HTTP_TIMEOUT_SECONDS: float = 10.0
+    WEATHER_CACHE_TTL_SECONDS: int = 1800
+
+    # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
     # -------------------------------------------------------------------------
     CHROMA_PERSIST_DIRECTORY: str = "data/chroma"
@@ -141,4 +149,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

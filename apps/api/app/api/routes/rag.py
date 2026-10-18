@@ -26,6 +26,7 @@ from app.services.conversation_summary_service import (
     ConversationSummaryError,
     ConversationSummaryService,
 )
+from app.services.weather_context_service import WeatherContextService
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,14 @@ def ask_knowledge(
         if planning_context:
             planning_summary = TripPlanningContextExtractionService.format_context_summary(planning_context)
 
+        weather_question = (
+            standalone_question if isinstance(standalone_question, str) else user_question
+        )
+        weather_context = WeatherContextService.build_context_sync(
+            session=session,
+            question=weather_question,
+            current_location=request.current_location,
+        )
         result = chain.invoke(
             question=user_question,
             standalone_question=standalone_question,
@@ -188,6 +197,7 @@ def ask_knowledge(
             planning_summary=planning_summary,
             mode=request.mode or "chat",
             location_context=location_context,
+            weather_context=weather_context,
         )
         answer = result["answer"]
     except RAGChainError as e:
@@ -340,6 +350,15 @@ async def ask_rag_stream(
     except Exception as e:
         logger.debug("Could not retrieve existing planning context for stream: %s", e)
 
+    weather_question = (
+        standalone_question if isinstance(standalone_question, str) else user_question
+    )
+    weather_context = await WeatherContextService.build_context(
+        session=session,
+        question=weather_question,
+        current_location=request.current_location,
+    )
+
     async def event_generator():
         yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
 
@@ -352,6 +371,7 @@ async def ask_rag_stream(
                 planning_summary=planning_summary,
                 mode=request.mode or "chat",
                 location_context=location_context,
+                weather_context=weather_context,
             ):
                 full_answer_parts.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"

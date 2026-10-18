@@ -348,7 +348,66 @@ Trang [`apps/web/app/trips/new/page.tsx`](../apps/web/app/trips/new/page.tsx):
 - `chatService.generateItinerary(tripId, options)`, hoặc
 - `chatService.generateItineraryDirect(options)`.
 
-## 9. Kiểm thử
+## 9. Bản đồ được sử dụng trong project
+
+Web sử dụng [MapLibre GL JS](../apps/web/components/map/TravelMap.tsx) để
+hiển thị bản đồ, marker và popup. Cấu hình nằm tại
+[`apps/web/lib/map-config.ts`](../apps/web/lib/map-config.ts):
+
+- Mặc định dùng **Esri World Street Map** dạng raster tile, zoom tối đa 19.
+- Có thêm style OpenStreetMap mirror trong code nhưng không phải lựa chọn mặc
+  định.
+- Tile được tải trực tiếp từ provider; cần giữ attribution và bảo đảm CORS.
+
+Có thể thay style bằng biến môi trường frontend:
+
+```dotenv
+NEXT_PUBLIC_MAP_STYLE_URL=https://api.maptiler.com/maps/streets-v2/style.json?key=YOUR_KEY
+```
+
+Nếu không cấu hình, hệ thống dùng `ESRI_WORLD_STREET_STYLE`. Không đặt secret
+backend vào `NEXT_PUBLIC_*`; API key của provider nên giới hạn domain và quyền.
+Khi deploy phải giữ worker
+[`apps/web/public/maplibre-gl-worker.mjs`](../apps/web/public/maplibre-gl-worker.mjs).
+
+### 9.1. Tọa độ và marker
+
+Project dùng WGS84:
+
+- `latitude`: `-90` đến `90`.
+- `longitude`: `-180` đến `180`.
+
+API gửi tọa độ theo tên trường:
+
+```json
+{
+  "latitude": 16.0544,
+  "longitude": 108.2022
+}
+```
+
+MapLibre nhận tọa độ theo thứ tự `[longitude, latitude]`, không phải
+`[latitude, longitude]`. [`isValidCoordinate`](../apps/web/components/map/TravelMap.tsx)
+loại bỏ marker thiếu hoặc sai tọa độ. Địa điểm không có GPS vẫn hiển thị trong
+danh sách nhưng không xuất hiện trên bản đồ.
+
+`TravelMap` được dùng ở trang địa điểm và trang chi tiết chuyến đi. Marker
+itinerary có thể hiển thị số thứ tự, ngày và khung giờ.
+
+### 9.2. GPS và giới hạn
+
+Tâm bản đồ ưu tiên `travelwise_user_location` trong `localStorage`, sau đó
+dùng tọa độ dự phòng Đà Nẵng `[108.2022, 16.0544]` với zoom 12.
+`navigator.geolocation` có thể gửi `current_location` cho API để tìm địa điểm
+gần người dùng hoặc cung cấp context cho LLM. Nếu người dùng từ chối quyền
+hoặc request timeout, hệ thống vẫn hoạt động không kèm GPS. Tọa độ chưa được
+reverse geocode nên không được coi là địa chỉ chính xác.
+
+Khi thay provider, cần kiểm tra tile, CORS, attribution, quota và worker.
+Bản đồ hiện chỉ hiển thị vị trí và dùng khoảng cách đường chim bay để gom nhóm;
+project chưa có routing API cho quãng đường, thời gian lái xe hay giao thông.
+
+## 10. Kiểm thử
 
 Chạy các test liên quan tại `apps/api`:
 
@@ -370,7 +429,7 @@ cd ..\web
 bunx tsc --noEmit
 ```
 
-## 10. Giới hạn hiện tại và hướng mở rộng
+## 11. Giới hạn hiện tại và hướng mở rộng
 
 - Khoảng cách gom cụm và validate là khoảng cách đường chim bay bằng Haversine.
 - Chưa có routing API để tính quãng đường và thời gian lái xe thực tế.

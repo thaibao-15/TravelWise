@@ -119,6 +119,7 @@ class RAGChain:
         top_k: Optional[int] = None,
         mode: str = "chat",
         location_context: Optional[str] = None,
+        weather_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute the RAG pipeline for a given question and optional conversation context.
 
@@ -176,6 +177,8 @@ class RAGChain:
             )
         if location_context:
             context_text = f"{context_text}\n\n=== VỊ TRÍ HIỆN TẠI CỦA NGƯỜI DÙNG ===\n{location_context}\n"
+        if weather_context:
+            context_text = f"{context_text}\n\n{weather_context}\n"
 
         # 5. Format prompt (use voice prompt for voice mode, otherwise standard prompt)
         try:
@@ -223,6 +226,7 @@ class RAGChain:
         top_k: Optional[int] = None,
         mode: str = "chat",
         location_context: Optional[str] = None,
+        weather_context: Optional[str] = None,
     ):
         """Stream response tokens generator for real-time low-latency response."""
         clean_question = (question or "").strip()
@@ -256,6 +260,8 @@ class RAGChain:
             )
         if location_context:
             context_text = f"{context_text}\n\n=== VỊ TRÍ HIỆN TẠI CỦA NGƯỜI DÙNG ===\n{location_context}\n"
+        if weather_context:
+            context_text = f"{context_text}\n\n{weather_context}\n"
 
         try:
             if mode == "voice":
