@@ -10,6 +10,7 @@ from enum import Enum
 import re
 from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.schemas.trip_planning import CurrentLocation
 
 
 class ItineraryStatusEnum(str, Enum):
@@ -156,6 +157,7 @@ class ItineraryGenerationRequest(BaseModel):
     allow_overwrite_confirmed: bool = False
     user_prompt: Optional[str] = None
     conversation_id: Optional[int] = None
+    current_location: Optional[CurrentLocation] = None
 
 
 class ItineraryEditRequest(BaseModel):

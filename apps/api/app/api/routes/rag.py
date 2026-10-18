@@ -82,6 +82,14 @@ def ask_knowledge(
         8. Return response (backward-compatible).
     """
     user_question = request.get_question()
+    location_context = (
+        f"Vĩ độ: {request.current_location.latitude:.6f}, "
+        f"Kinh độ: {request.current_location.longitude:.6f}. "
+        "Hãy dùng vị trí này làm vị trí hiện tại của người dùng; "
+        "không suy đoán địa chỉ cụ thể nếu không có dữ liệu bản đồ xác nhận."
+        if request.current_location
+        else None
+    )
 
     # 1. Resolve or create conversation
     if request.conversation_id is not None:
@@ -179,6 +187,7 @@ def ask_knowledge(
             chat_history=chat_history,
             planning_summary=planning_summary,
             mode=request.mode or "chat",
+            location_context=location_context,
         )
         answer = result["answer"]
     except RAGChainError as e:
@@ -246,6 +255,14 @@ async def ask_rag_stream(
     from fastapi.responses import StreamingResponse
 
     user_question = request.get_question()
+    location_context = (
+        f"Vĩ độ: {request.current_location.latitude:.6f}, "
+        f"Kinh độ: {request.current_location.longitude:.6f}. "
+        "Hãy dùng vị trí này làm vị trí hiện tại của người dùng; "
+        "không suy đoán địa chỉ cụ thể nếu không có dữ liệu bản đồ xác nhận."
+        if request.current_location
+        else None
+    )
 
     if request.conversation_id is not None:
         conversation = ConversationService.get_conversation_by_id(
@@ -334,6 +351,7 @@ async def ask_rag_stream(
                 chat_history=chat_history,
                 planning_summary=planning_summary,
                 mode=request.mode or "chat",
+                location_context=location_context,
             ):
                 full_answer_parts.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
