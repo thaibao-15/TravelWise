@@ -17,6 +17,9 @@ from app.models.trip_preference import TripPreference
 from app.models.user import User
 from app.schemas.itinerary import (
     EditStatusEnum,
+    ItineraryActivityCreate,
+    ItineraryActivityDetail,
+    ItineraryActivityUpdate,
     ItineraryDetailResponse,
     ItineraryDetectIntentRequest,
     ItineraryDetectIntentResponse,
@@ -789,6 +792,74 @@ def get_trip_itinerary(
     return ItineraryPersistenceService.get_itinerary_by_trip_id(
         session=session,
         trip_id=trip_id,
+        current_user=current_user,
+        check_ownership=True,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Itinerary Activity CRUD
+# -----------------------------------------------------------------------------
+@router.post(
+    "/api/v1/trips/{trip_id}/itinerary/days/{day_id}/activities",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create itinerary activity",
+    description=(
+        "Tạo hoạt động mới trong một ngày của lịch trình. "
+        "Nếu không gửi order_index, hệ thống tự gán (max + 1)."
+    ),
+)
+@router.post(
+    "/api/trips/{trip_id}/itinerary/days/{day_id}/activities",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+def create_itinerary_activity(
+    trip_id: int,
+    day_id: int,
+    data: ItineraryActivityCreate,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryActivityDetail:
+    """Create a new activity inside an itinerary day."""
+    return ItineraryPersistenceService.create_activity(
+        session=session,
+        trip_id=trip_id,
+        day_id=day_id,
+        data=data,
+        current_user=current_user,
+        check_ownership=True,
+    )
+
+
+@router.patch(
+    "/api/v1/trips/{trip_id}/itinerary/activities/{activity_id}",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_200_OK,
+    summary="Update itinerary activity",
+    description="Cập nhật một phần thông tin hoạt động trong lịch trình (partial update).",
+)
+@router.patch(
+    "/api/trips/{trip_id}/itinerary/activities/{activity_id}",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def update_itinerary_activity(
+    trip_id: int,
+    activity_id: int,
+    data: ItineraryActivityUpdate,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryActivityDetail:
+    """Partially update an existing itinerary activity."""
+    return ItineraryPersistenceService.update_activity(
+        session=session,
+        trip_id=trip_id,
+        activity_id=activity_id,
+        data=data,
         current_user=current_user,
         check_ownership=True,
     )

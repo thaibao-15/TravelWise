@@ -29,7 +29,9 @@ from app.models.place import Place
 from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.itinerary import (
+    ItineraryActivityCreate,
     ItineraryActivityDetail,
+    ItineraryActivityUpdate,
     ItineraryDayDetail,
     ItineraryDetailResponse,
     ItineraryGenerationResponse,
@@ -563,8 +565,341 @@ class ItineraryPersistenceService:
         )
 
     # -------------------------------------------------------------------------
+    # 5. Activity CRUD
+    # -------------------------------------------------------------------------
+    @classmethod
+    def create_activity(
+        cls,
+        session: Session,
+        trip_id: int,
+        day_id: int,
+        data: ItineraryActivityCreate,
+        current_user: Optional[User] = None,
+        check_ownership: bool = True,
+    ) -> ItineraryActivityDetail:
+        """Create a new activity within an itinerary day."""
+        trip, day = cls._get_trip_and_day(
+            session=session,
+            trip_id=trip_id,
+            day_id=day_id,
+            current_user=current_user,
+            check_ownership=check_ownership,
+            require_write=True,
+        )
+
+        if data.place_id is not None:
+            cls._ensure_place_exists(session, data.place_id)
+
+        order_index = data.order_index
+        if order_index is None:
+            max_order = session.exec(
+                select(func.max(ItineraryActivity.order_index)).where(
+                    ItineraryActivity.itinerary_day_id == day.id
+                )
+            ).one()
+            order_index = int(max_order or 0) + 1
+        else:
+            cls._ensure_order_index_available(
+                session=session,
+                day_id=day.id,
+                order_index=order_index,
+            )
+
+        start_t = cls._parse_time(data.start_time)
+        end_t = cls._parse_time(data.end_time)
+
+        activity = ItineraryActivity(
+            itinerary_day_id=day.id,
+            place_id=data.place_id,
+            activity_type=data.activity_type or "VISIT",
+            title=data.title.strip(),
+            description=data.description,
+            start_time=start_t,
+            end_time=end_t,
+            duration_minutes=data.duration_minutes,
+            estimated_cost=cls._to_decimal(data.estimated_cost),
+            travel_duration_minutes=data.travel_duration_minutes,
+            travel_distance_km=cls._to_decimal(data.travel_distance_km),
+            order_index=order_index,
+            note=data.note,
+        )
+        session.add(activity)
+
+        trip.updated_at = _utcnow()
+        session.add(trip)
+
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+
+        session.refresh(activity)
+        return cls._activity_to_detail(session, activity)
+
+    @classmethod
+    def update_activity(
+        cls,
+        session: Session,
+        trip_id: int,
+        activity_id: int,
+        data: ItineraryActivityUpdate,
+        current_user: Optional[User] = None,
+        check_ownership: bool = True,
+    ) -> ItineraryActivityDetail:
+        """Partially update an existing itinerary activity."""
+        trip, activity = cls._get_trip_and_activity(
+            session=session,
+            trip_id=trip_id,
+            activity_id=activity_id,
+            current_user=current_user,
+            check_ownership=check_ownership,
+            require_write=True,
+        )
+
+        update_dict = data.model_dump(exclude_unset=True)
+        if not update_dict:
+            return cls._activity_to_detail(session, activity)
+
+        if "place_id" in update_dict and update_dict["place_id"] is not None:
+            cls._ensure_place_exists(session, update_dict["place_id"])
+
+        if "order_index" in update_dict and update_dict["order_index"] is not None:
+            if update_dict["order_index"] != activity.order_index:
+                cls._ensure_order_index_available(
+                    session=session,
+                    day_id=activity.itinerary_day_id,
+                    order_index=update_dict["order_index"],
+                    exclude_activity_id=activity.id,
+                )
+
+        if "title" in update_dict and update_dict["title"] is not None:
+            update_dict["title"] = str(update_dict["title"]).strip()
+
+        if "start_time" in update_dict:
+            update_dict["start_time"] = cls._parse_time(update_dict["start_time"])
+        if "end_time" in update_dict:
+            update_dict["end_time"] = cls._parse_time(update_dict["end_time"])
+        if "estimated_cost" in update_dict:
+            update_dict["estimated_cost"] = cls._to_decimal(update_dict["estimated_cost"])
+        if "travel_distance_km" in update_dict:
+            update_dict["travel_distance_km"] = cls._to_decimal(
+                update_dict["travel_distance_km"]
+            )
+
+        for field, value in update_dict.items():
+            setattr(activity, field, value)
+
+        trip.updated_at = _utcnow()
+        session.add(activity)
+        session.add(trip)
+
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+
+        session.refresh(activity)
+        return cls._activity_to_detail(session, activity)
+
+    # -------------------------------------------------------------------------
     # Helper methods
     # -------------------------------------------------------------------------
+    @classmethod
+    def _assert_trip_access(
+        cls,
+        trip: Trip,
+        current_user: Optional[User],
+        *,
+        check_ownership: bool,
+        require_write: bool,
+    ) -> None:
+        if not check_ownership or trip.user_id is None:
+            return
+        if not current_user:
+            action = "chỉnh sửa" if require_write else "xem"
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Vui lòng đăng nhập để {action} chuyến đi này.",
+            )
+        if trip.user_id != current_user.id and current_user.role != "ADMIN":
+            action = "chỉnh sửa" if require_write else "truy cập"
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Bạn không có quyền {action} chuyến đi này.",
+            )
+
+    @classmethod
+    def _get_trip_and_day(
+        cls,
+        session: Session,
+        trip_id: int,
+        day_id: int,
+        current_user: Optional[User],
+        check_ownership: bool,
+        require_write: bool,
+    ) -> Tuple[Trip, ItineraryDay]:
+        trip = session.get(Trip, trip_id)
+        if not trip:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy chuyến đi với ID {trip_id}.",
+            )
+        cls._assert_trip_access(
+            trip,
+            current_user,
+            check_ownership=check_ownership,
+            require_write=require_write,
+        )
+
+        day = session.get(ItineraryDay, day_id)
+        if not day or day.trip_id != trip.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy ngày lịch trình ID {day_id} trong chuyến đi {trip_id}.",
+            )
+        return trip, day
+
+    @classmethod
+    def _get_trip_and_activity(
+        cls,
+        session: Session,
+        trip_id: int,
+        activity_id: int,
+        current_user: Optional[User],
+        check_ownership: bool,
+        require_write: bool,
+    ) -> Tuple[Trip, ItineraryActivity]:
+        trip = session.get(Trip, trip_id)
+        if not trip:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy chuyến đi với ID {trip_id}.",
+            )
+        cls._assert_trip_access(
+            trip,
+            current_user,
+            check_ownership=check_ownership,
+            require_write=require_write,
+        )
+
+        activity = session.get(ItineraryActivity, activity_id)
+        if not activity:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy hoạt động với ID {activity_id}.",
+            )
+
+        day = session.get(ItineraryDay, activity.itinerary_day_id)
+        if not day or day.trip_id != trip.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Hoạt động ID {activity_id} không thuộc chuyến đi {trip_id}.",
+            )
+        return trip, activity
+
+    @classmethod
+    def _ensure_place_exists(cls, session: Session, place_id: int) -> Place:
+        place = session.get(Place, place_id)
+        if not place or getattr(place, "is_deleted", False):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy địa điểm với ID {place_id}.",
+            )
+        return place
+
+    @classmethod
+    def _ensure_order_index_available(
+        cls,
+        session: Session,
+        day_id: int,
+        order_index: int,
+        exclude_activity_id: Optional[int] = None,
+    ) -> None:
+        stmt = select(ItineraryActivity).where(
+            ItineraryActivity.itinerary_day_id == day_id,
+            ItineraryActivity.order_index == order_index,
+        )
+        if exclude_activity_id is not None:
+            stmt = stmt.where(ItineraryActivity.id != exclude_activity_id)
+        conflict = session.exec(stmt).first()
+        if conflict:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"order_index={order_index} đã được dùng bởi hoạt động "
+                    f"ID {conflict.id} trong ngày này."
+                ),
+            )
+
+    @classmethod
+    def _parse_time(cls, time_str: Optional[str]) -> Optional[time]:
+        if not time_str:
+            return None
+        try:
+            return datetime.strptime(time_str, "%H:%M").time()
+        except ValueError:
+            return None
+
+    @classmethod
+    def _to_decimal(cls, value: Optional[float]) -> Optional[Decimal]:
+        if value is None:
+            return None
+        return Decimal(str(value))
+
+    @classmethod
+    def _activity_to_detail(
+        cls,
+        session: Session,
+        activity: ItineraryActivity,
+    ) -> ItineraryActivityDetail:
+        place_summary: Optional[ItineraryPlaceSummary] = None
+        place = activity.place
+        if place is None and activity.place_id is not None:
+            stmt = (
+                select(Place)
+                .where(Place.id == activity.place_id)
+                .options(selectinload(Place.category))
+            )
+            place = session.exec(stmt).first()
+
+        if place and not getattr(place, "is_deleted", False):
+            cat_name = place.category.name if place.category else None
+            place_summary = ItineraryPlaceSummary(
+                place_id=place.id,
+                name=place.name,
+                category=cat_name,
+                address=place.address,
+                description=place.description,
+                latitude=place.latitude,
+                longitude=place.longitude,
+            )
+
+        return ItineraryActivityDetail(
+            id=activity.id,
+            itinerary_day_id=activity.itinerary_day_id,
+            order_index=activity.order_index,
+            activity_type=activity.activity_type or "VISIT",
+            place_id=activity.place_id,
+            place=place_summary,
+            title=activity.title,
+            description=activity.description,
+            start_time=activity.start_time.strftime("%H:%M") if activity.start_time else None,
+            end_time=activity.end_time.strftime("%H:%M") if activity.end_time else None,
+            duration_minutes=activity.duration_minutes,
+            estimated_cost=(
+                float(activity.estimated_cost) if activity.estimated_cost is not None else None
+            ),
+            travel_duration_minutes=activity.travel_duration_minutes,
+            travel_distance_km=(
+                float(activity.travel_distance_km)
+                if activity.travel_distance_km is not None
+                else None
+            ),
+            note=activity.note,
+        )
+
     @classmethod
     def _time_to_minutes(cls, time_str: Optional[str]) -> Optional[int]:
         if not time_str:

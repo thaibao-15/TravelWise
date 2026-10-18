@@ -58,6 +58,10 @@ export async function apiFetch<T>(
       throw new ApiError(errorMessage, response.status);
     }
 
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     return (await response.json()) as T;
   } catch (error) {
     if (error instanceof ApiError) {
