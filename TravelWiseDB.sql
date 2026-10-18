@@ -167,12 +167,54 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id);
 -- =========================================
 -- AI CONTEXT (MEMORY)
 -- =========================================
-CREATE TABLE ai_context (
-    id BIGINT IDENTITY PRIMARY KEY,
-    conversation_id BIGINT,
-    summary NVARCHAR(MAX),
-    updated_at DATETIME DEFAULT GETDATE(),
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+CREATE TABLE user_memories (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+
+    memory_type NVARCHAR(50) NOT NULL,
+    content NVARCHAR(MAX) NOT NULL,
+
+    importance FLOAT DEFAULT 0.5,
+
+    source_conversation_id BIGINT NULL,
+    source_message_id BIGINT NULL,
+
+    created_at DATETIME2 DEFAULT SYSDATETIME(),
+    updated_at DATETIME2 DEFAULT SYSDATETIME(),
+    last_accessed_at DATETIME2 NULL,
+
+    is_active BIT DEFAULT 1,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (source_conversation_id)
+        REFERENCES conversations(id) ON DELETE NO ACTION,
+
+    FOREIGN KEY (source_message_id)
+        REFERENCES messages(id) ON DELETE NO ACTION
+);
+
+CREATE INDEX IX_user_memories_user_type
+ON user_memories(user_id, memory_type, is_active);
+
+CREATE TABLE conversation_summaries (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    conversation_id BIGINT NOT NULL,
+
+    summary NVARCHAR(MAX) NOT NULL,
+    last_summarized_message_id BIGINT NULL,
+
+    updated_at DATETIME2 DEFAULT SYSDATETIME(),
+
+    FOREIGN KEY (conversation_id)
+        REFERENCES conversations(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (last_summarized_message_id)
+        REFERENCES messages(id) ON DELETE NO ACTION,
+
+    CONSTRAINT UQ_conversation_summaries_conversation
+        UNIQUE (conversation_id)
 );
 
 -- =========================================

@@ -65,4 +65,4 @@ class User(TimestampMixin, SQLModel, table=True):
     trips: List["Trip"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
+    )

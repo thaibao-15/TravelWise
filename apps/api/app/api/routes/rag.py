@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.messages import AIMessage, HumanMessage
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session
 
 from app.api.deps import get_current_user_optional, get_session
@@ -21,6 +22,10 @@ from app.schemas.rag import (
     RAGSearchResponse,
 )
 from app.services.conversation_service import ConversationService
+from app.services.conversation_summary_service import (
+    ConversationSummaryError,
+    ConversationSummaryService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,14 +123,36 @@ def ask_knowledge(
     except Exception as e:
         logger.error("Planning context extraction error for conversation %s: %s", conversation.id, e)
 
-    # 4. Load recent conversation history (5-10 messages)
+    # 4. Load persisted summaries and recent conversation history.
+    try:
+        current_summary = ConversationSummaryService.get_summary(
+            session=session,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
+        previous_summaries = ConversationSummaryService.get_recent_user_summaries(
+            session=session,
+            user_id=conversation.user_id,
+            exclude_conversation_id=conversation.id,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Conversation summary context unavailable for conversation %s: %s",
+            conversation.id,
+            type(exc).__name__,
+        )
+        current_summary = None
+        previous_summaries = []
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
         limit=10,
     )
 
-    chat_history = []
+    chat_history = ConversationSummaryService.build_context_history(
+        current_summary,
+        previous_summaries,
+    )
     for msg in recent_messages:
         if msg.id == user_msg.id:
             continue  # Avoid duplicating the current question in historical context
@@ -177,6 +204,18 @@ def ask_knowledge(
         content=answer,
     )
 
+    try:
+        ConversationSummaryService.maybe_update_summary(
+            session=session,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
+    except ConversationSummaryError:
+        logger.warning(
+            "Conversation summary skipped after chat response for conversation %s",
+            conversation.id,
+        )
+
     # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
 
@@ -224,13 +263,35 @@ async def ask_rag_stream(
             title=title,
         )
 
+    try:
+        current_summary = ConversationSummaryService.get_summary(
+            session=session,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
+        previous_summaries = ConversationSummaryService.get_recent_user_summaries(
+            session=session,
+            user_id=conversation.user_id,
+            exclude_conversation_id=conversation.id,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Conversation summary context unavailable for streaming conversation %s: %s",
+            conversation.id,
+            type(exc).__name__,
+        )
+        current_summary = None
+        previous_summaries = []
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
         limit=10,
     )
 
-    chat_history = []
+    chat_history = ConversationSummaryService.build_context_history(
+        current_summary,
+        previous_summaries,
+    )
     for msg in recent_messages:
         if msg.sender == "USER":
             chat_history.append(HumanMessage(content=msg.content))
@@ -311,6 +372,18 @@ async def ask_rag_stream(
             sender="AI",
             content=final_answer,
         )
+
+        try:
+            ConversationSummaryService.maybe_update_summary(
+                session=session,
+                conversation_id=conversation.id,
+                user_id=conversation.user_id,
+            )
+        except ConversationSummaryError:
+            logger.warning(
+                "Conversation summary skipped after streaming response for conversation %s",
+                conversation.id,
+            )
 
         ConversationService.update_conversation_timestamp(session, conversation)
 
