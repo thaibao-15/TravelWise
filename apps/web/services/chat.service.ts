@@ -194,6 +194,28 @@ export const chatService = {
   },
 
   /**
+   * Tự động xác định ý định chỉnh sửa lịch trình bằng LLM và RAG
+   */
+  async detectEditIntent(
+    tripId: number,
+    message: string,
+    conversationId?: number | null
+  ): Promise<{
+    is_edit_intent: boolean;
+    confidence: string;
+    change_prompt?: string;
+    reason?: string;
+  }> {
+    return await apiFetch<any>(`/api/v1/trips/${tripId}/itinerary/detect-intent`, {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        conversation_id: conversationId,
+      }),
+    });
+  },
+
+  /**
    * Chỉnh sửa lịch trình theo câu lệnh ngôn ngữ tự nhiên
    */
   async editItinerary(tripId: number, changePrompt: string, targetDay?: number) {

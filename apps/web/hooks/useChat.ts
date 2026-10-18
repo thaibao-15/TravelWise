@@ -33,256 +33,7 @@ function cleanPromptText(text: string): string {
 const AFFIRMATIVE_INTENT_REGEX =
   /(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|tạo\s*lịch(?:\s*trình)?(?:\s*đi|\s*luôn|\s*ngay|\s*nha|\s*nhé|\s*cho\s*mình|\s*giúp)?|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b/i;
 
-/**
- * Nhận diện chính xác câu lệnh chỉnh sửa lịch trình hiện có.
- * Phân lớp lọc chặt chẽ: Loại trừ thắc mắc/FAQ -> Nhận diện các biến thể chỉnh sửa đa dạng.
- */
-function isItineraryEditIntent(prompt: string): boolean {
-  const lower = cleanPromptText(prompt);
-  if (!lower) return false;
 
-  // =========================================================================
-  // BƯỚC 1: BỘ LỌC PHỦ ĐỊNH (Tuyệt đối không phải lệnh sửa lịch trình)
-  // =========================================================================
-
-  // 1a. Câu hỏi về danh tính, vai trò bot, chào hỏi, cảm ơn đơn thuần
-  if (
-    /^(xin\s*chào|chào\s*bạn|hi|hello|cảm\s*ơn|thanks|thank\s*you|tạm\s*biệt)\b/i.test(lower) ||
-    /hướng\s*dẫn\s*viên|bạn\s*là\s*ai|giới\s*thiệu\s*bản\s*thân|bạn\s*có\s*thể\s*làm\s*gì|bạn\s*tên\s*gì|vai\s*trò\s*của\s*bạn/i.test(lower)
-  ) {
-    return false;
-  }
-
-  // 1b. Yêu cầu tạo mới từ đầu / làm lại hoàn toàn (thuộc luồng isRegenerateIntent)
-  if (
-    /(?:tạo\s*lại|làm\s*lại|lên\s*lại|thiết\s*kế\s*lại|lập\s*lại|tạo\s*mới|lên\s*mới|xóa\s*hết\s*làm\s*lại|chuyến\s*đi\s*mới|reset)/i.test(lower) &&
-    !/(?:thêm|bớt|sửa|chỉnh|ngày\s*\d)/i.test(lower)
-  ) {
-    return false;
-  }
-
-  // 1c. Các câu hỏi tham khảo FAQ du lịch, khoảng cách, review, mẹo, thời tiết
-  const isGeneralInquiry =
-    /(?:mấy\s*giờ\s*(?:mở|đóng)|(?:mở|đóng)\s*cửa\s*lúc\s*mấy\s*giờ|vé\s*bao\s*nhiêu|giá\s*vé|bao\s*nhiêu\s*tiền|mất\s*bao\s*lâu|cách\s*bao\s*xa|khoảng\s*cách|đi\s*hết\s*mấy\s*tiếng)\b/i.test(lower) ||
-    /(?:thời\s*tiết|có\s*mưa\s*không|mùa\s*này|mang\s*theo\s*gì|mặc\s*đồ\s*gì|trang\s*phục|kinh\s*nghiệm\s*đi|lưu\s*ý\s*gì)\b/i.test(lower) ||
-    /(?:có\s*ngon\s*không|có\s*đẹp\s*không|review|đánh\s*giá|nên\s*đi\s*không|có\s*gì\s*(?:chơi|ngon|hot|đặc\s*sắc))\b/i.test(lower) ||
-    /(?:nên\s*đi\s*[\w\s]+\s*hay\s*[\w\s]+|so\s*sánh|cái\s*nào\s*tốt\s*hơn)\b/i.test(lower);
-
-  // Nếu là câu hỏi FAQ thuần túy và không kèm động từ hành động sửa đổi
-  const hasStrongEditVerb = /(?:thay|đổi|thêm|bớt|bỏ|xoá|xóa|dời|chuyển|sửa|chỉnh|cập\s*nhật|giãn|tối\s*ưu)/i.test(lower);
-  if (isGeneralInquiry && !hasStrongEditVerb) {
-    return false;
-  }
-
-  // =========================================================================
-  // BƯỚC 2: BỘ LỌC KHẲNG ĐỊNH (Nhận diện các trường hợp chỉnh sửa)
-  // =========================================================================
-
-  // 2a. Thay đổi giờ giấc / thời gian
-  const hasTimeAdjustment =
-    /(?:bắt\s*đầu|khởi\s*hành|xuất\s*phát|dời|lùi|chuyển|đổi|sang|kéo\s*dài|rút\s*ngắn)\s*(?:lúc|sang|vào|từ)?\s*\d{1,2}(?:h|:|\s*giờ)/i.test(lower) ||
-    /(?:sớm\s*hơn|muộn\s*hơn|trễ\s*hơn|nhanh\s*hơn|chậm\s*hơn|ngủ\s*nướng)\b/i.test(lower) ||
-    /(?:cho|để)\s+(?:lịch|chuyến\s*đi)\s+(?:bắt\s*đầu|khởi\s*hành)\s+lúc/i.test(lower) ||
-    /(?:tăng|thêm|bớt|giảm)\s*\d+\s*(?:tiếng|giờ|phút)/i.test(lower);
-
-  // 2b. Thêm / Bớt / Xóa / Bỏ qua hoạt động hoặc địa điểm cụ thể
-  const hasActionWithTarget =
-    /(?:thêm|bổ\s*sung|bớt|bỏ|xoá|xóa|cắt\s*bớt|ghé\s*thêm|chèn\s*thêm)\s+(?:vào\s+ngày\s*\d|khỏi\s+lịch|ngày\s*\d|hoạt\s*động|địa\s*điểm|quán|biển|cafe|cà\s*phê|khách\s*sạn|resort|chợ|chùa|bảo\s*tàng|điểm)/i.test(lower) ||
-    /(?:bỏ|xóa|xoá|bỏ\s*qua|không\s*đi|ngưng\s*đi)\s+[\w\s]+(?:đi|khỏi\s*lịch|ra|nữa)/i.test(lower) ||
-    /(?:thêm|ghé\s*thêm|chèn)\s+[\w\s]+(?:vào\s*ngày|vào\s*buổi|vào\s*lịch|cho\s*mình)/i.test(lower);
-
-  // 2c. Thay thế / Hoán đổi (Thay A bằng B, đổi thứ tự, đảo ngày)
-  const hasSwapOrReplace =
-    /(?:thay|đổi|chuyển)\s+[\w\s]+(?:bằng|thành|sang)\s+[\w\s]+/i.test(lower) ||
-    /(?:đảo|hoán\s*đổi|đổi\s*thứ\s*tự)\s+(?:ngày|buổi|hoạt\s*động|địa\s*điểm|\d)/i.test(lower) ||
-    /ngày\s*\d\s*(?:đổi|hoán\s*đổi|đảo)\s*(?:với|cho)\s*ngày\s*\d/i.test(lower);
-
-  // 2d. Chỉnh sửa theo ngày hoặc theo buổi cụ thể
-  const hasDayOrSessionEdit =
-    /(?:ngày\s*\d|hôm\s*\d)\s*(?:thay|đổi|sửa|chỉnh|thêm|bớt|bỏ|xoá|xóa|dời|chuyển|ưu\s*tiên|tối\s*ưu)/i.test(lower) ||
-    /(?:sửa|đổi|chỉnh|cập\s*nhật|update)\s+(?:ngày\s*\d|hôm\s*\d)/i.test(lower) ||
-    /(?:buổi\s*)?(?:sáng|trưa|chiều|tối|đêm)\s*(?:ngày\s*\d|hôm\s*\d)?\s*(?:đổi|thay|thêm|bớt|bỏ|chuyển|cho\s*đi|ghé)/i.test(lower);
-
-  // 2e. Điều chỉnh nhịp độ, phong cách, đối tượng, phương tiện
-  const hasPacingOrStyleEdit =
-    /(?:dày\s*đặc|kín\s*quá|gấp\s*quá|nhiều\s*điểm\s*quá|mệt\s*quá)\s*(?:giãn|bớt|chỉnh|sửa|giảm)/i.test(lower) ||
-    /(?:giãn\s*(?:lịch|thời\s*gian|ra)|thong\s*thả\s*hơn|nhẹ\s*nhàng\s*hơn|nghỉ\s*ngơi\s*nhiều\s*hơn)/i.test(lower) ||
-    /(?:đổi|chuyển|chỉnh|sửa)\s*(?:sang|theo)?\s*(?:phong\s*cách\s*)?(?:nghỉ\s*dưỡng|chill|tiết\s*kiệm|sang\s*chảnh|trải\s*nghiệm)/i.test(lower) ||
-    /(?:đi\s*cùng|có)\s*(?:người\s*già|người\s*lớn\s*tuổi|trẻ\s*(?:em|nhỏ|con))\s*(?:nên|sửa|chỉnh|giảm)/i.test(lower) ||
-    /(?:đổi\s*phương\s*tiện|thuê\s*xe\s*máy|đi\s*taxi|đi\s*grab)/i.test(lower);
-
-  // 2f. Yêu cầu sửa lịch trình tổng quát
-  const hasGeneralEdit =
-    /(?:sửa|chỉnh|chỉnh\s*sửa|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|sắp\s*xếp\s*lại|tối\s*ưu\s*lại|update|edit|fix)\s*(?:lại\s*)?(?:lịch|lịch\s*trình|chuyến\s*đi|kế\s*hoạch)/i.test(lower) ||
-    /(?:lịch|lịch\s*trình|chuyến\s*đi|kế\s*hoạch)\s*(?:này\s*)?(?:cần\s*)?(?:sửa|chỉnh|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|update|edit)/i.test(lower) ||
-    /(?:sửa|chỉnh|thay\s*đổi|cập\s*nhật|điều\s*chỉnh|update|edit|fix)\s*(?:giúp|hộ|cho|giùm)\s*mình/i.test(lower) ||
-    /(?:sửa|chỉnh|chỉnh\s*sửa|update|edit)\s+(?:lại|giúp|cho|hộ|giùm|tí|chút|xíu)/i.test(lower);
-
-  return Boolean(
-    hasTimeAdjustment ||
-    hasActionWithTarget ||
-    hasSwapOrReplace ||
-    hasDayOrSessionEdit ||
-    hasPacingOrStyleEdit ||
-    hasGeneralEdit
-  );
-}
-
-function applyItineraryEdit(
-  current: GeneratedItineraryData,
-  prompt: string
-): { itinerary: GeneratedItineraryData; summary: string } {
-  const updatedDays = current.days ? JSON.parse(JSON.stringify(current.days)) : [];
-  const lower = prompt.toLowerCase();
-
-  let targetDayIdx = -1;
-  const dayMatch = lower.match(/ngày\s*(\d+)/);
-  if (dayMatch && dayMatch[1]) {
-    const num = parseInt(dayMatch[1], 10);
-    if (num > 0 && num <= updatedDays.length) {
-      targetDayIdx = num - 1;
-    }
-  }
-
-  // 1. Kiểm tra yêu cầu dời giờ / bắt đầu lúc mấy giờ (VD: "cho lịch bắt đầu lúc 10h đi", "bắt đầu 9h")
-  const timeMatch = lower.match(/(?:lúc|từ|bắt đầu lúc|sang|vào)?\s*(\d{1,2})(?:h|:(\d{2})|\s*giờ)/);
-  if (
-    timeMatch &&
-    (lower.includes("bắt đầu") ||
-      lower.includes("khởi hành") ||
-      lower.includes("xuất phát") ||
-      lower.includes("lịch") ||
-      lower.includes("giờ") ||
-      lower.includes("dời") ||
-      lower.includes("lùi"))
-  ) {
-    const startHour = parseInt(timeMatch[1], 10);
-    const startMin = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-    if (startHour >= 5 && startHour <= 22) {
-      const startStr = `${String(startHour).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
-      const daysToUpdate = targetDayIdx >= 0 ? [updatedDays[targetDayIdx]] : updatedDays;
-
-      daysToUpdate.forEach((d: any) => {
-        if (!d) return;
-        d.description = `Lịch trình được tối ưu với giờ bắt đầu từ ${startStr} sáng.`;
-        if (d.activities && d.activities.length > 0) {
-          // Hoạt động 1: startStr -> +2h
-          const h1End = Math.min(startHour + 2, 23);
-          d.activities[0].start_time = startStr;
-          d.activities[0].end_time = `${String(h1End).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
-
-          // Hoạt động 2: Ăn trưa / Giữa ngày
-          if (d.activities.length > 1) {
-            const h2Start = Math.min(Math.max(h1End, 12), 23);
-            const h2End = Math.min(h2Start + 1, 23);
-            const h2EndMin = (startMin + 30) % 60;
-            d.activities[1].start_time = `${String(h2Start).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
-            d.activities[1].end_time = `${String(h2End).padStart(2, "0")}:${String(h2EndMin).padStart(2, "0")}`;
-          }
-
-          // Hoạt động 3: Buổi chiều
-          if (d.activities.length > 2) {
-            const h3Start = Math.min(startHour + 5, 17);
-            const h3End = Math.min(h3Start + 2, 22);
-            d.activities[2].start_time = `${String(h3Start).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
-            d.activities[2].end_time = `${String(h3End).padStart(2, "0")}:${String(startMin).padStart(2, "0")}`;
-          }
-        }
-      });
-
-      const dayNote = targetDayIdx >= 0 ? `cho Ngày ${targetDayIdx + 1}` : "cho toàn bộ chuyến đi";
-      const summary = `Mình đã dời giờ bắt đầu lịch trình ${dayNote} sang **${startStr}** sáng cho bạn! Khung giờ của các hoạt động tiếp theo cũng đã được tự động tính toán lại thật hợp lý. Bạn kiểm tra lại ở bảng bên phải nhé! ⏰✨`;
-      return {
-        itinerary: { ...current, days: updatedDays },
-        summary,
-      };
-    }
-  }
-
-  // 2. Chỉnh sửa theo địa điểm / sở thích (Biển, Ẩm thực, Cafe...)
-  const activeIdx = targetDayIdx >= 0 ? targetDayIdx : updatedDays.length > 1 && (lower.includes("biển") || lower.includes("tắm")) ? 1 : 0;
-  const targetDay = updatedDays[activeIdx];
-
-  let summary = `Đã cập nhật lịch trình theo yêu cầu của bạn! 🗺️✨`;
-
-  if (targetDay) {
-    const newActivities = [...(targetDay.activities || [])];
-
-    if (lower.includes("biển") || lower.includes("tắm")) {
-      targetDay.title = `Ngày ${targetDay.day_number}: Trải nghiệm tắm biển & ngắm hoàng hôn`;
-      targetDay.description = `Lịch trình được cập nhật ưu tiên hoạt động tắm biển và ngắm cảnh hoàng hôn.`;
-      if (newActivities.length >= 3) {
-        newActivities[2] = {
-          ...newActivities[2],
-          title: "Tắm biển & Dạo bờ biển ngắm hoàng hôn",
-          place: {
-            name: "Bãi biển Mỹ Khê / Bãi tắm du lịch",
-            address: current.destination_city || current.destination || "Khu vực ven biển",
-          },
-          description: "Thư giãn, tắm biển và check-in ngắm hoàng hôn rực rỡ bên bờ biển.",
-        };
-      }
-      summary = `Mình đã điều chỉnh lịch trình Ngày ${targetDay.day_number} ưu tiên tắm biển và ngắm hoàng hôn cho bạn rồi nhé! 🌊🏖️`;
-    } else if (lower.includes("ẩm thực") || lower.includes("đặc sản") || lower.includes("ăn") || lower.includes("hải sản")) {
-      targetDay.title = `Ngày ${targetDay.day_number}: Khám phá ẩm thực & văn hóa bản địa`;
-      targetDay.description = `Lịch trình bổ sung trải nghiệm các món ăn đặc sản nổi tiếng địa phương.`;
-      if (newActivities.length >= 2) {
-        newActivities[1] = {
-          ...newActivities[1],
-          activity_type: "MEAL",
-          title: "Thưởng thức hải sản tươi sống và ẩm thực đặc sản",
-          place: {
-            name: "Khu ẩm thực & Nhà hàng hải sản địa phương",
-            address: current.destination_city || current.destination || "Trung tâm",
-          },
-          description: "Thưởng thức các món đặc sản trứ danh chế biến tươi ngon trong ngày.",
-          estimated_cost: 250000,
-        };
-      }
-      summary = `Mình đã thêm trải nghiệm ẩm thực đặc sản và hải sản tươi sống vào Ngày ${targetDay.day_number} cho bạn rồi nha! 🍜🦀`;
-    } else if (lower.includes("cafe") || lower.includes("cà phê") || lower.includes("chill") || lower.includes("hoàng hôn")) {
-      if (newActivities.length >= 3) {
-        newActivities[2] = {
-          ...newActivities[2],
-          title: "Ghé quán cafe view đẹp ngắm hoàng hôn / phố đêm",
-          place: {
-            name: "Quán Cafe Sunset & Phố đêm",
-            address: current.destination_city || current.destination || "Khu vực ngắm cảnh",
-          },
-          description: "Không gian thoáng đãng, thưởng thức đồ uống và tận hưởng không khí thư thái.",
-          estimated_cost: 65000,
-        };
-      }
-      summary = `Mình đã bổ sung quán cafe view đẹp ngắm hoàng hôn vào Ngày ${targetDay.day_number} cho bạn nhé! ☕🌇`;
-    } else {
-      const isGenericEdit = /^(?:sửa lại|chỉnh sửa|sửa|thay đổi|cập nhật|điều chỉnh)(?:\s+lại)?(?:\s+(?:lịch|lịch trình|chuyến đi))?(?:\s+(?:này|cho mình|giúp mình))?$/i.test(lower.trim());
-      if (isGenericEdit) {
-        summary = `Dạ bạn muốn chỉnh sửa phần nào trong lịch trình hiện tại? Bạn có thể yêu cầu cụ thể như:\n• "Dời giờ bắt đầu ngày 1 sang 9h sáng"\n• "Thêm quán cafe view đẹp ngắm hoàng hôn vào ngày 2"\n• "Bỏ chợ đêm và thay bằng hoạt động khác"\nHoặc nếu muốn đổi số ngày hay đổi thành phố khác, bạn hãy nhắn "tạo lại lịch trình" nhé! 😊`;
-        return {
-          itinerary: current,
-          summary,
-        };
-      }
-      targetDay.description = `Lịch trình đã được AI điều chỉnh theo yêu cầu: "${prompt}".`;
-      if (newActivities.length > 0) {
-        newActivities[newActivities.length - 1] = {
-          ...newActivities[newActivities.length - 1],
-          title: `Trải nghiệm theo yêu cầu: ${prompt.slice(0, 45)}`,
-          description: `Hoạt động được điều chỉnh phù hợp với mong muốn của bạn.`,
-        };
-      }
-      summary = `Mình đã cập nhật lịch trình Ngày ${targetDay.day_number} theo mong muốn "${prompt}" của bạn rồi nhé! ✨`;
-    }
-
-    targetDay.activities = newActivities;
-    updatedDays[activeIdx] = targetDay;
-  }
-
-  return {
-    itinerary: { ...current, days: updatedDays },
-    summary,
-  };
-}
 
 function normalizeItineraryData(
   raw: any,
@@ -733,168 +484,88 @@ export function useChat() {
         status: "success",
       };
 
-      // Kiểm tra ý định chỉnh sửa lịch trình
+      // 3. Tự động xác định ý định chỉnh sửa lịch trình qua LLM & RAG (thay thế Regex cũ)
       const activeItin = currentItineraryRef.current;
       const activeTripId = currentTripIdRef.current || activeItin?.trip_id;
-      const isEditRequest = isItineraryEditIntent(trimmed);
 
-      // Trường hợp 1: Đã có lịch trình hiển thị -> Gọi backend AI cập nhật và tối ưu đồng thời hiển thị Optimistic UI
-      if (activeItin && isEditRequest) {
-        const editResult = applyItineraryEdit(activeItin, trimmed);
-        const optimisticItinerary = editResult.itinerary;
-        const optimisticSummary = editResult.summary;
-
-        // Cập nhật optimistic ngay lập tức để người dùng thấy phản hồi tức thì
-        setCurrentItinerary(optimisticItinerary);
-
-        const editAssistantMsgId = `assistant-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          userMessage,
-          {
-            id: editAssistantMsgId,
-            role: "assistant",
-            content: "✨ Đang yêu cầu AI tối ưu và cập nhật lại lịch trình cho bạn...",
-            timestamp: new Date(),
-            status: "sending",
-            itinerary: optimisticItinerary,
-          },
-        ]);
-        setIsPlanning(true);
-
+      if (activeTripId) {
         try {
-          let serverRes: any = null;
-          if (activeTripId) {
-            serverRes = await chatService.editItinerary(activeTripId, trimmed);
-          } else {
-            // Nếu chưa có activeTripId thì gọi generateItineraryDirect kèm user_prompt điều chỉnh
-            serverRes = await chatService.generateItineraryDirect({
-              context: planningContextRef.current,
-              conversation_id: conversationId,
-              save_to_db: true,
-              user_prompt: trimmed,
-            });
-          }
+          const intentRes = await chatService.detectEditIntent(
+            activeTripId,
+            trimmed,
+            conversationId
+          );
 
-          if (serverRes && (serverRes.itinerary || serverRes.days || serverRes.status === "EDITED" || serverRes.status === "GENERATED")) {
-            const resTripId = serverRes.trip_id || activeTripId;
-            const normalized = normalizeItineraryData(
-              serverRes.itinerary || serverRes,
-              optimisticItinerary.destination || optimisticItinerary.destination_city || "chuyến đi",
-              optimisticItinerary.duration_days || 3,
-              resTripId
-            );
-            if (normalized && normalized.days && normalized.days.length > 0) {
-              setCurrentItinerary(normalized);
-              if (resTripId) setCurrentTripId(resTripId);
-              const finalMsg = serverRes.message || optimisticSummary;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === editAssistantMsgId
-                    ? {
-                      ...m,
-                      content: finalMsg,
-                      status: "success",
-                      itinerary: normalized,
-                    }
-                    : m
-                )
-              );
-              return finalMsg;
-            }
-          }
-        } catch (serverErr) {
-          console.warn("Backend edit failed, maintaining optimistic UI:", serverErr);
-        } finally {
-          setIsPlanning(false);
-        }
+          if (intentRes && intentRes.is_edit_intent) {
+            const editAssistantMsgId = `assistant-${Date.now()}`;
+            setMessages((prev) => [
+              ...prev,
+              userMessage,
+              {
+                id: editAssistantMsgId,
+                role: "assistant",
+                content: "✨ Đang yêu cầu AI tối ưu và cập nhật lại lịch trình cho bạn...",
+                timestamp: new Date(),
+                status: "sending",
+                itinerary: activeItin || undefined,
+              },
+            ]);
+            setIsPlanning(true);
 
-        // Fallback optimistic UI nếu backend trả về lỗi hoặc timeout
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === editAssistantMsgId
-              ? {
-                ...m,
-                content: optimisticSummary,
-                status: "success",
-                itinerary: optimisticItinerary,
+            try {
+              const changePrompt = intentRes.change_prompt || trimmed;
+              const serverRes = await chatService.editItinerary(activeTripId, changePrompt);
+
+              if (serverRes && (serverRes.itinerary || serverRes.status === "EDITED")) {
+                const normalized = normalizeItineraryData(
+                  serverRes.itinerary || serverRes,
+                  activeItin?.destination || "chuyến đi",
+                  activeItin?.duration_days || 3,
+                  activeTripId
+                );
+                if (normalized && normalized.days && normalized.days.length > 0) {
+                  setCurrentItinerary(normalized);
+                  const finalMsg = serverRes.message || "Đã cập nhật lịch trình thành công!";
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === editAssistantMsgId
+                        ? {
+                            ...m,
+                            content: finalMsg,
+                            status: "success",
+                            itinerary: normalized,
+                          }
+                        : m
+                    )
+                  );
+                  return finalMsg;
+                }
+              } else if (serverRes && serverRes.status === "ANSWERED") {
+                // LLM & RAG nhận định đây là câu hỏi tham khảo và trả lời trực tiếp
+                const finalMsg = serverRes.message;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === editAssistantMsgId
+                      ? {
+                          ...m,
+                          content: finalMsg,
+                          status: "success",
+                          itinerary: activeItin || undefined,
+                        }
+                      : m
+                  )
+                );
+                return finalMsg;
               }
-              : m
-          )
-        );
-        return optimisticSummary;
-      }
-
-      // Trường hợp 2: Có trip_id trong cơ sở dữ liệu nhưng chưa tải lịch trình lên client
-      if (!activeItin && activeTripId && isEditRequest) {
-        const editAssistantMsgId = `assistant-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          userMessage,
-          {
-            id: editAssistantMsgId,
-            role: "assistant",
-            content: "✨ Đang cập nhật lịch trình theo yêu cầu của bạn...",
-            timestamp: new Date(),
-            status: "sending",
-          },
-        ]);
-        setIsPlanning(true);
-        try {
-          const serverRes = await chatService.editItinerary(activeTripId, trimmed);
-          if (serverRes && (serverRes.itinerary || serverRes.status === "EDITED")) {
-            const normalized = normalizeItineraryData(
-              serverRes.itinerary || serverRes,
-              "chuyến đi",
-              3,
-              activeTripId
-            );
-            if (normalized) {
-              setCurrentItinerary(normalized);
-              const finalMsg = serverRes.message || "Đã cập nhật lịch trình thành công!";
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === editAssistantMsgId
-                    ? {
-                      ...m,
-                      content: finalMsg,
-                      status: "success",
-                      itinerary: normalized,
-                    }
-                    : m
-                )
-              );
-              return finalMsg;
+            } catch (editErr) {
+              console.warn("Backend edit execution failed:", editErr);
+            } finally {
+              setIsPlanning(false);
             }
           }
-        } catch (err) {
-          console.warn("Edit trip error:", err);
-        } finally {
-          setIsPlanning(false);
+        } catch (detectErr) {
+          console.warn("Detect edit intent error, fallback to normal chat:", detectErr);
         }
-      }
-
-      // Trường hợp 3: Chưa tạo lịch trình nhưng người dùng đã có điểm đến và yêu cầu chỉnh thời gian / bắt đầu
-      if (!activeItin && !activeTripId && hasPendingProposal && isEditRequest) {
-        setMessages((prev) => [...prev, userMessage]);
-        return await generateFromProposal(trimmed);
-      }
-
-      // Trường hợp 4: Chưa tạo lịch trình nào nhưng người dùng yêu cầu sửa lịch trình
-      if (!activeItin && !activeTripId && !hasPendingProposal && isEditRequest) {
-        const noItinMsg = "Hiện tại bạn chưa tạo lịch trình nào để chỉnh sửa. Bạn có muốn mình thiết kế lịch trình mới ngay bây giờ không? Hãy chia sẻ điểm đến và số ngày dự kiến nhé! 🗺️✨";
-        setMessages((prev) => [
-          ...prev,
-          userMessage,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            content: noItinMsg,
-            timestamp: new Date(),
-            status: "success",
-          },
-        ]);
-        return noItinMsg;
       }
 
       // Tạo placeholder đang suy nghĩ của AI
@@ -938,7 +609,8 @@ export function useChat() {
               if (mode === "voice" && onSentence) {
                 sentenceBuffer += token;
                 const match = sentenceBuffer.match(/^(.*?[\.\!\?\n])(\s+|$)/);
-                if (match && match[1].trim().length >= 25) {
+                // Ngưỡng 6 ký tự giúp các câu chào ngắn ("Chào bạn!", "Dạ được chứ!") được phát ngay
+                if (match && match[1].trim().length >= 6) {
                   onSentence(match[1].trim());
                   sentenceBuffer = sentenceBuffer.slice(match[0].length);
                 }
@@ -952,6 +624,18 @@ export function useChat() {
 
               if (data.conversation_id) {
                 setConversationId(data.conversation_id);
+              }
+
+              if (data.itinerary) {
+                const normalized = normalizeItineraryData(
+                  data.itinerary,
+                  data.itinerary.destination_city || data.itinerary.destination || "chuyến đi",
+                  data.itinerary.duration_days || 3,
+                  data.itinerary.trip_id || currentTripIdRef.current
+                );
+                if (normalized && normalized.days && normalized.days.length > 0) {
+                  setCurrentItinerary(normalized);
+                }
               }
 
               let proposal: ItineraryProposalData | undefined;

@@ -14,6 +14,26 @@ export interface TripListItem {
   updated_at?: string;
 }
 
+export interface CreateTripInput {
+  name?: string;
+  destination_city: string;
+  destination_country?: string;
+  start_date?: string;
+  end_date?: string;
+  duration_days?: number;
+  conversation_id?: number;
+  context?: unknown;
+}
+
+export interface UpdateTripInput {
+  name?: string;
+  status?: string;
+  destination_city?: string;
+  destination_country?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
 interface TripListResponse {
   items: TripListItem[];
   total: number;
@@ -61,6 +81,28 @@ export function useTrips(limit: number = 20) {
     }
   }, []);
 
+  const createTrip = useCallback(async (input: CreateTripInput) => {
+    const trip = await apiFetch<TripListItem>("/api/v1/trips", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    setTrips((prev) => [trip, ...prev]);
+    setTotal((prev) => prev + 1);
+    return trip;
+  }, []);
+
+  const updateTrip = useCallback(
+    async (tripId: number, input: UpdateTripInput) => {
+      const trip = await apiFetch<TripListItem>(`/api/v1/trips/${tripId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      });
+      setTrips((prev) => prev.map((item) => (item.id === tripId ? trip : item)));
+      return trip;
+    },
+    []
+  );
+
   return {
     trips,
     total,
@@ -68,5 +110,7 @@ export function useTrips(limit: number = 20) {
     error,
     refreshTrips: fetchTrips,
     deleteTrip,
+    createTrip,
+    updateTrip,
   };
 }

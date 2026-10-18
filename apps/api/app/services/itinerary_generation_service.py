@@ -764,3 +764,134 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
         clean = text.replace("đ", "d").replace("Đ", "D").strip().lower()
         nfkd = unicodedata.normalize("NFD", clean)
         return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+    @classmethod
+    def detect_edit_intent(
+        cls,
+        session: Session,
+        trip_id: int,
+        message: str,
+        conversation_id: Optional[int] = None,
+        current_user: Optional[Any] = None,
+        llm: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Uses LLM & RAG context to determine if a user message is an itinerary edit request.
+
+        Evaluates the message against:
+        - Current Trip info & Itinerary structure (destination, duration, days, activities)
+        - Trip Planning Context
+        """
+        clean_msg = (message or "").strip()
+        if not clean_msg:
+            return {
+                "is_edit_intent": False,
+                "confidence": "HIGH",
+                "change_prompt": None,
+                "reason": "Tin nhắn rỗng.",
+            }
+
+        trip = session.get(Trip, trip_id)
+        if not trip:
+            return {
+                "is_edit_intent": False,
+                "confidence": "LOW",
+                "change_prompt": None,
+                "reason": f"Không tìm thấy chuyến đi ID {trip_id}.",
+            }
+
+        # Retrieve current itinerary
+        itinerary = None
+        try:
+            itinerary = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                session=session,
+                trip_id=trip_id,
+                current_user=current_user,
+                check_ownership=False,
+            )
+        except Exception as e:
+            logger.warning("Failed to fetch current itinerary for intent detection: %s", e)
+
+        if not itinerary or not itinerary.days:
+            return {
+                "is_edit_intent": False,
+                "confidence": "HIGH",
+                "change_prompt": None,
+                "reason": "Chuyến đi chưa có lịch trình nào đang hoạt động để chỉnh sửa.",
+            }
+
+        # Build concise itinerary overview
+        day_lines = []
+        for d in itinerary.days:
+            act_names = [f"[{a.start_time or '...'}] {a.title}" for a in (d.activities or [])]
+            acts_str = ", ".join(act_names) if act_names else "Chưa có hoạt động"
+            day_lines.append(f"- Ngày {d.day_number} ({d.title or 'Chưa đặt tên'}): {acts_str}")
+        overview_str = "\n".join(day_lines)
+
+        dest_name = trip.destination_city or "Điểm đến"
+        duration_days = len(itinerary.days)
+        if trip.start_date and trip.end_date:
+            try:
+                duration_days = (trip.end_date - trip.start_date).days + 1
+            except Exception:
+                pass
+
+        prompt = f"""Bạn là Chuyên gia AI Phân loại Ý định Chỉnh sửa Lịch trình Du lịch (Travel Itinerary Intent Classifier) của TravelWise.
+Nhiệm vụ của bạn là phân tích câu nói của du khách và xác định xem du khách có đang yêu cầu CHỈNH SỬA / THAY ĐỔI / CẬP NHẬT lịch trình hiện tại hay không, hay chỉ đang hỏi đáp thông tin du lịch chung (FAQ, giờ mở cửa, giá vé, thời tiết...).
+
+=== THÔNG TIN LỊCH TRÌNH HIỆN TẠI ===
+- Điểm đến: {dest_name}
+- Số ngày: {duration_days} ngày
+- Các hoạt động hiện có trong lịch trình:
+{overview_str}
+
+=== TIN NHẮN TỪ DU KHÁCH ===
+"{clean_msg}"
+
+=== TIÊU CHÍ PHÂN LOẠI ===
+1. LÀ YÊU CẦU CHỈNH SỬA (is_edit_intent = true):
+- Thay đổi thời gian/giờ giấc (vd: "bắt đầu lúc 9h", "dời sang 10h", "cho mình ngủ nướng thêm", "bắt đầu trễ hơn", "kéo dài/rút ngắn thời gian").
+- Thêm, bớt, bỏ qua hoặc thay thế địa điểm/hoạt động (vd: "thêm tắm biển vào ngày 2", "bỏ Bà Nà đi", "thay quán ăn bằng buffet hải sản", "ghé thêm cafe hoàng hôn", "chèn bảo tàng").
+- Thay đổi thứ tự các ngày, hoán đổi buổi sáng/chiều (vd: "đổi ngày 1 với ngày 2", "chuyển đi chùa sang buổi chiều").
+- Điều chỉnh nhịp độ, phong cách (vd: "lịch dày quá giãn bớt", "muốn đi thong thả hơn", "có người già nên giảm đi lại", "chuyển sang phong cách chill/nghỉ dưỡng").
+- Yêu cầu sửa lịch trình nói chung (vd: "sửa lại lịch giúp mình", "tối ưu lại ngày 1", "chỉnh sửa lịch trình này nhé").
+
+2. KHÔNG PHẢI YÊU CẦU CHỈNH SỬA (is_edit_intent = false):
+- Hỏi đáp thông tin tham khảo, tra cứu FAQ, giá vé, giờ mở cửa, khoảng cách, phương tiện (vd: "Bà Nà mở cửa mấy giờ?", "Vé cáp treo bao nhiêu?", "Thời tiết Đà Nẵng mùa này thế nào?", "Đà Nẵng có gì ngon?").
+- Lời chào hỏi, cảm ơn, khen chê, câu hỏi về danh tính bot (vd: "Cảm ơn bạn", "Xin chào", "Bạn là ai?").
+- Yêu cầu tạo mới từ đầu hoặc tạo một chuyến đi hoàn toàn mới ở thành phố khác (đây là tạo mới chứ không phải chỉnh sửa lịch hiện tại).
+
+Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo đúng cấu trúc sau (không kèm markdown ngoài JSON):
+{{
+  "is_edit_intent": true,
+  "confidence": "HIGH",
+  "change_prompt": "Mô tả ngắn gọn và chuẩn xác yêu cầu thay đổi lịch trình bằng tiếng Việt (hoặc null nếu không phải)",
+  "reason": "Giải thích ngắn gọn lý do phân loại"
+}}
+"""
+
+        try:
+            chat_llm = llm or get_chat_llm(temperature=0.0)
+            llm_res = chat_llm.invoke([HumanMessage(content=prompt)])
+            raw_text = extract_response_text(getattr(llm_res, "content", llm_res)).strip()
+            parsed = cls._parse_json_from_llm(raw_text)
+
+            is_edit = bool(parsed.get("is_edit_intent", False))
+            change_prompt = parsed.get("change_prompt") if is_edit else None
+            confidence = parsed.get("confidence", "HIGH")
+            reason = parsed.get("reason", "")
+
+            return {
+                "is_edit_intent": is_edit,
+                "confidence": confidence,
+                "change_prompt": change_prompt or clean_msg if is_edit else None,
+                "reason": reason,
+            }
+        except Exception as e:
+            logger.error("Error detecting edit intent with LLM: %s", e)
+            # Safe fallback: do not trigger accidental edits on failure
+            return {
+                "is_edit_intent": False,
+                "confidence": "LOW",
+                "change_prompt": None,
+                "reason": f"Lỗi phân loại ý định: {str(e)}",
+            }

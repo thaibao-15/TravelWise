@@ -94,6 +94,14 @@ export const ttsService = {
   },
 
   /**
+   * Lấy URL âm thanh đã lưu sẵn trong cache nếu có
+   */
+  getCachedAudioUrl(text: string): string | null {
+    const cleaned = this.cleanText(text);
+    return cleaned ? audioCache.get(cleaned) || null : null;
+  },
+
+  /**
    * Nạp trước (Pre-fetch) 1 câu đơn lẻ vào bộ nhớ đệm Blob
    */
   async prefetchSingle(sentence: string): Promise<string> {
@@ -145,7 +153,7 @@ export const ttsService = {
 
   /**
    * Phát toàn bộ đoạn văn theo luồng nối tiếp từng câu (Sentence Queue)
-   * Câu 1 phát NGAY LẬP TỨC (< 10ms nếu đã prefetch), các câu sau nối tiếp mượt mà
+   * Câu 1 phát NGAY LẬP TỨC (< 300ms qua chunked stream), các câu sau nạp trước dưới nền
    */
   async playAudio(
     text: string,
@@ -162,8 +170,8 @@ export const ttsService = {
     let currentAudio: HTMLAudioElement | null = null;
     let currentIndex = 0;
 
-    // Nạp trước tất cả các câu song song dưới nền
-    sentences.forEach((s) => this.prefetchSingle(s).catch(() => { }));
+    // Nạp trước các câu tiếp theo dưới nền
+    sentences.slice(1).forEach((s) => this.prefetchSingle(s).catch(() => { }));
 
     const playNext = async () => {
       if (isCancelled) return;
@@ -176,8 +184,14 @@ export const ttsService = {
       currentIndex++;
 
       try {
-        const audioUrl = await this.prefetchSingle(currentSentence);
+        // Dùng cache blob nếu có, ngược lại dùng streamUrl trực tiếp để phát ngay lập tức
+        const cachedUrl = this.getCachedAudioUrl(currentSentence);
+        const audioUrl = cachedUrl || this.getStreamUrl(currentSentence);
         if (isCancelled) return;
+
+        if (!cachedUrl) {
+          this.prefetchSingle(currentSentence).catch(() => { });
+        }
 
         const audio = new Audio(audioUrl);
         audio.preload = "auto";
@@ -209,7 +223,7 @@ export const ttsService = {
       }
     };
 
-    // Bắt đầu phát câu đầu tiên
+    // Bắt đầu phát câu đầu tiên tức thì
     playNext();
 
     return {
@@ -377,8 +391,15 @@ export class StreamingTTSQueue {
     const sentence = this.queue.shift()!;
 
     try {
-      const audioUrl = await ttsService.prefetchSingle(sentence);
+      // 1. Dùng cache blob nếu có (0ms), ngược lại dùng streamUrl trực tiếp để phát chunk đầu tiên ngay (< 300ms)
+      const cachedUrl = ttsService.getCachedAudioUrl(sentence);
+      const audioUrl = cachedUrl || ttsService.getStreamUrl(sentence);
+
       if (this.isStopped) return;
+
+      if (!cachedUrl) {
+        ttsService.prefetchSingle(sentence).catch(() => {});
+      }
 
       const audio = new Audio(audioUrl);
       audio.preload = "auto";

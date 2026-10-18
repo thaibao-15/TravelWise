@@ -41,6 +41,16 @@ export interface ActivityDetail {
   day_number?: number;
 }
 
+export interface ActivityUpdatePayload {
+  title?: string;
+  description?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  duration_minutes?: number | null;
+  estimated_cost?: number | null;
+  note?: string | null;
+}
+
 export interface DayDetail {
   id?: number;
   trip_id?: number;
@@ -173,6 +183,32 @@ export function useItinerary(tripId: number | null) {
     [fetchItinerary]
   );
 
+  const updateActivity = useCallback(
+    async (activityId: number, payload: ActivityUpdatePayload) => {
+      if (!tripId) {
+        throw new Error("Không xác định được chuyến đi.");
+      }
+
+      setError(null);
+      try {
+        const activity = await apiFetch<ActivityDetail>(
+          `/api/v1/trips/${tripId}/itinerary/activities/${activityId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          }
+        );
+        await fetchItinerary();
+        return activity;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Không thể cập nhật hoạt động";
+        setError(msg);
+        throw err;
+      }
+    },
+    [fetchItinerary, tripId]
+  );
+
   const confirmTrip = useCallback(
     async (targetTripId: number) => {
       try {
@@ -197,6 +233,7 @@ export function useItinerary(tripId: number | null) {
     isEditing,
     error,
     editItinerary,
+    updateActivity,
     confirmTrip,
     refreshItinerary: fetchItinerary,
   };

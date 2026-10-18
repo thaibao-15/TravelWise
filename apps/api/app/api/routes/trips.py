@@ -17,7 +17,12 @@ from app.models.trip_preference import TripPreference
 from app.models.user import User
 from app.schemas.itinerary import (
     EditStatusEnum,
+    ItineraryActivityCreate,
+    ItineraryActivityDetail,
+    ItineraryActivityUpdate,
     ItineraryDetailResponse,
+    ItineraryDetectIntentRequest,
+    ItineraryDetectIntentResponse,
     ItineraryEditRequest,
     ItineraryEditResponse,
     ItineraryGenerationRequest,
@@ -588,11 +593,60 @@ def generate_itinerary_for_trip(
 
 
 @router.post(
+    "/api/v1/trips/{trip_id}/itinerary/detect-intent",
+    response_model=ItineraryDetectIntentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Detect if user message is an itinerary edit request",
+    description="Sử dụng LLM và ngữ cảnh lịch trình thực tế để xác định xem câu nói của người dùng có phải yêu cầu chỉnh sửa lịch trình hay không.",
+)
+@router.post(
+    "/api/trips/{trip_id}/itinerary/detect-intent",
+    response_model=ItineraryDetectIntentResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def detect_itinerary_edit_intent(
+    trip_id: int,
+    request_data: ItineraryDetectIntentRequest,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryDetectIntentResponse:
+    """Classify user intent using LLM and current itinerary context."""
+    trip = session.get(Trip, trip_id)
+    if not trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy chuyến đi với ID {trip_id}.",
+        )
+
+    if trip.user_id is not None:
+        if not current_user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        if trip.user_id != current_user.id and current_user.role != "ADMIN":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+    res = ItineraryGenerationService.detect_edit_intent(
+        session=session,
+        trip_id=trip.id,
+        message=request_data.message,
+        conversation_id=request_data.conversation_id or trip.conversation_id,
+        current_user=current_user,
+    )
+
+    return ItineraryDetectIntentResponse(
+        is_edit_intent=res["is_edit_intent"],
+        confidence=res.get("confidence", "HIGH"),
+        change_prompt=res.get("change_prompt"),
+        reason=res.get("reason"),
+    )
+
+
+@router.post(
     "/api/v1/trips/{trip_id}/itinerary/edit",
     response_model=ItineraryEditResponse,
     status_code=status.HTTP_200_OK,
     summary="Edit trip itinerary with conversational change prompt",
-    description="Chỉnh sửa lịch trình theo câu lệnh ngôn ngữ tự nhiên (ví dụ: đổi giờ, thêm biển, đổi đặc sản).",
+    description="Chỉnh sửa lịch trình theo câu lệnh ngôn ngữ tự nhiên (ví dụ: đổi giờ, thêm biển, đổi đặc sản). Tự động phân loại ý định qua LLM.",
 )
 @router.post(
     "/api/trips/{trip_id}/itinerary/edit",
@@ -620,7 +674,50 @@ def edit_itinerary_for_trip(
         if trip.user_id != current_user.id and current_user.role != "ADMIN":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
-    # 1. Retrieve context
+    # 1. Tự động xác định bằng LLM và RAG xem prompt có phải yêu cầu chỉnh sửa hay không
+    intent_check = ItineraryGenerationService.detect_edit_intent(
+        session=session,
+        trip_id=trip.id,
+        message=request_data.change_prompt,
+        conversation_id=trip.conversation_id,
+        current_user=current_user,
+    )
+
+    # Nếu LLM xác định KHÔNG PHẢI là yêu cầu chỉnh sửa (ví dụ hỏi FAQ, thời tiết, giá vé...)
+    if not intent_check.get("is_edit_intent"):
+        details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+            session=session,
+            trip_id=trip.id,
+            current_user=current_user,
+            check_ownership=False,
+        )
+        rag_msg = intent_check.get("reason") or "Lịch trình hiện tại vẫn được giữ nguyên."
+        try:
+            from app.rag.chain import get_rag_chain
+
+            chain = get_rag_chain()
+            rag_res = chain.invoke(
+                question=request_data.change_prompt,
+                mode="chat",
+            )
+            if rag_res and rag_res.get("answer"):
+                rag_msg = rag_res["answer"]
+        except Exception as rag_err:
+            logger.warning("RAG answer fallback in edit endpoint: %s", rag_err)
+
+        return ItineraryEditResponse(
+            status=EditStatusEnum.ANSWERED.value,
+            trip_id=trip.id,
+            conversation_id=trip.conversation_id,
+            message=rag_msg,
+            applied_changes=[],
+            itinerary=details,
+            warnings=[],
+        )
+
+    effective_prompt = intent_check.get("change_prompt") or request_data.change_prompt
+
+    # 2. Retrieve planning context
     pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
     context: Optional[TripPlanningContext] = None
     if pref and pref.raw_context_snapshot:
@@ -644,16 +741,16 @@ def edit_itinerary_for_trip(
         context.trip.destination.city = trip.destination_city or "Đà Nẵng"
         context.trip.destination.country = trip.destination_country or "Việt Nam"
 
-    # 2. Re-generate with user prompt
+    # 3. Re-generate with validated user prompt
     gen_res = ItineraryGenerationService.generate_itinerary(
         session=session,
         context=context,
         trip_id=trip.id,
         save_to_db=True,
-        user_prompt=request_data.change_prompt,
+        user_prompt=effective_prompt,
     )
 
-    # 3. Retrieve fresh details
+    # 4. Retrieve fresh details
     details = ItineraryPersistenceService.get_itinerary_by_trip_id(
         session=session,
         trip_id=trip.id,
@@ -667,7 +764,7 @@ def edit_itinerary_for_trip(
         trip_id=trip.id,
         conversation_id=trip.conversation_id,
         message=edit_summary,
-        applied_changes=[request_data.change_prompt],
+        applied_changes=[effective_prompt],
         itinerary=details,
         warnings=gen_res.warnings,
     )
@@ -695,6 +792,74 @@ def get_trip_itinerary(
     return ItineraryPersistenceService.get_itinerary_by_trip_id(
         session=session,
         trip_id=trip_id,
+        current_user=current_user,
+        check_ownership=True,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Itinerary Activity CRUD
+# -----------------------------------------------------------------------------
+@router.post(
+    "/api/v1/trips/{trip_id}/itinerary/days/{day_id}/activities",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create itinerary activity",
+    description=(
+        "Tạo hoạt động mới trong một ngày của lịch trình. "
+        "Nếu không gửi order_index, hệ thống tự gán (max + 1)."
+    ),
+)
+@router.post(
+    "/api/trips/{trip_id}/itinerary/days/{day_id}/activities",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+def create_itinerary_activity(
+    trip_id: int,
+    day_id: int,
+    data: ItineraryActivityCreate,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryActivityDetail:
+    """Create a new activity inside an itinerary day."""
+    return ItineraryPersistenceService.create_activity(
+        session=session,
+        trip_id=trip_id,
+        day_id=day_id,
+        data=data,
+        current_user=current_user,
+        check_ownership=True,
+    )
+
+
+@router.patch(
+    "/api/v1/trips/{trip_id}/itinerary/activities/{activity_id}",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_200_OK,
+    summary="Update itinerary activity",
+    description="Cập nhật một phần thông tin hoạt động trong lịch trình (partial update).",
+)
+@router.patch(
+    "/api/trips/{trip_id}/itinerary/activities/{activity_id}",
+    response_model=ItineraryActivityDetail,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def update_itinerary_activity(
+    trip_id: int,
+    activity_id: int,
+    data: ItineraryActivityUpdate,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryActivityDetail:
+    """Partially update an existing itinerary activity."""
+    return ItineraryPersistenceService.update_activity(
+        session=session,
+        trip_id=trip_id,
+        activity_id=activity_id,
+        data=data,
         current_user=current_user,
         check_ownership=True,
     )

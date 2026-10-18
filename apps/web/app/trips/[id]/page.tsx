@@ -3,9 +3,10 @@
 import React, { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useItinerary, ActivityDetail } from "@/hooks/useItinerary";
+import { useItinerary, ActivityDetail, ActivityUpdatePayload } from "@/hooks/useItinerary";
 import { ItineraryTimeline } from "@/components/itinerary/ItineraryTimeline";
 import { TravelMap, MapPlace, isValidCoordinate } from "@/components/map/TravelMap";
+import { apiFetch } from "@/services/api";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -18,7 +19,9 @@ export default function TripDetailPage() {
     isEditing,
     error,
     editItinerary,
+    updateActivity,
     confirmTrip,
+    refreshItinerary,
   } = useItinerary(tripId);
 
   // Chế độ xem: "split" (song song cả lịch trình & bản đồ), "timeline" (chỉ lịch trình), "map" (chỉ bản đồ)
@@ -30,6 +33,106 @@ export default function TripDetailPage() {
 
   const [editPrompt, setEditPrompt] = useState("");
   const [editFeedback, setEditFeedback] = useState<string | null>(null);
+  const [isMetadataEditing, setIsMetadataEditing] = useState(false);
+  const [metadataForm, setMetadataForm] = useState({
+    name: "",
+    destination_city: "",
+    destination_country: "",
+    start_date: "",
+    end_date: "",
+  });
+  const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null);
+  const [activityForm, setActivityForm] = useState({
+    title: "",
+    description: "",
+    start_time: "",
+    end_time: "",
+    duration_minutes: "",
+    estimated_cost: "",
+    note: "",
+  });
+  const [isSavingActivity, setIsSavingActivity] = useState(false);
+
+  const startMetadataEdit = () => {
+    if (!itinerary) return;
+    setMetadataForm({
+      name: itinerary.name || "",
+      destination_city: itinerary.destination_city || "",
+      destination_country: itinerary.destination_country || "",
+      start_date: itinerary.start_date || "",
+      end_date: itinerary.end_date || "",
+    });
+    setIsMetadataEditing(true);
+  };
+
+  const saveMetadata = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tripId || !metadataForm.destination_city.trim()) return;
+    setIsSavingMetadata(true);
+    try {
+      await apiFetch(`/api/v1/trips/${tripId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...metadataForm,
+          name: metadataForm.name.trim() || undefined,
+          destination_city: metadataForm.destination_city.trim(),
+          destination_country: metadataForm.destination_country.trim() || undefined,
+          start_date: metadataForm.start_date || undefined,
+          end_date: metadataForm.end_date || undefined,
+        }),
+      });
+      await refreshItinerary();
+      setIsMetadataEditing(false);
+      setEditFeedback("Đã cập nhật thông tin chuyến đi.");
+    } catch (err) {
+      setEditFeedback(err instanceof Error ? err.message : "Không thể cập nhật chuyến đi.");
+    } finally {
+      setIsSavingMetadata(false);
+    }
+  };
+
+  const startActivityEdit = (activity: ActivityDetail) => {
+    setEditingActivity(activity);
+    setActivityForm({
+      title: activity.title || activity.place_name || "",
+      description: activity.description || activity.custom_description || "",
+      start_time: activity.start_time || "",
+      end_time: activity.end_time || "",
+      duration_minutes: activity.duration_minutes?.toString() || "",
+      estimated_cost: activity.estimated_cost?.toString() || "",
+      note: activity.note || "",
+    });
+  };
+
+  const saveActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingActivity || !activityForm.title.trim() || isSavingActivity) return;
+
+    const payload: ActivityUpdatePayload = {
+      title: activityForm.title.trim(),
+      description: activityForm.description.trim() || null,
+      start_time: activityForm.start_time || null,
+      end_time: activityForm.end_time || null,
+      duration_minutes: activityForm.duration_minutes
+        ? Number(activityForm.duration_minutes)
+        : null,
+      estimated_cost: activityForm.estimated_cost ? Number(activityForm.estimated_cost) : null,
+      note: activityForm.note.trim() || null,
+    };
+
+    setIsSavingActivity(true);
+    try {
+      await updateActivity(editingActivity.id, payload);
+      setEditingActivity(null);
+      setEditFeedback("Đã cập nhật hoạt động.");
+      setTimeout(() => setEditFeedback(null), 4000);
+    } catch {
+      // The hook exposes the API error through the page's existing error state.
+    } finally {
+      setIsSavingActivity(false);
+    }
+  };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,6 +342,13 @@ export default function TripDetailPage() {
             <span>🎙️</span>
             <span>Mở Voice AI</span>
           </Link>
+          <button
+            type="button"
+            onClick={startMetadataEdit}
+            className="hidden sm:inline-block px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 hover:border-teal-500/50 transition-colors"
+          >
+            ✏️ Sửa thông tin
+          </button>
         </div>
       </header>
 
@@ -275,6 +385,118 @@ export default function TripDetailPage() {
               </div>
             )}
 
+            {isMetadataEditing && (
+              <form onSubmit={saveMetadata} className="p-5 rounded-2xl bg-slate-900 border border-teal-500/30 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-slate-200">Cập nhật thông tin chuyến đi</h3>
+                  <button type="button" onClick={() => setIsMetadataEditing(false)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {([
+                    ["name", "Tên chuyến đi"],
+                    ["destination_city", "Thành phố"],
+                    ["destination_country", "Quốc gia"],
+                    ["start_date", "Ngày bắt đầu"],
+                    ["end_date", "Ngày kết thúc"],
+                  ] as const).map(([field, label]) => (
+                    <label key={field} className="text-xs font-semibold text-slate-300">
+                      {label}
+                      <input
+                        type={field.includes("date") ? "date" : "text"}
+                        value={metadataForm[field]}
+                        onChange={(e) => setMetadataForm((current) => ({ ...current, [field]: e.target.value }))}
+                        className="mt-1 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setIsMetadataEditing(false)} className="px-3 py-2 rounded-lg text-xs text-slate-300 bg-slate-800">Hủy</button>
+                  <button type="submit" disabled={isSavingMetadata} className="px-4 py-2 rounded-lg text-xs font-bold bg-teal-500 text-slate-950 disabled:opacity-50">
+                    {isSavingMetadata ? "Đang lưu..." : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {editingActivity && (
+              <form
+                onSubmit={saveActivity}
+                className="mb-6 rounded-2xl border border-teal-500/30 bg-slate-900/80 p-5 shadow-xl"
+              >
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-100">Sửa hoạt động</h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Cập nhật riêng hoạt động “{editingActivity.place_name || editingActivity.title}”.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingActivity(null)}
+                    className="text-slate-400 hover:text-slate-200 text-lg"
+                    aria-label="Đóng form sửa hoạt động"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
+                    Tên hoạt động
+                    <input
+                      required
+                      value={activityForm.title}
+                      onChange={(e) => setActivityForm((current) => ({ ...current, title: e.target.value }))}
+                      className="mt-1 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+                    />
+                  </label>
+                  {([
+                    ["start_time", "Bắt đầu", "time"],
+                    ["end_time", "Kết thúc", "time"],
+                    ["duration_minutes", "Thời lượng (phút)", "number"],
+                    ["estimated_cost", "Chi phí dự kiến", "number"],
+                  ] as const).map(([field, label, type]) => (
+                    <label key={field} className="text-xs font-semibold text-slate-300">
+                      {label}
+                      <input
+                        type={type}
+                        min={type === "number" ? 0 : undefined}
+                        value={activityForm[field]}
+                        onChange={(e) => setActivityForm((current) => ({ ...current, [field]: e.target.value }))}
+                        className="mt-1 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+                      />
+                    </label>
+                  ))}
+                  <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
+                    Mô tả
+                    <textarea
+                      rows={2}
+                      value={activityForm.description}
+                      onChange={(e) => setActivityForm((current) => ({ ...current, description: e.target.value }))}
+                      className="mt-1 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
+                    Ghi chú
+                    <textarea
+                      rows={2}
+                      value={activityForm.note}
+                      onChange={(e) => setActivityForm((current) => ({ ...current, note: e.target.value }))}
+                      className="mt-1 w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+                    />
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setEditingActivity(null)} className="px-3 py-2 rounded-lg text-xs text-slate-300 bg-slate-800">
+                    Hủy
+                  </button>
+                  <button type="submit" disabled={isSavingActivity} className="px-4 py-2 rounded-lg text-xs font-bold bg-teal-500 text-slate-950 disabled:opacity-50">
+                    {isSavingActivity ? "Đang lưu..." : "Lưu hoạt động"}
+                  </button>
+                </div>
+              </form>
+            )}
+
             {/* Layout nội dung chính */}
             {viewMode === "split" ? (
               /* 1. CHẾ ĐỘ XEM SONG SONG (SPLIT VIEW): Lịch trình bên trái, Bản đồ bên phải */
@@ -284,6 +506,7 @@ export default function TripDetailPage() {
                   <ItineraryTimeline
                     itinerary={itinerary}
                     onEditPrompt={handleTimelinePrompt}
+                    onActivityEdit={startActivityEdit}
                     selectedActivityId={selectedActivityId}
                     onActivitySelect={handleActivitySelect}
                     activeDayFilter={filterDay}
@@ -367,6 +590,7 @@ export default function TripDetailPage() {
                 <ItineraryTimeline
                   itinerary={itinerary}
                   onEditPrompt={handleTimelinePrompt}
+                  onActivityEdit={startActivityEdit}
                   selectedActivityId={selectedActivityId}
                   onActivitySelect={handleActivitySelect}
                   activeDayFilter={filterDay}

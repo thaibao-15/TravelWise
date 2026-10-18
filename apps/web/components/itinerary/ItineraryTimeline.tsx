@@ -6,6 +6,7 @@ import { ItineraryDetail, ActivityDetail } from "@/hooks/useItinerary";
 interface ItineraryTimelineProps {
   itinerary: ItineraryDetail;
   onEditPrompt?: (prompt: string) => void;
+  onActivityEdit?: (activity: ActivityDetail) => void;
   selectedActivityId?: number | string | null;
   onActivitySelect?: (activity: ActivityDetail, dayNumber: number) => void;
   activeDayFilter?: number | "all";
@@ -15,6 +16,7 @@ interface ItineraryTimelineProps {
 export function ItineraryTimeline({
   itinerary,
   onEditPrompt,
+  onActivityEdit,
   selectedActivityId,
   onActivitySelect,
   activeDayFilter,
@@ -273,14 +275,28 @@ export function ItineraryTimeline({
                             )}
                           </div>
 
-                          {act.estimated_cost ? (
-                            <div className="text-right flex-shrink-0">
-                              <span className="text-[10px] text-slate-400 block">Dự trù</span>
-                              <span className="text-xs font-bold text-emerald-400">
-                                {act.estimated_cost.toLocaleString("vi-VN")} đ
-                              </span>
-                            </div>
-                          ) : null}
+                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                            {act.estimated_cost ? (
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 block">Dự trù</span>
+                                <span className="text-xs font-bold text-emerald-400">
+                                  {act.estimated_cost.toLocaleString("vi-VN")} đ
+                                </span>
+                              </div>
+                            ) : null}
+                            {onActivityEdit && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onActivityEdit(act);
+                                }}
+                                className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-[11px] font-bold text-teal-300 transition-colors hover:bg-teal-500/20"
+                              >
+                                Sửa
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

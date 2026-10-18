@@ -55,7 +55,10 @@ export default function TripsPage() {
             </p>
           </div>
 
-          {/* Filters */}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          <Link href="/trips/new" className="px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 text-xs font-bold">
+            + Tạo lịch trình
+          </Link>
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold">
             {["ALL", "GENERATED", "CONFIRMED", "DRAFT"].map((st) => (
               <button
@@ -77,6 +80,7 @@ export default function TripsPage() {
                   : "Bản nháp"}
               </button>
             ))}
+          </div>
           </div>
         </div>
 

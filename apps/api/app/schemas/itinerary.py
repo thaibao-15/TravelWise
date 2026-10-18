@@ -166,6 +166,22 @@ class ItineraryEditRequest(BaseModel):
     allow_overwrite: bool = True
 
 
+class ItineraryDetectIntentRequest(BaseModel):
+    """Request payload to determine whether a message is an itinerary edit request."""
+
+    message: str
+    conversation_id: Optional[int] = None
+
+
+class ItineraryDetectIntentResponse(BaseModel):
+    """Response returned from LLM & RAG intent classification."""
+
+    is_edit_intent: bool
+    confidence: str = "HIGH"
+    change_prompt: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class TripCreateRequest(BaseModel):
     """Request payload to create a new Trip entity from Web/API."""
 
@@ -231,6 +247,86 @@ class ItineraryActivityDetail(BaseModel):
     travel_duration_minutes: Optional[int] = None
     travel_distance_km: Optional[float] = None
     note: Optional[str] = None
+
+    model_config = ConfigDict(use_enum_values=True, extra="ignore")
+
+
+class ItineraryActivityCreate(BaseModel):
+    """Request payload to create a new itinerary activity."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    activity_type: str = ActivityTypeEnum.VISIT.value
+    place_id: Optional[int] = None
+    description: Optional[str] = None
+    start_time: Optional[str] = None  # HH:MM
+    end_time: Optional[str] = None  # HH:MM
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    estimated_cost: Optional[float] = Field(default=None, ge=0)
+    travel_duration_minutes: Optional[int] = Field(default=None, ge=0)
+    travel_distance_km: Optional[float] = Field(default=None, ge=0)
+    order_index: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Thứ tự trong ngày. Bỏ trống để tự gán (max + 1).",
+    )
+    note: Optional[str] = None
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def normalize_time_str(cls, v: Any) -> Optional[str]:
+        return ItineraryActivityItem.normalize_time_str(v)
+
+    @field_validator("activity_type", mode="before")
+    @classmethod
+    def normalize_activity_type(cls, v: Any) -> str:
+        if v is None or str(v).strip() == "":
+            return ActivityTypeEnum.VISIT.value
+        value = str(v).strip().upper()
+        allowed = {e.value for e in ActivityTypeEnum}
+        if value not in allowed:
+            raise ValueError(
+                f"activity_type không hợp lệ. Cho phép: {', '.join(sorted(allowed))}."
+            )
+        return value
+
+    model_config = ConfigDict(use_enum_values=True, extra="ignore")
+
+
+class ItineraryActivityUpdate(BaseModel):
+    """Request payload for partial update of an itinerary activity."""
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    activity_type: Optional[str] = None
+    place_id: Optional[int] = None
+    description: Optional[str] = None
+    start_time: Optional[str] = None  # HH:MM
+    end_time: Optional[str] = None  # HH:MM
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    estimated_cost: Optional[float] = Field(default=None, ge=0)
+    travel_duration_minutes: Optional[int] = Field(default=None, ge=0)
+    travel_distance_km: Optional[float] = Field(default=None, ge=0)
+    order_index: Optional[int] = Field(default=None, ge=1)
+    note: Optional[str] = None
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def normalize_time_str(cls, v: Any) -> Optional[str]:
+        return ItineraryActivityItem.normalize_time_str(v)
+
+    @field_validator("activity_type", mode="before")
+    @classmethod
+    def normalize_activity_type(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        value = str(v).strip().upper()
+        if not value:
+            return None
+        allowed = {e.value for e in ActivityTypeEnum}
+        if value not in allowed:
+            raise ValueError(
+                f"activity_type không hợp lệ. Cho phép: {', '.join(sorted(allowed))}."
+            )
+        return value
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
 
