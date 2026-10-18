@@ -14,7 +14,11 @@ class TripListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TripDetailScreen()));
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TripDetailScreen(tripId: trip.id, initialTrip: trip),
+          ),
+        );
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),

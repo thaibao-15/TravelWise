@@ -156,7 +156,11 @@ class FeaturedTripCard extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TripDetailScreen()));
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TripDetailScreen(tripId: trip.id, initialTrip: trip),
+                  ),
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.surface,

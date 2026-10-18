@@ -8,10 +8,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/audio/voice_audio_service.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../auth/auth_di.dart';
+import '../../../trips/data/repositories/trip_repository.dart';
+import '../../../trips/models/trip_model.dart';
+import '../../../trips/providers/trip_provider.dart';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum VoiceState { idle, listening, thinking, speaking, processing, connecting, error }
+
+enum TripPlanningState {
+  idle,
+  collectingRequirements,
+  readyToGenerate,
+  generating,
+  previewReady,
+  revising,
+  readyToSave,
+  saving,
+  saved,
+  error,
+}
 
 // ─── Chat Message Model ───────────────────────────────────────────────────────
 
@@ -33,6 +49,7 @@ class ChatMessage {
 
 class VoiceAssistantState {
   final VoiceState voiceState;
+  final TripPlanningState planningState;
   final bool isMuted;
   final bool isRecording;
   final bool isConversationExpanded;
@@ -43,9 +60,13 @@ class VoiceAssistantState {
   final int? conversationId;
   final bool isTtsEnabled;
   final Uint8List? lastAudioBytes;
+  final Trip? tripPreview;
+  final String? savedTripId;
+  final String? planningContextSummary;
 
   const VoiceAssistantState({
     this.voiceState = VoiceState.idle,
+    this.planningState = TripPlanningState.idle,
     this.isMuted = false,
     this.isRecording = false,
     this.isConversationExpanded = false,
@@ -56,10 +77,14 @@ class VoiceAssistantState {
     this.conversationId,
     this.isTtsEnabled = true,
     this.lastAudioBytes,
+    this.tripPreview,
+    this.savedTripId,
+    this.planningContextSummary,
   });
 
   VoiceAssistantState copyWith({
     VoiceState? voiceState,
+    TripPlanningState? planningState,
     bool? isMuted,
     bool? isRecording,
     bool? isConversationExpanded,
@@ -70,9 +95,13 @@ class VoiceAssistantState {
     int? conversationId,
     bool? isTtsEnabled,
     Uint8List? lastAudioBytes,
+    Trip? tripPreview,
+    String? savedTripId,
+    String? planningContextSummary,
   }) {
     return VoiceAssistantState(
       voiceState: voiceState ?? this.voiceState,
+      planningState: planningState ?? this.planningState,
       isMuted: isMuted ?? this.isMuted,
       isRecording: isRecording ?? this.isRecording,
       isConversationExpanded:
@@ -84,6 +113,10 @@ class VoiceAssistantState {
       conversationId: conversationId ?? this.conversationId,
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
       lastAudioBytes: lastAudioBytes ?? this.lastAudioBytes,
+      tripPreview: tripPreview ?? this.tripPreview,
+      savedTripId: savedTripId ?? this.savedTripId,
+      planningContextSummary:
+          planningContextSummary ?? this.planningContextSummary,
     );
   }
 }
@@ -104,6 +137,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   VoiceAssistantNotifier(this._ref) : super(const VoiceAssistantState());
 
   Dio get _dio => _ref.read(dioClientProvider).dio;
+  TripRepository get _tripRepo => _ref.read(tripRepositoryProvider);
 
   void log(String event, [Map<String, Object?>? detail]) {
     final payload = detail == null ? event : '$event $detail';
@@ -117,6 +151,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   void setVoiceState(VoiceState vs) {
     log('setVoiceState', {'voiceState': vs.name});
     state = state.copyWith(voiceState: vs);
+  }
+
+  void setPlanningState(TripPlanningState ps) {
+    log('setPlanningState', {'planningState': ps.name});
+    state = state.copyWith(planningState: ps);
   }
 
   void setTranscript(String text) {
@@ -186,6 +225,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     if (state.voiceState == VoiceState.speaking) {
       state = state.copyWith(voiceState: VoiceState.idle);
     }
+  }
+
+  void dismissPreview() {
+    state = state.copyWith(
+      planningState: TripPlanningState.idle,
+      tripPreview: null,
+    );
   }
 
   // ── STT (Web Microphone WebSocket) ───────────────────────────────────────
@@ -393,10 +439,16 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         final content =
             (data['message'] as Map<String, dynamic>)['content'] as String;
         final convId = data['conversation_id'] as int?;
+        final planningStatus = data['planning_status']?.toString();
+        final isReady = data['is_ready_to_generate'] == true;
+        final planningAction = data['planning_action']?.toString();
 
         log('rag_success', {
           'contentLength': content.length,
           'conversationId': convId,
+          'planningStatus': planningStatus,
+          'isReady': isReady,
+          'planningAction': planningAction,
         });
 
         final aiMsg = ChatMessage(
@@ -405,16 +457,31 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           timestamp: DateTime.now(),
         );
 
+        TripPlanningState derivedPlanning = state.planningState;
+        if (planningStatus == 'collecting_requirements') {
+          derivedPlanning = TripPlanningState.collectingRequirements;
+        } else if (planningStatus == 'ready_to_generate' || isReady) {
+          derivedPlanning = TripPlanningState.readyToGenerate;
+        }
+
         state = state.copyWith(
           messages: [...state.messages, aiMsg],
           conversationId: convId,
           currentTranscript: content,
+          planningState: derivedPlanning,
         );
 
         if (isVoiceMode || state.isTtsEnabled) {
           await _playTts(content);
         } else {
           state = state.copyWith(voiceState: VoiceState.idle);
+        }
+
+        // Orchestrate automatic generation or saving based on structured backend planning_action
+        if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
+          await generateItinerary(convId: convId);
+        } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
+          await saveCurrentTrip(convId: convId);
         }
       } else {
         state = state.copyWith(
@@ -448,6 +515,136 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           _lastSubmittedTranscript = null;
         }
       });
+    }
+  }
+
+  // ── Trip Planning Generation & Persistence ──────────────────────────────
+
+  Future<void> generateItinerary({int? convId}) async {
+    final cid = convId ?? state.conversationId;
+    if (cid == null) return;
+
+    log('generating_itinerary', {'conversationId': cid});
+    state = state.copyWith(planningState: TripPlanningState.generating, error: null);
+
+    try {
+      final trip = await _tripRepo.generateItineraryPreview(conversationId: cid);
+      state = state.copyWith(
+        planningState: TripPlanningState.previewReady,
+        tripPreview: trip,
+      );
+      _ref.read(currentTripPreviewProvider.notifier).state = trip;
+
+      const previewMsg = 'Mình đã tạo xong lịch trình xem trước cho bạn với các địa điểm thực tế từ hệ thống! Bạn có thể xem trên bản đồ hoặc bấm Lưu chuyến đi.';
+      final aiMsg = ChatMessage(
+        text: previewMsg,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      state = state.copyWith(
+        messages: [...state.messages, aiMsg],
+        currentTranscript: previewMsg,
+      );
+
+      if (state.isTtsEnabled) {
+        await _playTts(previewMsg);
+      }
+    } catch (e) {
+      log('generate_itinerary_error', {'error': e.toString()});
+      state = state.copyWith(
+        planningState: TripPlanningState.error,
+        error: 'Không thể tạo lịch trình: $e',
+      );
+    }
+  }
+
+  Future<void> saveCurrentTrip({int? convId}) async {
+    final cid = convId ?? state.conversationId;
+    if (state.tripPreview == null || cid == null) return;
+
+    log('saving_trip', {'conversationId': cid, 'title': state.tripPreview!.title});
+    state = state.copyWith(planningState: TripPlanningState.saving, error: null);
+
+    try {
+      final savedId = await _tripRepo.saveTripPreview(
+        trip: state.tripPreview!,
+        conversationId: cid,
+      );
+
+      // Invalidate tripsListProvider to trigger immediate refresh of trips history
+      _ref.invalidate(tripsListProvider);
+
+      state = state.copyWith(
+        planningState: TripPlanningState.saved,
+        savedTripId: savedId,
+      );
+
+      const savedMsg = 'Chuyến đi của bạn đã được lưu thành công vào cơ sở dữ liệu! Bạn có thể xem lại bất cứ lúc nào trong mục Chuyến đi.';
+      final aiMsg = ChatMessage(
+        text: savedMsg,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      state = state.copyWith(
+        messages: [...state.messages, aiMsg],
+        currentTranscript: savedMsg,
+      );
+
+      if (state.isTtsEnabled) {
+        await _playTts(savedMsg);
+      }
+    } catch (e) {
+      log('save_trip_error', {'error': e.toString()});
+      state = state.copyWith(
+        planningState: TripPlanningState.error,
+        error: 'Không thể lưu chuyến đi: $e',
+      );
+    }
+  }
+
+  Future<void> editSavedTrip({
+    required String tripId,
+    required String instruction,
+  }) async {
+    log('editing_trip', {'tripId': tripId, 'instruction': instruction});
+    state = state.copyWith(planningState: TripPlanningState.revising, error: null);
+
+    try {
+      final updatedTrip = await _tripRepo.editItinerary(
+        tripId: tripId,
+        instruction: instruction,
+      );
+
+      if (updatedTrip != null) {
+        _ref.invalidate(tripsListProvider);
+        _ref.invalidate(tripDetailProvider(tripId));
+
+        state = state.copyWith(
+          planningState: TripPlanningState.saved,
+          tripPreview: updatedTrip,
+        );
+
+        final editMsg = 'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
+        final aiMsg = ChatMessage(
+          text: editMsg,
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+        state = state.copyWith(
+          messages: [...state.messages, aiMsg],
+          currentTranscript: editMsg,
+        );
+
+        if (state.isTtsEnabled) {
+          await _playTts(editMsg);
+        }
+      }
+    } catch (e) {
+      log('edit_trip_error', {'error': e.toString()});
+      state = state.copyWith(
+        planningState: TripPlanningState.error,
+        error: 'Không thể chỉnh sửa lịch trình: $e',
+      );
     }
   }
 
