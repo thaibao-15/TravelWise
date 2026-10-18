@@ -28,6 +28,46 @@ CREATE TABLE users (
     updated_at DATETIME DEFAULT GETDATE()
 );
 
+CREATE TABLE user_profiles (
+    id BIGINT IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+
+    -- Thông tin cá nhân
+    phone NVARCHAR(20),
+    date_of_birth DATE,
+    gender NVARCHAR(20),
+    nationality NVARCHAR(100),
+    preferred_language NVARCHAR(10) DEFAULT 'vi',
+
+    -- Sở thích du lịch
+    travel_style NVARCHAR(50),
+    favorite_categories NVARCHAR(MAX),
+    interests NVARCHAR(MAX),
+
+    -- Ngân sách và di chuyển
+    budget_min DECIMAL(12, 2),
+    budget_max DECIMAL(12, 2),
+    currency NVARCHAR(10) DEFAULT 'VND',
+    preferred_transport NVARCHAR(50),
+
+    -- Nhu cầu du lịch
+    accommodation_type NVARCHAR(50),
+    dietary_preferences NVARCHAR(MAX),
+    accessibility_needs NVARCHAR(MAX),
+
+    -- Cá nhân hóa AI
+    preferred_travel_pace NVARCHAR(30),
+    additional_preferences NVARCHAR(MAX),
+
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+
+    CONSTRAINT FK_user_profiles_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
 -- =========================================
 -- CATEGORIES
 -- =========================================
@@ -4413,3 +4453,4 @@ select * from trip_items
 select * from trip_preferences 
 select * from itinerary_days 
 select * from itinerary_activities 
+select * from conversation_summaries 

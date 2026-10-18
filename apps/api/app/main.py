@@ -10,6 +10,7 @@ from app.api.routes.stt import router as stt_router
 from app.api.routes.trips import router as trips_router
 from app.api.routes.tts import router as tts_router
 from app.api.routes.users import router as users_router
+from app.api.routes.user_profile import router as user_profile_router
 
 app = FastAPI(
     title="TravelWise API",
@@ -28,6 +29,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(user_profile_router)
 app.include_router(categories_router)
 app.include_router(places_router)
 app.include_router(conversations_router)

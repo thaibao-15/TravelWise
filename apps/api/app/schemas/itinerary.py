@@ -225,6 +225,7 @@ class ItineraryPlaceSummary(BaseModel):
     description: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    image_url: Optional[str] = None
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
 

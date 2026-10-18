@@ -373,7 +373,11 @@ class ItineraryPersistenceService:
                 selectinload(Trip.itinerary_days)
                 .selectinload(ItineraryDay.activities)
                 .selectinload(ItineraryActivity.place)
-                .selectinload(Place.category)
+                .selectinload(Place.category),
+                selectinload(Trip.itinerary_days)
+                .selectinload(ItineraryDay.activities)
+                .selectinload(ItineraryActivity.place)
+                .selectinload(Place.images),
             )
         )
         trip = session.exec(stmt).first()
@@ -421,6 +425,17 @@ class ItineraryPersistenceService:
                         description=db_act.place.description,
                         latitude=db_act.place.latitude,
                         longitude=db_act.place.longitude,
+                        image_url=next(
+                            (
+                                image.url
+                                for image in sorted(
+                                    db_act.place.images,
+                                    key=lambda image: not image.is_primary,
+                                )
+                                if image.url
+                            ),
+                            None,
+                        ),
                     )
 
                 cost_float: Optional[float] = None
