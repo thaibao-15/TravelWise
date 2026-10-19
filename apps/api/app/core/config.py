@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
     WEATHER_TIMEZONE: str = "Asia/Ho_Chi_Minh"
     WEATHER_HTTP_TIMEOUT_SECONDS: float = 10.0
-    WEATHER_CACHE_TTL_SECONDS: int = 1800
+    WEATHER_CACHE_TTL_SECONDS: int = 2700
 
     # -------------------------------------------------------------------------
     # RAG & Chroma Vector Store Configuration
