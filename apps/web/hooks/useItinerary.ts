@@ -11,6 +11,7 @@ export interface ItineraryPlaceSummary {
   description?: string;
   latitude?: number;
   longitude?: number;
+  image_url?: string | null;
 }
 
 export interface ActivityDetail {
@@ -38,6 +39,7 @@ export interface ActivityDetail {
   custom_description?: string;
   latitude?: number;
   longitude?: number;
+  image_url?: string | null;
   day_number?: number;
 }
 
@@ -117,6 +119,7 @@ export function useItinerary(tripId: number | null) {
                   place_address: p?.address || act.place_address || undefined,
                   latitude: p?.latitude ?? act.latitude ?? undefined,
                   longitude: p?.longitude ?? act.longitude ?? undefined,
+                  image_url: p?.image_url ?? act.image_url ?? undefined,
                   custom_description:
                     act.description || p?.description || act.custom_description || undefined,
                   time_slot: timeSlot,

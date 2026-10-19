@@ -472,6 +472,9 @@ def generate_itinerary_direct(
             detail="Cần cung cấp context hoặc conversation_id để tạo lịch trình.",
         )
 
+    if request_data and request_data.current_location:
+        context.current_location = request_data.current_location
+
     # Automatically create Trip in SQL Server if save_to_db is True
     target_trip_id = context.trip.trip_id
     if not target_trip_id and request_data.save_to_db:
@@ -579,6 +582,9 @@ def generate_itinerary_for_trip(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Chuyến đi {trip_id} chưa có thông tin lập kế hoạch (TripPlanningContext).",
         )
+
+    if request_data and request_data.current_location:
+        context.current_location = request_data.current_location
 
     save_to_db = request_data.save_to_db if request_data is not None else True
     user_prompt = request_data.user_prompt if request_data is not None else None

@@ -154,7 +154,8 @@ apps/api/
 │   │       ├── rag.py            # RAG Ask (Chat/Voice), RAG Semantic Search
 │   │       ├── trips.py          # Lập lịch trình AI, Day plans, Activities
 │   │       ├── tts.py            # Realtime TTS stream, status, websocket probe
-│   │       └── stt.py            # Nhận diện giọng nói STT
+│   │       ├── stt.py            # Nhận diện giọng nói STT
+│   │       └── weather.py        # Thời tiết hiện tại và dự báo Open-Meteo
 │   │
 │   ├── core/                     # Cấu hình lõi & Bảo mật
 │   │   ├── config.py             # Pydantic Settings đọc biến môi trường (.env)
@@ -179,7 +180,7 @@ apps/api/
 │   │
 │   ├── schemas/                  # Pydantic Request / Response Schemas
 │   │   ├── auth.py, user.py, place.py, category.py
-│   │   ├── conversation.py, trip.py, rag.py, tts.py, stt.py
+│   │   ├── conversation.py, trip.py, rag.py, tts.py, stt.py, weather.py
 │   │
 │   ├── services/                 # Tầng Business Logic
 │   │   ├── auth_service.py       # Nghiệp vụ xác thực & tài khoản
@@ -187,7 +188,8 @@ apps/api/
 │   │   ├── trip_planning.py      # Sinh lịch trình du lịch thông minh qua LLM
 │   │   ├── itinerary_persistence.py # Lưu trữ cấu trúc lịch trình vào SQL Server
 │   │   ├── tts_service.py        # Blaze AI Realtime TTS WebSocket & Pipelining
-│   │   └── stt_service.py        # Dịch vụ nhận dạng giọng nói
+│   │   ├── stt_service.py        # Dịch vụ nhận dạng giọng nói
+│   │   └── weather_service.py    # Gọi Open-Meteo và cache dự báo
 │   │
 │   └── main.py                   # FastAPI Application initialization & Middlewares
 │
@@ -209,6 +211,53 @@ apps/api/
 ├── alembic.ini                   # Cấu hình Alembic
 └── pyproject.toml                # Dependencies & Metadata dự án
 ```
+
+### API thời tiết
+
+Lấy thời tiết hiện tại và dự báo mặc định 7 ngày tại tọa độ:
+
+```text
+GET /api/v1/weather?latitude=16.0544&longitude=108.2022
+```
+
+Có thể yêu cầu từ 1 đến tối đa 16 ngày bằng `forecast_days`. Với địa điểm đã
+lưu tọa độ trong database, dùng:
+
+```text
+GET /api/v1/weather/place/{place_id}
+```
+
+Endpoint không cần API key Open-Meteo. Kết quả được cache trong bộ nhớ 30 phút;
+cache sẽ mất khi tiến trình API khởi động lại. URL, timeout, múi giờ và TTL có
+thể cấu hình bằng các biến `OPEN_METEO_FORECAST_URL`,
+`WEATHER_HTTP_TIMEOUT_SECONDS`, `WEATHER_TIMEZONE` và
+`WEATHER_CACHE_TTL_SECONDS`.
+
+Response gồm:
+
+- `current`: nhiệt độ, nhiệt độ cảm nhận, độ ẩm, trạng thái ngày/đêm, mưa,
+  mây, áp suất, hướng gió và gió giật.
+- `hourly`: nhiệt độ, nhiệt độ cảm nhận, xác suất mưa, lượng mưa, mã thời
+  tiết, gió và UV theo giờ trong phạm vi dự báo.
+- `forecast`: nhiệt độ cao/thấp, nhiệt độ cảm nhận, bình minh, hoàng hôn, UV,
+  tổng lượng mưa, xác suất mưa, gió lớn nhất và gió giật lớn nhất theo ngày.
+
+### Chọn dữ liệu thời tiết cho hội thoại AI
+
+Luồng `/api/v1/rag/ask` và `/api/v1/rag/ask-stream` phân loại câu hỏi thời
+tiết trước khi gọi RAG. `WeatherContextService` chỉ gọi Open-Meteo khi câu hỏi
+thuộc một intent thời tiết; câu hỏi du lịch thông thường không tạo request
+thời tiết. Context gửi cho LLM được lọc theo intent:
+
+- Hiện tại: chỉ nhiệt độ, cảm nhận, độ ẩm, mã thời tiết, gió và lượng mưa.
+- Hôm nay hoặc một khung giờ: chỉ các bản ghi hourly liên quan.
+- Nhiều ngày, chọn ngày tốt hoặc lập lịch: chỉ các trường daily cần thiết.
+- Hoạt động: ưu tiên hourly theo ngày/giờ và thông tin mưa, gió, UV.
+
+Tọa độ được lấy từ `current_location` nếu người dùng cung cấp; nếu không,
+backend tìm địa điểm có tọa độ trong bảng `places`. Nếu không xác định được
+tọa độ hoặc Open-Meteo lỗi, LLM nhận thông báo giới hạn dữ liệu thay vì dữ liệu
+giả, còn hội thoại vẫn tiếp tục.
 
 ---
 
