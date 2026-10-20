@@ -33,7 +33,13 @@ class TripDaySelector extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(20),
                 border: isActive ? null : Border.all(color: AppColors.border),
                 boxShadow: isActive
-                    ? [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        )
+                      ]
                     : [],
               ),
               child: Row(
@@ -42,12 +48,15 @@ class TripDaySelector extends ConsumerWidget {
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+                      decoration: const BoxDecoration(
+                        color: AppColors.success,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                     const SizedBox(width: 6),
                   ],
                   Text(
-                    'DAY \${day.dayIndex} · \${day.date.day} Oct',
+                    'Ngày ${day.dayIndex} · ${day.date.day}/${day.date.month}',
                     style: AppTextStyles.bodyMedium.copyWith(
                       color: isActive ? Colors.white : AppColors.textPrimary,
                       fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,

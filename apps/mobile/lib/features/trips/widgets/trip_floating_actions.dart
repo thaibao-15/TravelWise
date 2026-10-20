@@ -3,7 +3,14 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../../core/constants/colors.dart';
 
 class TripFloatingActions extends StatelessWidget {
-  const TripFloatingActions({super.key});
+  final VoidCallback? onOpenMap;
+  final VoidCallback? onAiEdit;
+
+  const TripFloatingActions({
+    super.key,
+    this.onOpenMap,
+    this.onAiEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +22,7 @@ class TripFloatingActions extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: onOpenMap,
             icon: const Icon(LucideIcons.map, size: 20),
             label: const Text('Xem lộ trình bản đồ'),
             style: ElevatedButton.styleFrom(
@@ -38,12 +45,17 @@ class TripFloatingActions extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
               boxShadow: [
-                BoxShadow(color: AppColors.primary.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4)),
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: IconButton(
-              onPressed: () {},
+              onPressed: onAiEdit,
               icon: const Icon(Icons.auto_awesome, color: Colors.white),
+              tooltip: 'Chỉnh sửa bằng AI',
             ),
           ),
         ],
