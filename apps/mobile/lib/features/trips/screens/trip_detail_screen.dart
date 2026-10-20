@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
+import '../../../../shared/widgets/bottom_nav_bar.dart';
+import '../../../../shared/widgets/main_shell.dart';
 import '../../assistant/presentation/providers/voice_assistant_provider.dart';
 import '../../map/presentation/screens/map_screen.dart';
+import '../data/repositories/trip_repository.dart';
 import '../models/trip_model.dart';
 import '../models/mock_trip_data.dart';
 import '../providers/trip_provider.dart';
@@ -32,11 +35,54 @@ class TripDetailScreen extends ConsumerStatefulWidget {
 class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   final TextEditingController _editController = TextEditingController();
   bool _isEditing = false;
+  bool _isGeneratingItinerary = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(selectedDayProvider.notifier).state = 1;
+      }
+    });
+  }
 
   @override
   void dispose() {
     _editController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleGenerateItinerary(Trip trip) async {
+    if (_isGeneratingItinerary) return;
+    setState(() => _isGeneratingItinerary = true);
+    try {
+      final repo = ref.read(tripRepositoryProvider);
+      await repo.generateItineraryForTrip(trip.id);
+      ref.invalidate(tripDetailProvider(trip.id));
+      ref.invalidate(tripsListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI đã tạo chi tiết lịch trình cho chuyến đi!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingItinerary = false);
+      }
+    }
   }
 
   void _showAiEditModal(BuildContext context, Trip currentTrip) {
@@ -73,7 +119,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           color: AppColors.primary.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.auto_awesome, color: AppColors.primary, size: 20),
+                        child: const Icon(
+                          Icons.auto_awesome,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -110,14 +160,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Nhập yêu cầu điều chỉnh lịch trình của bạn...',
-                      hintStyle: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      hintStyle: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: const BorderSide(color: AppColors.border),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
                       ),
                       filled: true,
                       fillColor: AppColors.background,
@@ -152,7 +208,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               } catch (e) {
                                 if (ctx.mounted) {
                                   ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(content: Text('Lỗi: $e'), backgroundColor: AppColors.error),
+                                    SnackBar(
+                                      content: Text('Lỗi: $e'),
+                                      backgroundColor: AppColors.error,
+                                    ),
                                   );
                                 }
                               } finally {
@@ -172,7 +231,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               ),
                             )
                           : const Icon(Icons.send_rounded, size: 18),
-                      label: Text(_isEditing ? 'AI đang cập nhật...' : 'Gửi yêu cầu chỉnh sửa'),
+                      label: Text(
+                        _isEditing ? 'AI đang cập nhật...' : 'Gửi yêu cầu chỉnh sửa',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
@@ -196,19 +257,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Widget build(BuildContext context) {
     final selectedDay = ref.watch(selectedDayProvider);
 
-    Trip? currentTrip = widget.initialTrip;
+    final effectiveTripId = widget.tripId ?? widget.initialTrip?.id;
+    final AsyncValue<Trip?>? tripAsync =
+        (effectiveTripId != null && effectiveTripId.isNotEmpty)
+            ? ref.watch(tripDetailProvider(effectiveTripId))
+            : null;
 
-    if (widget.tripId != null && widget.tripId!.isNotEmpty) {
-      final tripAsync = ref.watch(tripDetailProvider(widget.tripId!));
-      tripAsync.whenData((data) {
-        if (data != null) {
-          currentTrip = data;
-        }
-      });
-    }
+    final bool isLoadingDetail = tripAsync?.isLoading ?? false;
+    final Trip? resolvedFromApi = tripAsync?.valueOrNull;
 
-    // Fallback to mockTripDetail if no trip is loaded
-    final trip = currentTrip ?? mockTripDetail;
+    final Trip trip = resolvedFromApi ?? widget.initialTrip ?? mockTripDetail;
 
     final currentDayData = trip.days.isNotEmpty
         ? trip.days.firstWhere(
@@ -219,75 +277,170 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             dayIndex: 1,
             date: trip.startDate,
             title: trip.title,
-            subtitle: trip.destination,
+            subtitle: '${trip.destination} · ${trip.daysCount} ngày',
             activities: [],
           );
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: TripHeroHeader(trip: trip),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: AppSpacing.xl),
-                      if (trip.days.isNotEmpty)
-                        TripDaySelector(days: trip.days),
-                      const SizedBox(height: AppSpacing.xl),
-                      TripDayHeader(day: currentDayData),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (currentDayData.activities.isNotEmpty)
-                        ItineraryTimeline(activities: currentDayData.activities)
-                      else
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'Không có hoạt động nào trong ngày này.',
-                              style: AppTextStyles.bodyMedium.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          if (effectiveTripId != null && effectiveTripId.isNotEmpty) {
+            return ref.refresh(tripDetailProvider(effectiveTripId).future);
+          }
+        },
+        child: Stack(
+          children: [
+            CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: TripHeroHeader(trip: trip),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 44),
+                        if (isLoadingDetail && trip.days.isEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 20),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Đang tải chi tiết lịch trình từ máy chủ...',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                        if (trip.days.isNotEmpty) ...[
+                          TripDaySelector(days: trip.days),
+                          const SizedBox(height: AppSpacing.xl),
+                        ],
+                        TripDayHeader(day: currentDayData),
+                        const SizedBox(height: AppSpacing.lg),
+                        if (currentDayData.activities.isNotEmpty)
+                          ItineraryTimeline(
+                            activities: currentDayData.activities,
+                            onActivityTap: (act) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => MapScreen(
+                                    trip: trip,
+                                    initialDayIndex: selectedDay,
+                                    originatingTabIndex: 3,
+                                    initialSelectedActivity: act,
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                        else if (!isLoadingDetail)
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_today_outlined,
+                                  size: 36,
+                                  color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Chưa có hoạt động chi tiết trong ngày này.',
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 14),
+                                ElevatedButton.icon(
+                                  onPressed: _isGeneratingItinerary
+                                      ? null
+                                      : () => _handleGenerateItinerary(trip),
+                                  icon: _isGeneratingItinerary
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : const Icon(Icons.auto_awesome, size: 16),
+                                  label: Text(
+                                    _isGeneratingItinerary
+                                        ? 'AI đang tạo lịch trình...'
+                                        : 'Tạo lịch trình chi tiết bằng AI',
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        TripMapSection(
+                          trip: trip,
+                          selectedDayIndex: selectedDay,
                         ),
-                      TripMapSection(
-                        trip: trip,
-                        selectedDayIndex: selectedDay,
-                      ),
-                      const SizedBox(height: 140),
-                    ],
+                        const SizedBox(height: 140),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          TripFloatingActions(
-            onOpenMap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => MapScreen(
-                    trip: trip,
-                    initialDayIndex: selectedDay,
+              ],
+            ),
+            TripFloatingActions(
+              onOpenMap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => MapScreen(
+                      trip: trip,
+                      initialDayIndex: selectedDay,
+                      originatingTabIndex: 3,
+                    ),
                   ),
-                ),
-              );
-            },
-            onAiEdit: () => _showAiEditModal(context, trip),
-          ),
-        ],
+                );
+              },
+              onAiEdit: () => _showAiEditModal(context, trip),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: CustomBottomNavBar(
+        currentIndex: 3,
+        onTap: (index) => MainShell.switchToTab(context, index),
       ),
     );
   }

@@ -121,20 +121,66 @@ class VoiceAssistantState {
   }
 }
 
+// ─── Listening configuration ──────────────────────────────────────────────────
+
+/// Client-side voice-activity targets. These are app-level timers layered on
+/// top of the recognizer; the platform / STT server may still end a session
+/// earlier, which is handled by bounded auto-restart.
+class VoiceListeningConfig {
+  /// Silence (no new partial/final transcript) required before the utterance
+  /// is considered finished and submitted.
+  final Duration pauseFor;
+
+  /// Maximum length of one listening turn.
+  final Duration listenFor;
+
+  /// Give up if nothing at all is recognised within this window.
+  final Duration noSpeechTimeout;
+
+  /// How many times a recognizer that closes unexpectedly may be reopened
+  /// within a single listening turn.
+  final int maxAutoRestarts;
+
+  const VoiceListeningConfig({
+    this.pauseFor = const Duration(milliseconds: 3500),
+    this.listenFor = const Duration(seconds: 120),
+    this.noSpeechTimeout = const Duration(seconds: 10),
+    this.maxAutoRestarts = 2,
+  });
+}
+
 // ─── Notifier ─────────────────────────────────────────────────────────────────
 
 class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   final Ref _ref;
-  final VoiceAudioService _audioService = VoiceAudioService();
+  final VoiceAudioService _audioService;
+  final VoiceListeningConfig _config;
 
   Timer? _silenceTimer;
   Timer? _noSpeechTimer;
-  String _lastTranscript = '';
+  Timer? _maxSessionTimer;
   String? _lastSubmittedTranscript;
   bool _isCommitting = false;
+
+  /// Id of the current recognizer connection; stale callbacks are dropped.
   int _sessionId = 0;
 
-  VoiceAssistantNotifier(this._ref) : super(const VoiceAssistantState());
+  /// True while the user wants the mic open (spans recognizer restarts).
+  bool _listeningTurnActive = false;
+  int _autoRestarts = 0;
+  DateTime? _turnStartedAt;
+
+  /// Finalised transcript segments of the current turn + the live partial.
+  final List<String> _finalSegments = [];
+  String _partialSegment = '';
+
+  VoiceAssistantNotifier(
+    this._ref, {
+    VoiceAudioService? audioService,
+    VoiceListeningConfig config = const VoiceListeningConfig(),
+  })  : _audioService = audioService ?? VoiceAudioService(),
+        _config = config,
+        super(const VoiceAssistantState());
 
   Dio get _dio => _ref.read(dioClientProvider).dio;
   TripRepository get _tripRepo => _ref.read(tripRepositoryProvider);
@@ -183,9 +229,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       state = state.copyWith(isMuted: false);
     } else {
       log('mic_muted');
-      if (state.isRecording) {
-        _stopStt();
-      }
+      _abortListening();
       _audioService.stopTts();
       state = state.copyWith(
         isMuted: true,
@@ -196,12 +240,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   void toggleRecording() {
-    if (state.isRecording ||
+    if (_listeningTurnActive ||
+        state.isRecording ||
         state.voiceState == VoiceState.connecting ||
         state.voiceState == VoiceState.listening) {
       log('user_toggle_recording_off');
-      _stopStt();
-      state = state.copyWith(isRecording: false, voiceState: VoiceState.idle);
+      // Manual stop: submit what was said so far, never auto-restart.
+      _finishListening(reason: 'manual_stop', submit: true);
     } else {
       if (state.isMuted) {
         log('record_blocked_muted');
@@ -215,7 +260,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         return;
       }
       log('user_toggle_recording_on');
-      _startStt();
+      _beginListening();
     }
   }
 
@@ -234,25 +279,45 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     );
   }
 
+  /// Cancels an active listening turn without submitting (e.g. user left the
+  /// assistant tab).
+  void cancelListening() {
+    if (!_listeningTurnActive && !state.isRecording) return;
+    log('stt_cancel');
+    _abortListening();
+    state = state.copyWith(isRecording: false, voiceState: VoiceState.idle);
+  }
+
+  /// Must run before any TTS playback so the AI never hears itself.
+  void prepareForTtsPlayback() {
+    if (_listeningTurnActive || state.isRecording) {
+      log('stt_suspended_for_tts');
+      _abortListening();
+      state = state.copyWith(isRecording: false);
+    }
+  }
+
   // ── STT (Web Microphone WebSocket) ───────────────────────────────────────
 
-  void _startStt() {
-    if (state.isRecording || state.voiceState == VoiceState.connecting) return;
+  String get _accumulatedTranscript => [
+        ..._finalSegments,
+        if (_partialSegment.isNotEmpty) _partialSegment,
+      ].join(' ').trim();
 
-    _silenceTimer?.cancel();
-    _noSpeechTimer?.cancel();
-    _lastTranscript = '';
+  bool _isActiveSession(int sessionId) =>
+      mounted && _listeningTurnActive && sessionId == _sessionId;
+
+  void _beginListening() {
+    if (_listeningTurnActive) return;
+
+    _cancelTimers();
+    _finalSegments.clear();
+    _partialSegment = '';
     _isCommitting = false;
+    _autoRestarts = 0;
+    _turnStartedAt = DateTime.now();
+    _listeningTurnActive = true;
     _audioService.stopTts();
-
-    final sessionId = ++_sessionId;
-    final baseUrl = ApiConfig.baseUrl;
-    final wsProtocol = baseUrl.startsWith('https') ? 'wss:' : 'ws:';
-    final wsHost =
-        baseUrl.replaceFirst(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '');
-    final wsUrl = '$wsProtocol//$wsHost/api/v1/stt/ws';
-
-    log('stt_start', {'wsUrl': wsUrl, 'sessionId': sessionId});
 
     state = state.copyWith(
       voiceState: VoiceState.connecting,
@@ -261,31 +326,59 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       isRecording: false,
     );
 
+    _maxSessionTimer = Timer(_config.listenFor, () {
+      if (!mounted || !_listeningTurnActive) return;
+      log('stt_max_session_reached');
+      _finishListening(reason: 'max_session', submit: true);
+    });
+
+    _openRecognizer();
+  }
+
+  void _openRecognizer() {
+    final sessionId = ++_sessionId;
+    final baseUrl = ApiConfig.baseUrl;
+    final wsProtocol = baseUrl.startsWith('https') ? 'wss:' : 'ws:';
+    final wsHost =
+        baseUrl.replaceFirst(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '');
+    final wsUrl = '$wsProtocol//$wsHost/api/v1/stt/ws';
+
+    log('stt_start', {
+      'wsUrl': wsUrl,
+      'sessionId': sessionId,
+      'autoRestarts': _autoRestarts,
+    });
+
     _audioService.startRecording(
       wsUrl: wsUrl,
       onReady: () {
-        if (!mounted || sessionId != _sessionId) return;
+        if (!_isActiveSession(sessionId)) return;
         log('stt_ready', {'sessionId': sessionId});
         state = state.copyWith(
           voiceState: VoiceState.listening,
           isRecording: true,
           error: null,
         );
-        _armNoSpeechTimer(sessionId);
+        if (_accumulatedTranscript.isEmpty) _armNoSpeechTimer(sessionId);
       },
       onTranscript: (text, isFinal) {
-        if (!mounted || sessionId != _sessionId) return;
+        if (!_isActiveSession(sessionId)) return;
         log('stt_transcript', {
           'isFinal': isFinal,
           'textLength': text.length,
           'sessionId': sessionId,
         });
-        _handleTranscript(text, isFinal, sessionId);
+        _handleTranscript(text, isFinal);
       },
       onError: (err) {
-        if (!mounted || sessionId != _sessionId) return;
+        if (!_isActiveSession(sessionId)) return;
         log('stt_error', {'error': err, 'sessionId': sessionId});
-        _noSpeechTimer?.cancel();
+        // Never throw away what the user already said.
+        if (_accumulatedTranscript.isNotEmpty) {
+          _finishListening(reason: 'stt_error', submit: true);
+          return;
+        }
+        _abortListening();
         state = state.copyWith(
           voiceState: VoiceState.error,
           isRecording: false,
@@ -293,36 +386,69 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         );
       },
       onDone: () {
-        if (!mounted || sessionId != _sessionId) return;
-        log('stt_session_done', {
-          'sessionId': sessionId,
-          'wasRecording': state.isRecording,
-        });
-        _noSpeechTimer?.cancel();
-        if (state.isRecording || state.voiceState == VoiceState.listening) {
-          state = state.copyWith(
-            isRecording: false,
-            voiceState: VoiceState.idle,
-          );
-        } else if (state.voiceState == VoiceState.connecting) {
-          state = state.copyWith(
-            isRecording: false,
-            voiceState: VoiceState.error,
-            error: 'Kết nối STT đã đóng trước khi sẵn sàng.',
-          );
-        }
+        if (!_isActiveSession(sessionId)) return;
+        _handleRecognizerEnded(sessionId);
       },
     );
   }
 
+  /// The recognizer closed while the user still wanted to talk (server/OS
+  /// session limit, network blip). Keep the transcript and reopen a bounded
+  /// number of times; the silence timer keeps running across the restart.
+  void _handleRecognizerEnded(int sessionId) {
+    _noSpeechTimer?.cancel();
+    log('stt_session_done', {
+      'sessionId': sessionId,
+      'autoRestarts': _autoRestarts,
+      'textLength': _accumulatedTranscript.length,
+    });
+
+    // Promote the in-flight partial so its words survive the boundary.
+    if (_partialSegment.isNotEmpty) {
+      _finalSegments.add(_partialSegment);
+      _partialSegment = '';
+    }
+
+    final neverConnected = state.voiceState == VoiceState.connecting &&
+        _autoRestarts == 0 &&
+        _accumulatedTranscript.isEmpty;
+    if (neverConnected) {
+      _abortListening();
+      state = state.copyWith(
+        isRecording: false,
+        voiceState: VoiceState.error,
+        error: 'Kết nối STT đã đóng trước khi sẵn sàng.',
+      );
+      return;
+    }
+
+    final elapsed = _turnStartedAt == null
+        ? Duration.zero
+        : DateTime.now().difference(_turnStartedAt!);
+    if (_autoRestarts < _config.maxAutoRestarts &&
+        elapsed < _config.listenFor) {
+      _autoRestarts++;
+      log('stt_auto_restart', {'attempt': _autoRestarts});
+      state = state.copyWith(voiceState: VoiceState.connecting);
+      _openRecognizer();
+      return;
+    }
+
+    if (_accumulatedTranscript.isNotEmpty) {
+      _finishListening(reason: 'recognizer_ended', submit: true);
+    } else {
+      _abortListening();
+      state = state.copyWith(isRecording: false, voiceState: VoiceState.idle);
+    }
+  }
+
   void _armNoSpeechTimer(int sessionId) {
     _noSpeechTimer?.cancel();
-    _noSpeechTimer = Timer(const Duration(seconds: 10), () {
-      if (!mounted || sessionId != _sessionId) return;
-      if (_lastTranscript.trim().isNotEmpty) return;
-      if (state.voiceState != VoiceState.listening) return;
+    _noSpeechTimer = Timer(_config.noSpeechTimeout, () {
+      if (!_isActiveSession(sessionId)) return;
+      if (_accumulatedTranscript.isNotEmpty) return;
       log('stt_no_speech_timeout', {'sessionId': sessionId});
-      _stopStt();
+      _abortListening();
       state = state.copyWith(
         isRecording: false,
         voiceState: VoiceState.error,
@@ -332,46 +458,86 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     });
   }
 
-  void _handleTranscript(String text, bool isFinal, int sessionId) {
-    if (sessionId != _sessionId) return;
+  void _handleTranscript(String text, bool isFinal) {
     if (state.voiceState == VoiceState.thinking ||
         state.voiceState == VoiceState.speaking ||
         state.voiceState == VoiceState.processing) {
       return;
     }
-    if (text.trim().isEmpty) return;
+    final cleaned = text.trim();
+    // Empty partials must never wipe accumulated text.
+    if (cleaned.isEmpty) return;
 
     _noSpeechTimer?.cancel();
-    _lastTranscript = text;
+    _mergeSegment(cleaned, isFinal);
+
     state = state.copyWith(
-      currentTranscript: text,
+      currentTranscript: _accumulatedTranscript,
       voiceState: VoiceState.listening,
       isRecording: true,
       error: null,
     );
 
+    // Any recognised speech resets the silence window, so natural pauses
+    // shorter than [pauseFor] keep the turn open.
     _silenceTimer?.cancel();
-    final delay = isFinal ? 450 : 900;
-    if (text.trim().length >= 2) {
-      _silenceTimer = Timer(Duration(milliseconds: delay), () {
-        if (!mounted || sessionId != _sessionId) return;
-        if (_lastTranscript.isNotEmpty) {
-          log('silence_commit', {
-            'textLength': _lastTranscript.length,
-            'isFinal': isFinal,
-          });
-          sendMessage(_lastTranscript, isVoiceMode: true);
-        }
+    _silenceTimer = Timer(_config.pauseFor, () {
+      if (!mounted || !_listeningTurnActive) return;
+      log('silence_threshold_reached', {
+        'textLength': _accumulatedTranscript.length,
       });
+      _finishListening(reason: 'silence', submit: true);
+    });
+  }
+
+  /// Merges a recognizer segment into the turn transcript. Handles engines
+  /// that send per-segment results as well as ones that resend the whole
+  /// utterance, and drops duplicate finals.
+  void _mergeSegment(String text, bool isFinal) {
+    final committed = _finalSegments.join(' ');
+    var segment = text;
+    if (committed.isNotEmpty &&
+        segment.startsWith(committed) &&
+        (segment.length == committed.length ||
+            segment[committed.length] == ' ')) {
+      segment = segment.substring(committed.length).trim();
+    }
+
+    if (isFinal) {
+      _partialSegment = '';
+      if (segment.isEmpty) return;
+      if (_finalSegments.isNotEmpty && _finalSegments.last == segment) return;
+      _finalSegments.add(segment);
+    } else {
+      _partialSegment = segment;
     }
   }
 
-  void _stopStt() {
-    log('stt_stop');
+  /// Ends the listening turn and optionally submits the accumulated text.
+  void _finishListening({required String reason, required bool submit}) {
+    final text = _accumulatedTranscript;
+    log('stt_finish', {'reason': reason, 'textLength': text.length});
+    _abortListening();
+    if (submit && text.isNotEmpty) {
+      sendMessage(text, isVoiceMode: true);
+    } else {
+      state = state.copyWith(isRecording: false, voiceState: VoiceState.idle);
+    }
+  }
+
+  /// Stops the recognizer, invalidates pending callbacks and disables any
+  /// automatic restart. Does not touch [state].
+  void _abortListening() {
+    _listeningTurnActive = false;
+    _cancelTimers();
+    _sessionId++;
+    _audioService.stopRecording();
+  }
+
+  void _cancelTimers() {
     _silenceTimer?.cancel();
     _noSpeechTimer?.cancel();
-    _audioService.stopRecording();
-    _lastTranscript = '';
+    _maxSessionTimer?.cancel();
   }
 
   // ── Send message (RAG ask) ────────────────────────────────────────────────
@@ -393,9 +559,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
 
     _isCommitting = true;
-    _silenceTimer?.cancel();
-    _noSpeechTimer?.cancel();
-    _stopStt();
+    _abortListening();
     stopAudio();
     _lastSubmittedTranscript = trimmed;
 
@@ -652,6 +816,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   Future<void> _playTts(String text) async {
     if (!mounted) return;
+    prepareForTtsPlayback();
     final cleanText = _cleanTextForTts(text);
     if (cleanText.isEmpty) {
       state = state.copyWith(voiceState: VoiceState.idle);
@@ -742,9 +907,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   @override
   void dispose() {
-    _silenceTimer?.cancel();
-    _noSpeechTimer?.cancel();
-    _stopStt();
+    _abortListening();
     _audioService.stopTts();
     super.dispose();
   }

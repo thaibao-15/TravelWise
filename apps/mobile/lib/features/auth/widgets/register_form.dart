@@ -3,7 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../shared/widgets/main_shell.dart';
 
 class RegisterForm extends StatefulWidget {
   const RegisterForm({Key? key}) : super(key: key);
@@ -110,8 +110,11 @@ class _RegisterFormState extends State<RegisterForm> {
             ),
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => const HomeScreen()),
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => MainShell(key: MainShell.shellKey),
+                  ),
+                  (route) => false,
                 );
               },
               style: ElevatedButton.styleFrom(

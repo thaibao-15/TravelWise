@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../../../../shared/widgets/bottom_nav_bar.dart';
@@ -13,14 +15,49 @@ import '../widgets/current_location_marker.dart';
 import '../widgets/location_info_card.dart';
 import '../widgets/location_permission_dialog.dart';
 
+class _RouteEstimate {
+  final double distanceKm;
+  final int durationMinutes;
+  final List<LatLng> routePoints;
+  final bool isRoadRoute;
+
+  const _RouteEstimate({
+    required this.distanceKm,
+    required this.durationMinutes,
+    required this.routePoints,
+    this.isRoadRoute = false,
+  });
+
+  String get formattedDistance {
+    if (distanceKm < 1.0) {
+      final meters = (distanceKm * 1000).round();
+      return '$meters m';
+    }
+    return '${distanceKm.toStringAsFixed(1)} km';
+  }
+
+  String get formattedDuration {
+    if (durationMinutes < 1) return 'Dưới 1 phút';
+    if (durationMinutes < 60) return '$durationMinutes phút';
+    final hours = durationMinutes ~/ 60;
+    final mins = durationMinutes % 60;
+    if (mins == 0) return '$hours giờ';
+    return '$hours giờ $mins phút';
+  }
+}
+
 class MapScreen extends ConsumerStatefulWidget {
   final Trip? trip;
   final int? initialDayIndex;
+  final int? originatingTabIndex;
+  final ItineraryActivity? initialSelectedActivity;
 
   const MapScreen({
     super.key,
     this.trip,
     this.initialDayIndex,
+    this.originatingTabIndex,
+    this.initialSelectedActivity,
   });
 
   @override
@@ -29,6 +66,12 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   late final MapController _mapController;
+  final Dio _osrmDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 6),
+      receiveTimeout: const Duration(seconds: 6),
+    ),
+  );
 
   // Default initial center: Hanoi, Vietnam
   static const LatLng _defaultCenter = LatLng(21.0285, 105.8542);
@@ -36,17 +79,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   int _selectedDayFilter = 0; // 0 = All days, 1 = Day 1, etc.
   ItineraryActivity? _selectedActivity;
+  _RouteEstimate? _routeEstimate;
+  bool _isCalculatingRoute = false;
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     _selectedDayFilter = widget.initialDayIndex ?? 0;
+    _selectedActivity = widget.initialSelectedActivity;
 
     // Check existing permissions silently on screen launch
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(locationProvider.notifier).checkInitialStatus();
-      if (widget.trip != null) {
+      if (_selectedActivity != null && _selectedActivity!.hasValidCoordinates) {
+        _selectActivity(_selectedActivity!, showBanner: true);
+      } else if (widget.trip != null) {
         _fitItineraryCamera();
       }
     });
@@ -54,8 +103,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   void dispose() {
+    _osrmDio.close();
     _mapController.dispose();
     super.dispose();
+  }
+
+  // ── Navigation Helpers ────────────────────────────────────────────────────
+
+  void _handleBackNavigation(BuildContext context, int fallbackTabIndex) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final nav = Navigator.maybeOf(context);
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+    } else if (MainShell.currentTab != -1) {
+      MainShell.switchToTab(context, fallbackTabIndex);
+    }
+  }
+
+  void _handleBottomNavTap(BuildContext context, int index) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    MainShell.switchToTab(context, index);
   }
 
   // ── Color coding per day ──────────────────────────────────────────────────
@@ -110,18 +179,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final userAccepted = await LocationPermissionDialog.show(context);
       if (userAccepted) {
         await notifier.requestPermissionAndFetch();
+        if (mounted && _selectedActivity != null) {
+          final updatedPos = ref.read(locationProvider).latLng;
+          if (updatedPos != null) {
+            await _calculateRouteToActivity(
+              updatedPos,
+              _selectedActivity!,
+              showBanner: true,
+            );
+          }
+        }
       }
       return;
     }
 
     final currentState = ref.read(locationProvider);
-    if (currentState.latLng != null) {
+    if (currentState.latLng != null && _selectedActivity == null) {
       _animateToLocation(currentState.latLng!);
     }
     await notifier.fetchCurrentLocation();
+    if (mounted && _selectedActivity != null) {
+      final updatedPos = ref.read(locationProvider).latLng;
+      if (updatedPos != null) {
+        await _calculateRouteToActivity(
+          updatedPos,
+          _selectedActivity!,
+          showBanner: true,
+        );
+      }
+    }
   }
 
   void _animateToLocation(LatLng target) {
+    if (!mounted) return;
     try {
       _mapController.move(target, 16.0);
     } catch (e) {
@@ -141,6 +231,264 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final currentZoom = _mapController.camera.zoom;
       _mapController.move(_mapController.camera.center, currentZoom - 1.0);
     } catch (_) {}
+  }
+
+  // ── Route Calculation & Activity Selection ─────────────────────────────────
+
+  _RouteEstimate _computeFallbackEstimate(LatLng from, LatLng to) {
+    final straightMeters = Geolocator.distanceBetween(
+      from.latitude,
+      from.longitude,
+      to.latitude,
+      to.longitude,
+    );
+    // Approximate road distance (~1.3x straight line)
+    final estimatedKm = (straightMeters / 1000.0) * 1.3;
+    // Average travel speed (~35 km/h in city, ~55 km/h for longer intercity routes)
+    final avgSpeedKmh = estimatedKm > 30 ? 55.0 : 35.0;
+    final minutes = ((estimatedKm / avgSpeedKmh) * 60).ceil().clamp(1, 99999);
+
+    return _RouteEstimate(
+      distanceKm: estimatedKm,
+      durationMinutes: minutes,
+      routePoints: [from, to],
+      isRoadRoute: false,
+    );
+  }
+
+  Future<void> _selectActivity(
+    ItineraryActivity act, {
+    bool showBanner = true,
+  }) async {
+    setState(() {
+      _selectedActivity = act;
+    });
+
+    if (!act.hasValidCoordinates) return;
+
+    final dest = LatLng(act.latitude!, act.longitude!);
+    var userLatLng = ref.read(locationProvider).latLng;
+
+    if (userLatLng != null) {
+      await _calculateRouteToActivity(
+        userLatLng,
+        act,
+        showBanner: showBanner,
+      );
+    } else {
+      try {
+        _mapController.move(dest, 15.5);
+      } catch (_) {}
+      // Prompt or auto-fetch user location so we can display distance & duration
+      final service = ref.read(locationServiceProvider);
+      final perm = await service.checkPermission();
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        await ref
+            .read(locationProvider.notifier)
+            .fetchCurrentLocation(silentCamera: true);
+        userLatLng = ref.read(locationProvider).latLng;
+        if (mounted && userLatLng != null && _selectedActivity?.id == act.id) {
+          await _calculateRouteToActivity(
+            userLatLng,
+            act,
+            showBanner: showBanner,
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _calculateRouteToActivity(
+    LatLng from,
+    ItineraryActivity act, {
+    bool showBanner = true,
+  }) async {
+    if (!act.hasValidCoordinates) return;
+    final to = LatLng(act.latitude!, act.longitude!);
+
+    // Immediate instant estimate so UI responds right away
+    final fallback = _computeFallbackEstimate(from, to);
+    setState(() {
+      _routeEstimate = fallback;
+      _isCalculatingRoute = true;
+    });
+
+    _fitPointsCamera([from, to]);
+
+    // Query OSRM public driving route API for real road distance, duration & geometry
+    try {
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/'
+          '${from.longitude},${from.latitude};${to.longitude},${to.latitude}'
+          '?overview=full&geometries=geojson';
+
+      final response = await _osrmDio.get(url);
+      if (!mounted || _selectedActivity?.id != act.id) return;
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final routes = data['routes'] as List<dynamic>?;
+        if (routes != null && routes.isNotEmpty) {
+          final route = routes.first as Map<String, dynamic>;
+          final distanceMeters = (route['distance'] as num).toDouble();
+          final durationSeconds = (route['duration'] as num).toDouble();
+
+          final geometry = route['geometry'] as Map<String, dynamic>?;
+          final coords = geometry?['coordinates'] as List<dynamic>?;
+          final decodedPoints = <LatLng>[];
+          if (coords != null) {
+            for (final c in coords) {
+              if (c is List && c.length >= 2) {
+                decodedPoints.add(
+                  LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()),
+                );
+              }
+            }
+          }
+
+          final roadEstimate = _RouteEstimate(
+            distanceKm: distanceMeters / 1000.0,
+            durationMinutes: (durationSeconds / 60.0).ceil().clamp(1, 99999),
+            routePoints: decodedPoints.length >= 2 ? decodedPoints : [from, to],
+            isRoadRoute: true,
+          );
+
+          setState(() {
+            _routeEstimate = roadEstimate;
+            _isCalculatingRoute = false;
+          });
+
+          if (showBanner) {
+            _showRouteSnackNotification(act, roadEstimate);
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('OSRM routing fallback used: $e');
+    }
+
+    if (!mounted || _selectedActivity?.id != act.id) return;
+    setState(() {
+      _isCalculatingRoute = false;
+    });
+
+    if (showBanner && _routeEstimate != null) {
+      _showRouteSnackNotification(act, _routeEstimate!);
+    }
+  }
+
+  void _showRouteSnackNotification(
+    ItineraryActivity act,
+    _RouteEstimate estimate,
+  ) {
+    if (!mounted) return;
+    final placeTitle = act.placeName ?? act.title;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.dark,
+        elevation: 8,
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 195),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        duration: const Duration(seconds: 4),
+        content: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.25),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.directions_car_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đến $placeTitle',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Khoảng cách: ${estimate.formattedDistance} • Thời gian: ~${estimate.formattedDuration}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _fitPointsCamera(List<LatLng> points) {
+    if (points.isEmpty) return;
+    if (points.length == 1) {
+      try {
+        _mapController.move(points.first, 15.0);
+      } catch (_) {}
+      return;
+    }
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    if ((maxLat - minLat).abs() < 0.0005 && (maxLng - minLng).abs() < 0.0005) {
+      try {
+        _mapController.move(points.first, 15.5);
+      } catch (_) {}
+      return;
+    }
+
+    final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: bounds,
+          padding: const EdgeInsets.only(
+            left: 54,
+            right: 54,
+            top: 100,
+            bottom: 220,
+          ),
+        ),
+      );
+    } catch (_) {
+      final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+      try {
+        _mapController.move(center, 13.0);
+      } catch (_) {}
+    }
   }
 
   // ── Itinerary Points & Camera Fitting ──────────────────────────────────────
@@ -170,35 +518,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .map((i) => LatLng(i.activity.latitude!, i.activity.longitude!))
         .toList();
 
-    if (points.length == 1) {
-      _mapController.move(points.first, 15.0);
-      return;
+    final userLatLng = ref.read(locationProvider).latLng;
+    if (userLatLng != null) {
+      points.add(userLatLng);
     }
 
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
-
-    for (final p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-
-    final bounds = LatLngBounds(LatLng(minLat, minLng), LatLng(maxLat, maxLng));
-    try {
-      _mapController.fitCamera(
-        CameraFit.bounds(
-          bounds: bounds,
-          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 80),
-        ),
-      );
-    } catch (_) {
-      final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
-      _mapController.move(center, 13.0);
-    }
+    _fitPointsCamera(points);
   }
 
   @override
@@ -207,8 +532,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     // Listen to camera move requests when fresh GPS position arrives
     ref.listen<LocationState>(locationProvider, (previous, next) {
-      if (next.cameraNeedsMove && next.latLng != null) {
-        _animateToLocation(next.latLng!);
+      if (next.latLng != null &&
+          previous?.latLng != next.latLng &&
+          _selectedActivity != null) {
+        _calculateRouteToActivity(
+          next.latLng!,
+          _selectedActivity!,
+          showBanner: true,
+        );
+      } else if (next.cameraNeedsMove && next.latLng != null) {
+        if (widget.trip != null && _selectedActivity == null) {
+          _fitItineraryCamera();
+        } else {
+          _animateToLocation(next.latLng!);
+        }
         ref.read(locationProvider.notifier).markCameraMoved();
       }
 
@@ -240,289 +577,349 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         .map((i) => LatLng(i.activity.latitude!, i.activity.longitude!))
         .toList();
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _buildAppBar(context, state),
-      body: Stack(
-        children: [
-          // ── Map Layer ──────────────────────────────────────────────────────
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: itineraryItems.isNotEmpty
-                  ? LatLng(
-                      itineraryItems.first.activity.latitude!,
-                      itineraryItems.first.activity.longitude!,
-                    )
-                  : _defaultCenter,
-              initialZoom: itineraryItems.isNotEmpty ? 13.0 : _defaultZoom,
-              minZoom: 3.0,
-              maxZoom: 19.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
-              ),
-              onTap: (_, __) {
-                if (_selectedActivity != null) {
-                  setState(() => _selectedActivity = null);
-                }
-              },
-            ),
-            children: [
-              // ArcGIS / OpenStreetMap Tile Layer
-              TileLayer(
-                urlTemplate:
-                    'https://server.arcgisonline.com/ArcGIS/rest/services/'
-                    'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-                maxNativeZoom: 19,
-              ),
+    int activeBottomNavIndex = widget.originatingTabIndex ??
+        (MainShell.currentTab >= 0 ? MainShell.currentTab : 0);
+    if (activeBottomNavIndex < 0 || activeBottomNavIndex > 4) {
+      activeBottomNavIndex = 0;
+    }
 
-              // Sovereignty Markers (Hoàng Sa & Trường Sa)
-              const MarkerLayer(
-                markers: [
-                  Marker(
-                    point: LatLng(16.5, 112.0),
-                    width: 190,
-                    height: 45,
-                    child: Text(
-                      'Quần đảo Hoàng Sa (Việt Nam)',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBackNavigation(context, activeBottomNavIndex);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: _buildAppBar(context, state, activeBottomNavIndex),
+        body: Stack(
+          children: [
+            // ── Map Layer ──────────────────────────────────────────────────────
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: itineraryItems.isNotEmpty
+                    ? LatLng(
+                        itineraryItems.first.activity.latitude!,
+                        itineraryItems.first.activity.longitude!,
+                      )
+                    : _defaultCenter,
+                initialZoom: itineraryItems.isNotEmpty ? 13.0 : _defaultZoom,
+                minZoom: 3.0,
+                maxZoom: 19.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all,
+                ),
+                onTap: (_, __) {
+                  if (_selectedActivity != null) {
+                    setState(() {
+                      _selectedActivity = null;
+                      _routeEstimate = null;
+                    });
+                  }
+                },
+              ),
+              children: [
+                // ArcGIS / OpenStreetMap Tile Layer
+                TileLayer(
+                  urlTemplate:
+                      'https://server.arcgisonline.com/ArcGIS/rest/services/'
+                      'World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                  maxNativeZoom: 19,
+                ),
+
+                // Sovereignty Markers (Hoàng Sa & Trường Sa)
+                const MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: LatLng(16.5, 112.0),
+                      width: 190,
+                      height: 45,
+                      child: Text(
+                        'Quần đảo Hoàng Sa (Việt Nam)',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                  Marker(
-                    point: LatLng(10.0, 114.0),
-                    width: 190,
-                    height: 45,
-                    child: Text(
-                      'Quần đảo Trường Sa (Việt Nam)',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                    Marker(
+                      point: LatLng(10.0, 114.0),
+                      width: 190,
+                      height: 45,
+                      child: Text(
+                        'Quần đảo Trường Sa (Việt Nam)',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Route Preview Polyline (Ordered itinerary stops)
-              if (polylinePoints.length >= 2)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: polylinePoints,
-                      strokeWidth: 3.5,
-                      color: _getDayColor(
-                        _selectedDayFilter > 0 ? _selectedDayFilter : 1,
-                      ).withOpacity(0.75),
                     ),
                   ],
                 ),
 
-              // Itinerary Activity Markers
-              if (itineraryItems.isNotEmpty)
-                MarkerLayer(
-                  markers: itineraryItems.map((item) {
-                    final isSelected =
-                        _selectedActivity?.id == item.activity.id;
-                    final color = _getDayColor(item.day.dayIndex);
-
-                    return Marker(
-                      point: LatLng(
-                        item.activity.latitude!,
-                        item.activity.longitude!,
+                // Route Preview Polyline (Ordered itinerary stops)
+                if (polylinePoints.length >= 2)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: polylinePoints,
+                        strokeWidth: 3.5,
+                        color: _getDayColor(
+                          _selectedDayFilter > 0 ? _selectedDayFilter : 1,
+                        ).withOpacity(0.65),
                       ),
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedActivity = item.activity;
-                          });
-                          _mapController.move(
-                            LatLng(
-                              item.activity.latitude!,
-                              item.activity.longitude!,
-                            ),
-                            15.5,
-                          );
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.dark : color,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: isSelected ? 3.0 : 2.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.28),
-                                blurRadius: isSelected ? 12 : 6,
-                                offset: const Offset(0, 3),
+                    ],
+                  ),
+
+                // Active Route Line from User Current Location to Selected Activity
+                if (currentPosition != null &&
+                    _selectedActivity != null &&
+                    _routeEstimate != null &&
+                    _routeEstimate!.routePoints.length >= 2)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _routeEstimate!.routePoints,
+                        strokeWidth: 5.0,
+                        color: const Color(0xFF0EA5E9),
+                        borderStrokeWidth: 1.5,
+                        borderColor: Colors.white,
+                      ),
+                    ],
+                  ),
+
+                // GPS Accuracy Circle
+                if (currentPosition != null && accuracy != null)
+                  CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: currentPosition,
+                        radius: accuracy.clamp(12.0, 300.0),
+                        useRadiusInMeter: true,
+                        color: AppColors.primary.withOpacity(0.12),
+                        borderColor: AppColors.primary.withOpacity(0.35),
+                        borderStrokeWidth: 1.5,
+                      ),
+                    ],
+                  ),
+
+                // User Current Location Marker
+                if (currentPosition != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: currentPosition,
+                        width: 110,
+                        height: 68,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
                               ),
-                            ],
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                'Vị trí của bạn',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const CurrentLocationMarker(size: 38),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                // Itinerary Activity Markers
+                if (itineraryItems.isNotEmpty)
+                  MarkerLayer(
+                    markers: itineraryItems.map((item) {
+                      final isSelected =
+                          _selectedActivity?.id == item.activity.id;
+                      final color = _getDayColor(item.day.dayIndex);
+
+                      return Marker(
+                        point: LatLng(
+                          item.activity.latitude!,
+                          item.activity.longitude!,
+                        ),
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        child: GestureDetector(
+                          onTap: () => _selectActivity(
+                            item.activity,
+                            showBanner: true,
                           ),
-                          child: Center(
-                            child: Text(
-                              '${item.activity.activityOrder ?? 1}',
-                              style: const TextStyle(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: isSelected ? 44 : 38,
+                            height: isSelected ? 44 : 38,
+                            decoration: BoxDecoration(
+                              color: isSelected ? AppColors.dark : color,
+                              shape: BoxShape.circle,
+                              border: Border.all(
                                 color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
+                                width: isSelected ? 3.0 : 2.0,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.28),
+                                  blurRadius: isSelected ? 12 : 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${item.activity.activityOrder ?? 1}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                      );
+                    }).toList(),
+                  ),
+
+                // Attribution
+                SimpleAttributionWidget(
+                  source: const Text(
+                    '© OpenStreetMap',
+                    style: TextStyle(fontSize: 10),
+                  ),
                 ),
-
-              // GPS Accuracy Circle
-              if (currentPosition != null && accuracy != null)
-                CircleLayer(
-                  circles: [
-                    CircleMarker(
-                      point: currentPosition,
-                      radius: accuracy.clamp(12.0, 300.0),
-                      useRadiusInMeter: true,
-                      color: AppColors.primary.withOpacity(0.12),
-                      borderColor: AppColors.primary.withOpacity(0.35),
-                      borderStrokeWidth: 1.5,
-                    ),
-                  ],
-                ),
-
-              // User Current Location Marker
-              if (currentPosition != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: currentPosition,
-                      width: 50,
-                      height: 50,
-                      alignment: Alignment.center,
-                      child: const CurrentLocationMarker(),
-                    ),
-                  ],
-                ),
-
-              // Attribution
-              const SimpleAttributionWidget(
-                source: Text('© OpenStreetMap contributors · TravelWise'),
-              ),
-            ],
-          ),
-
-          // ── Day Filter Bar (If trip is provided) ──────────────────────────
-          if (widget.trip != null && widget.trip!.days.isNotEmpty)
-            Positioned(
-              top: 12,
-              left: 16,
-              right: 16,
-              child: _buildDayFilterBar(),
+              ],
             ),
 
-          // ── Zoom Controls (+ and -) ────────────────────────────────────────
-          Positioned(
-            right: AppSpacing.lg,
-            top: widget.trip != null ? 72 : 20,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-                border: Border.all(color: AppColors.border),
+            // ── Day Filter Bar (If trip is provided) ──────────────────────────
+            if (widget.trip != null && widget.trip!.days.isNotEmpty)
+              Positioned(
+                top: 12,
+                left: 16,
+                right: 16,
+                child: _buildDayFilterBar(),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.add_rounded,
-                      color: AppColors.textPrimary,
+
+            // ── Zoom Controls (+ and -) ────────────────────────────────────────
+            Positioned(
+              right: AppSpacing.lg,
+              top: widget.trip != null ? 72 : 20,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
-                    tooltip: 'Phóng to',
-                    onPressed: _zoomIn,
-                  ),
-                  Container(width: 32, height: 1, color: AppColors.border),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.remove_rounded,
-                      color: AppColors.textPrimary,
+                  ],
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.add_rounded,
+                        color: AppColors.textPrimary,
+                      ),
+                      tooltip: 'Phóng to',
+                      onPressed: _zoomIn,
                     ),
-                    tooltip: 'Thu nhỏ',
-                    onPressed: _zoomOut,
-                  ),
-                  if (widget.trip != null) ...[
                     Container(width: 32, height: 1, color: AppColors.border),
                     IconButton(
                       icon: const Icon(
-                        Icons.crop_free_rounded,
-                        color: AppColors.primary,
+                        Icons.remove_rounded,
+                        color: AppColors.textPrimary,
                       ),
-                      tooltip: 'Xem trọn lộ trình',
-                      onPressed: _fitItineraryCamera,
+                      tooltip: 'Thu nhỏ',
+                      onPressed: _zoomOut,
                     ),
+                    if (widget.trip != null) ...[
+                      Container(width: 32, height: 1, color: AppColors.border),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.crop_free_rounded,
+                          color: AppColors.primary,
+                        ),
+                        tooltip: 'Xem trọn lộ trình',
+                        onPressed: _fitItineraryCamera,
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ),
-          ),
-
-          // ── Current Location Floating Action Button ───────────────────────
-          Positioned(
-            right: AppSpacing.lg,
-            bottom: _selectedActivity != null
-                ? 170
-                : (state.hasLocation ? 210 : 32),
-            child: _CurrentLocationFab(
-              isLoading: state.isLoading,
-              hasLocation: state.hasLocation,
-              onTap: _handleLocationAction,
-            ),
-          ),
-
-          // ── Selected Marker Activity Card ────────────────────────────────
-          if (_selectedActivity != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 24,
-              child: _buildSelectedActivityCard(_selectedActivity!),
-            )
-          else if (state.hasLocation)
-            // Bottom GPS info card
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 12,
-              child: SafeArea(
-                top: false,
-                child: LocationInfoCard(
-                  onUpdateLocation: _handleLocationAction,
                 ),
               ),
             ),
-        ],
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: -1,
-        onTap: (index) => MainShell.switchToTab(context, index),
+
+            // ── Current Location Floating Action Button ───────────────────────
+            Positioned(
+              right: AppSpacing.lg,
+              bottom: _selectedActivity != null
+                  ? 220
+                  : (state.hasLocation && widget.trip == null ? 210 : 32),
+              child: _CurrentLocationFab(
+                isLoading: state.isLoading,
+                hasLocation: state.hasLocation,
+                onTap: _handleLocationAction,
+              ),
+            ),
+
+            // ── Selected Marker Activity Card ────────────────────────────────
+            if (_selectedActivity != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 20,
+                child: _buildSelectedActivityCard(_selectedActivity!, state),
+              )
+            else if (state.hasLocation && widget.trip == null)
+              // Bottom GPS info card (shown on standalone Explore map)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 12,
+                child: SafeArea(
+                  top: false,
+                  child: LocationInfoCard(
+                    onUpdateLocation: _handleLocationAction,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        bottomNavigationBar: CustomBottomNavBar(
+          currentIndex: activeBottomNavIndex,
+          onTap: (index) => _handleBottomNavTap(context, index),
+        ),
       ),
     );
   }
@@ -621,7 +1018,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  Widget _buildSelectedActivityCard(ItineraryActivity act) {
+  Widget _buildSelectedActivityCard(
+    ItineraryActivity act,
+    LocationState locationState,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -689,7 +1089,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Text('•', style: TextStyle(color: AppColors.textSecondary)),
+                          const Text(
+                            '•',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
                           const SizedBox(width: 8),
                         ],
                         Flexible(
@@ -709,12 +1112,133 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.close_rounded, size: 20),
-                onPressed: () => setState(() => _selectedActivity = null),
+                onPressed: () => setState(() {
+                  _selectedActivity = null;
+                  _routeEstimate = null;
+                }),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
             ],
           ),
+
+          // ── Distance & Travel Time Info Banner from Current Location ─────
+          const SizedBox(height: 12),
+          if (locationState.hasLocation && _routeEstimate != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withOpacity(0.1),
+                    const Color(0xFF0EA5E9).withOpacity(0.08),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.primary.withOpacity(0.25)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      LucideIcons.navigation,
+                      size: 15,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Cách vị trí của bạn ${_routeEstimate!.formattedDistance}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            if (_isCalculatingRoute) ...[
+                              const SizedBox(width: 6),
+                              const SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Dự kiến di chuyển: ~${_routeEstimate!.formattedDuration} (${_routeEstimate!.isRoadRoute ? 'theo đường bộ' : 'ước tính'})',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            InkWell(
+              onTap: locationState.isLoading ? null : _handleLocationAction,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.my_location_rounded,
+                      size: 16,
+                      color: locationState.isLoading
+                          ? AppColors.textSecondary
+                          : AppColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        locationState.isLoading
+                            ? 'Đang lấy vị trí của bạn để tính quãng đường...'
+                            : 'Bấm để bật vị trí của bạn & xem quãng đường, thời gian đến đây',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           if (act.placeAddress != null && act.placeAddress!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Row(
@@ -740,7 +1264,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ],
           if (act.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               act.description,
               style: const TextStyle(
@@ -756,7 +1280,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context, LocationState state) {
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
+    LocationState state,
+    int fallbackTabIndex,
+  ) {
     final title = widget.trip != null
         ? widget.trip!.title
         : 'Bản đồ khám phá';
@@ -783,7 +1311,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ),
         tooltip: 'Quay lại',
-        onPressed: () => Navigator.of(context).pop(),
+        onPressed: () => _handleBackNavigation(context, fallbackTabIndex),
       ),
       title: Column(
         children: [
