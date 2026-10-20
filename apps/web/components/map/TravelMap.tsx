@@ -34,6 +34,7 @@ export interface MapPlace {
   address?: string | null;
   latitude: number | null | undefined;
   longitude: number | null | undefined;
+  image_url?: string | null;
   category_id?: number | null;
   order?: number | string; // Thứ tự trong lịch trình (nếu có)
   day_number?: number; // Ngày trong chuyến đi (1, 2, 3...)
@@ -116,6 +117,16 @@ export function TravelMap({
     titleEl.className = "font-bold text-sm text-slate-950 leading-snug";
     titleEl.textContent = place.name;
     container.appendChild(titleEl);
+
+    if (place.image_url) {
+      const imageEl = document.createElement("img");
+      imageEl.className = "w-full h-28 object-cover rounded-lg mt-2 border border-slate-200";
+      imageEl.src = place.image_url;
+      imageEl.alt = place.name;
+      imageEl.loading = "lazy";
+      imageEl.referrerPolicy = "no-referrer";
+      container.appendChild(imageEl);
+    }
 
     if (place.address && place.address.trim()) {
       const addrEl = document.createElement("p");

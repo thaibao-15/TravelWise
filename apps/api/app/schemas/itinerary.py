@@ -9,7 +9,12 @@ from datetime import datetime
 from enum import Enum
 import re
 from typing import Any, List, Optional
+<<<<<<< HEAD
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+=======
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.schemas.trip_planning import CurrentLocation
+>>>>>>> f9b663cb7c90353a668cb84d3b71b42ba678d896
 
 
 class ItineraryStatusEnum(str, Enum):
@@ -177,6 +182,7 @@ class ItineraryGenerationRequest(BaseModel):
     allow_overwrite_confirmed: bool = False
     user_prompt: Optional[str] = None
     conversation_id: Optional[int] = None
+    current_location: Optional[CurrentLocation] = None
 
 
 class ItineraryEditRequest(BaseModel):
@@ -239,6 +245,7 @@ class ValidationResult(BaseModel):
 class SavePreviewTripRequest(BaseModel):
     """Request payload to persist a reviewed itinerary preview into database."""
 
+<<<<<<< HEAD
     preview: ItineraryGenerationResponse
     trip_id: Optional[int] = None
     conversation_id: Optional[int] = None
@@ -246,6 +253,16 @@ class SavePreviewTripRequest(BaseModel):
     name: Optional[str] = None
     destination_city: Optional[str] = None
     destination_country: Optional[str] = "Việt Nam"
+=======
+    place_id: int
+    name: str
+    category: Optional[str] = None
+    address: Optional[str] = None
+    description: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    image_url: Optional[str] = None
+>>>>>>> f9b663cb7c90353a668cb84d3b71b42ba678d896
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
 

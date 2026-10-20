@@ -35,6 +35,8 @@ from app.models.message import Message  # noqa: F401
 from app.models.trip import Trip  # noqa: F401
 from app.models.trip_preference import TripPreference  # noqa: F401
 from app.models.ai_context import AIContext  # noqa: F401
+from app.models.conversation_summary import ConversationSummary  # noqa: F401
+from app.models.user_profile import UserProfile  # noqa: F401
 from app.models.itinerary_day import ItineraryDay  # noqa: F401
 from app.models.itinerary_activity import ItineraryActivity  # noqa: F401
 

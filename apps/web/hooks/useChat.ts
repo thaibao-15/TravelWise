@@ -29,6 +29,19 @@ function cleanPromptText(text: string): string {
     .trim();
 }
 
+async function getCurrentLocation(): Promise<{ latitude: number; longitude: number } | undefined> {
+  if (!navigator.geolocation) {
+    return undefined;
+  }
+  return await new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+      () => resolve(undefined),
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 },
+    );
+  });
+}
+
 // Mẫu câu nhận diện ý định đồng ý tạo lịch trình từ giọng nói hoặc văn bản (hỗ trợ kính ngữ, từ lóng, teencode, tiếng Anh)
 const AFFIRMATIVE_INTENT_REGEX =
   /(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|tạo\s*lịch(?:\s*trình)?(?:\s*đi|\s*luôn|\s*ngay|\s*nha|\s*nhé|\s*cho\s*mình|\s*giúp)?|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b/i;
@@ -254,6 +267,7 @@ export function useChat() {
         }
 
         let genErr: Error | null = null;
+        const currentLocation = await getCurrentLocation();
 
         if (tripId) {
           try {
@@ -261,6 +275,7 @@ export function useChat() {
               save_to_db: true,
               context: effectiveContext,
               user_prompt: prompt,
+              current_location: currentLocation,
             });
             if (genRes) {
               finalItineraryData = normalizeItineraryData(genRes, destName, daysCount, tripId);
@@ -276,6 +291,7 @@ export function useChat() {
               conversation_id: conversationId,
               save_to_db: true,
               user_prompt: prompt,
+              current_location: currentLocation,
             });
             if (genRes) {
               const resTripId = genRes.trip_id || tripId;
@@ -582,6 +598,7 @@ export function useChat() {
       setIsLoading(true);
 
       let currentStreamContent = "";
+      const currentLocation = await getCurrentLocation();
 
       try {
         let sentenceBuffer = "";
@@ -591,6 +608,7 @@ export function useChat() {
           trimmed,
           conversationId,
           mode,
+          currentLocation,
           {
             onInit: (convId) => {
               setConversationId(convId);
@@ -671,7 +689,7 @@ export function useChat() {
         console.warn("Stream API error, falling back to askAI:", streamErr);
 
         try {
-          const response = await chatService.askAI(trimmed, conversationId, mode);
+          const response = await chatService.askAI(trimmed, conversationId, mode, currentLocation);
 
           if (response.conversation_id) {
             setConversationId(response.conversation_id);
