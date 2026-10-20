@@ -311,7 +311,7 @@ async def ask_rag_stream(
             title=title,
         )
 
-<<<<<<< HEAD
+<<<<<<<<< Temporary merge branch 1
     # 2. Save USER message to database FIRST so context extraction has access to it
     user_msg = ConversationService.save_message(
         session=session,
@@ -355,7 +355,7 @@ async def ask_rag_stream(
             planning_action = "TRIGGER_SAVE"
 
     # 4. Load recent conversation history (excluding current user message to avoid duplicate)
-=======
+=========
     try:
         current_summary = ConversationSummaryService.get_summary(
             session=session,
@@ -375,7 +375,7 @@ async def ask_rag_stream(
         )
         current_summary = None
         previous_summaries = []
->>>>>>> f9b663cb7c90353a668cb84d3b71b42ba678d896
+>>>>>>>>> Temporary merge branch 2
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
@@ -403,8 +403,8 @@ async def ask_rag_stream(
             chat_history=chat_history,
         )
 
-<<<<<<< HEAD
-=======
+<<<<<<<<< Temporary merge branch 1
+=========
     planning_summary = ""
     try:
         from app.services.trip_planning_service import TripPlanningContextExtractionService
@@ -429,7 +429,7 @@ async def ask_rag_stream(
         current_location=request.current_location,
     )
 
->>>>>>> f9b663cb7c90353a668cb84d3b71b42ba678d896
+>>>>>>>>> Temporary merge branch 2
     async def event_generator():
         # Event 1: Init
         yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id}, ensure_ascii=False)}\n\n"

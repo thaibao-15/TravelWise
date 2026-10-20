@@ -80,6 +80,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
   LocationNotifier(this._locationService) : super(const LocationState());
 
   /// Checks existing permission without asking the OS.
+  /// If permission is already granted and position is not loaded, automatically fetches GPS.
   Future<void> checkInitialStatus() async {
     final perm = await _locationService.checkPermission();
     final disabled = !await _locationService.isLocationServiceEnabled();
@@ -88,6 +89,13 @@ class LocationNotifier extends StateNotifier<LocationState> {
       isServiceDisabled: disabled,
       isPermanentlyDenied: perm == LocationPermission.deniedForever,
     );
+
+    if (!disabled &&
+        (perm == LocationPermission.always ||
+            perm == LocationPermission.whileInUse) &&
+        state.position == null) {
+      await fetchCurrentLocation(silentCamera: true);
+    }
   }
 
   /// Called after user accepts in-app explanation: triggers OS request & fetches position.
@@ -105,7 +113,9 @@ class LocationNotifier extends StateNotifier<LocationState> {
     );
 
     if (perm == LocationPermission.always ||
-        perm == LocationPermission.whileInUse) {
+        perm == LocationPermission.whileInUse ||
+        perm == LocationPermission.unableToDetermine) {
+      // On web, requestPermission() can return unableToDetermine or trigger browser prompt during getCurrentPosition()
       await fetchCurrentLocation();
     } else if (perm == LocationPermission.deniedForever) {
       state = state.copyWith(
@@ -126,7 +136,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
   }
 
   /// Fetches the fresh GPS position with high accuracy.
-  Future<void> fetchCurrentLocation() async {
+  Future<void> fetchCurrentLocation({bool silentCamera = false}) async {
     state = state.copyWith(
       status: LocationUiStatus.loading,
       clearError: true,
@@ -139,8 +149,13 @@ class LocationNotifier extends StateNotifier<LocationState> {
       state = state.copyWith(
         status: LocationUiStatus.success,
         position: result.position,
-        cameraNeedsMove: true,
-        snackMessage: 'Đã xác định vị trí của bạn thành công!',
+        permission: LocationPermission.whileInUse,
+        isPermanentlyDenied: false,
+        isServiceDisabled: false,
+        cameraNeedsMove: !silentCamera,
+        snackMessage: silentCamera
+            ? null
+            : 'Đã xác định vị trí của bạn thành công!',
       );
     } else {
       state = state.copyWith(
