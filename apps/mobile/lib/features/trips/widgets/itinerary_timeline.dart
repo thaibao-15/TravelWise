@@ -4,13 +4,7 @@ import 'itinerary_timeline_item.dart';
 
 class ItineraryTimeline extends StatelessWidget {
   final List<ItineraryActivity> activities;
-  final void Function(ItineraryActivity activity)? onActivityTap;
-
-  const ItineraryTimeline({
-    super.key,
-    required this.activities,
-    this.onActivityTap,
-  });
+  const ItineraryTimeline({super.key, required this.activities});
 
   @override
   Widget build(BuildContext context) {
@@ -23,9 +17,6 @@ class ItineraryTimeline extends StatelessWidget {
         return ItineraryTimelineItem(
           activity: activities[index],
           isLast: index == activities.length - 1,
-          onTap: onActivityTap != null
-              ? () => onActivityTap!(activities[index])
-              : null,
         );
       },
     );

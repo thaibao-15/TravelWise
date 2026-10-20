@@ -238,23 +238,6 @@ def ask_knowledge(
     # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
 
-    # 8. Compute planning status and intent action
-    planning_status = None
-    is_ready = False
-    planning_action = None
-    if planning_context:
-        is_ready = bool(planning_context.planning_state.is_ready_to_generate)
-        planning_status = "READY_TO_GENERATE" if is_ready else "COLLECTING_REQUIREMENTS"
-        clean_q = user_question.lower()
-        gen_cues = (
-            "tạo lịch trình", "lên lịch trình", "tạo giúp mình", "tạo đi",
-            "đồng ý", "ok tạo đi", "lên kế hoạch đi", "tạo ngay", "làm lịch trình", "tạo cho mình",
-        )
-        if any(cue in clean_q for cue in gen_cues):
-            planning_action = "TRIGGER_GENERATION"
-        elif any(cue in clean_q for cue in ("lưu chuyến đi", "lưu lại", "xác nhận lưu", "lưu lịch trình")):
-            planning_action = "TRIGGER_SAVE"
-
     return RAGAskResponse(
         conversation_id=conversation.id,
         message=MessageResponse(
@@ -265,9 +248,6 @@ def ask_knowledge(
             audio_url=ai_msg.audio_url,
         ),
         planning_context=planning_context,
-        planning_status=planning_status,
-        is_ready_to_generate=is_ready,
-        planning_action=planning_action,
     )
 
 
@@ -294,7 +274,6 @@ async def ask_rag_stream(
         else None
     )
 
-    # 1. Resolve or create conversation with ownership check
     if request.conversation_id is not None:
         conversation = ConversationService.get_conversation_by_id(
             session=session,
@@ -341,14 +320,13 @@ async def ask_rag_stream(
         previous_summaries,
     )
     for msg in recent_messages:
-        if msg.id == user_msg.id:
-            continue
         if msg.sender == "USER":
             chat_history.append(HumanMessage(content=msg.content))
         elif msg.sender == "AI":
             chat_history.append(AIMessage(content=msg.content))
 
     chain = get_rag_chain()
+    # Tối ưu siêu tốc cho Voice Mode: Bỏ qua bước contextualize LLM tốn 1.5-2s vì voice_prompt đã tích hợp chat_history trực tiếp
     if request.mode == "voice":
         standalone_question = user_question
     else:
@@ -382,23 +360,8 @@ async def ask_rag_stream(
     )
 
     async def event_generator():
-        # Event 1: Init
-        yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
 
-        # Event 2: Planning status (if context exists)
-        if planning_context:
-            planning_status_event = {
-                "type": "planning_status",
-                "conversation_id": conversation.id,
-                "planning_status": planning_status,
-                "is_ready_to_generate": is_ready,
-                "planning_action": planning_action,
-                "destination": planning_context.trip.destination.city,
-                "duration_days": planning_context.trip.dates.duration_days,
-            }
-            yield f"data: {json.dumps(planning_status_event, ensure_ascii=False)}\n\n"
-
-        # Event 3: Token streaming
         full_answer_parts = []
         try:
             for token in chain.stream_answer(
@@ -411,15 +374,36 @@ async def ask_rag_stream(
                 weather_context=weather_context,
             ):
                 full_answer_parts.append(token)
-                yield f"data: {json.dumps({'type': 'token', 'token': token}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
         except Exception as e:
             logger.error("Streaming error: %s", e)
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Đã xảy ra lỗi khi tạo câu trả lời.'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Đã xảy ra lỗi khi tạo câu trả lời.'})}\n\n"
             return
 
         final_answer = "".join(full_answer_parts).strip()
 
-        # 5. Save AI message to database
+        user_msg = ConversationService.save_message(
+            session=session,
+            conversation_id=conversation.id,
+            sender="USER",
+            content=user_question,
+        )
+
+        planning_context_data = None
+        try:
+            from app.services.trip_planning_service import TripPlanningContextExtractionService
+
+            ctx = TripPlanningContextExtractionService.extract_and_update_trip_context(
+                session=session,
+                conversation_id=conversation.id,
+                current_user=current_user,
+                latest_message=user_msg,
+            )
+            if ctx:
+                planning_context_data = ctx.model_dump()
+        except Exception as e:
+            logger.error("Planning context extraction error in stream: %s", e)
+
         ai_msg = ConversationService.save_message(
             session=session,
             conversation_id=conversation.id,
@@ -441,20 +425,16 @@ async def ask_rag_stream(
 
         ConversationService.update_conversation_timestamp(session, conversation)
 
-        # Event 4: Done
         done_payload = {
             "type": "done",
             "conversation_id": conversation.id,
             "message_id": ai_msg.id,
             "content": final_answer,
-            "planning_status": planning_status,
-            "is_ready_to_generate": is_ready,
-            "planning_action": planning_action,
         }
-        if planning_context:
-            done_payload["planning_context"] = planning_context.model_dump()
+        if planning_context_data:
+            done_payload["planning_context"] = planning_context_data
 
-        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps(done_payload)}\n\n"
 
     return StreamingResponse(
         event_generator(),

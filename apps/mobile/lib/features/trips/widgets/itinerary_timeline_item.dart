@@ -8,14 +8,8 @@ import 'itinerary_image_card.dart';
 class ItineraryTimelineItem extends StatelessWidget {
   final ItineraryActivity activity;
   final bool isLast;
-  final VoidCallback? onTap;
 
-  const ItineraryTimelineItem({
-    super.key,
-    required this.activity,
-    this.isLast = false,
-    this.onTap,
-  });
+  const ItineraryTimelineItem({super.key, required this.activity, this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
@@ -32,11 +26,7 @@ class ItineraryTimelineItem extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
-              child: GestureDetector(
-                onTap: onTap,
-                behavior: HitTestBehavior.opaque,
-                child: _buildCard(),
-              ),
+              child: _buildCard(),
             ),
           ),
         ],
@@ -61,15 +51,7 @@ class ItineraryTimelineItem extends StatelessWidget {
             children: [
               const Icon(LucideIcons.plusCircle, size: 16, color: AppColors.primary),
               const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'Thêm chặng trung chuyển / Cafe nghỉ',
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              Flexible(child: Text('Thêm chặng trung chuyển / Cafe nghỉ', style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600))),
             ],
           ),
         ),
@@ -127,10 +109,7 @@ class ItineraryTimelineItem extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${activity.startTime} — ${activity.endTime}',
-                style: AppTextStyles.label.copyWith(color: AppColors.primary),
-              ),
+              Text('\${activity.startTime} — \${activity.endTime}', style: AppTextStyles.label.copyWith(color: AppColors.primary)),
               if (activity.rating != null)
                 Row(
                   children: [
@@ -142,69 +121,34 @@ class ItineraryTimelineItem extends StatelessWidget {
               if (activity.specialBadge != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    activity.specialBadge!,
-                    style: AppTextStyles.caption.copyWith(color: AppColors.error),
-                  ),
-                ),
+                  decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                  child: Text(activity.specialBadge!, style: AppTextStyles.caption.copyWith(color: AppColors.error)),
+                )
             ],
           ),
           const SizedBox(height: 8),
           Text(activity.title, style: AppTextStyles.h3),
           const SizedBox(height: 4),
-          Text(
-            '${activity.category} · ${activity.duration}',
-            style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
-          ),
+          Text('\${activity.category} · \${activity.duration}', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
           if (activity.description.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(activity.description, style: AppTextStyles.bodyMedium),
-          ],
-          if (activity.hasValidCoordinates) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(
-                  LucideIcons.navigation,
-                  size: 13,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  'Xem đường đi & khoảng cách trên bản đồ',
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
           ],
           if (activity.bookingStatus != null) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(LucideIcons.checkCircle2, size: 14, color: AppColors.success),
                   const SizedBox(width: 6),
-                  Text(
-                    activity.bookingStatus!,
-                    style: AppTextStyles.caption.copyWith(color: AppColors.success),
-                  ),
+                  Text(activity.bookingStatus!, style: AppTextStyles.caption.copyWith(color: AppColors.success)),
                 ],
               ),
             ),
-          ],
+          ]
         ],
       ),
     );

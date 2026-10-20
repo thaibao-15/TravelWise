@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
-import '../../../../shared/widgets/main_shell.dart';
 import '../models/trip_model.dart';
 import 'trip_stats_card.dart';
 
@@ -15,16 +13,6 @@ class TripHeroHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final startStr = DateFormat('dd/MM').format(trip.startDate);
-    final endStr = DateFormat('dd/MM/yyyy').format(trip.endDate);
-    final days = trip.daysCount;
-    final statusUpper = (trip.status ?? 'CONFIRMED').toUpperCase();
-    final statusLabel = statusUpper == 'CONFIRMED' || statusUpper == 'UPCOMING'
-        ? 'Đã xác nhận'
-        : (statusUpper == 'GENERATED' || statusUpper == 'PLANNING'
-            ? 'AI Đã lập kế hoạch'
-            : (statusUpper == 'COMPLETED' ? 'Đã hoàn thành' : 'Bản nháp'));
-
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -47,8 +35,8 @@ class TripHeroHeader extends StatelessWidget {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  Colors.black.withOpacity(0.82),
-                  Colors.black.withOpacity(0.15),
+                  Colors.black.withOpacity(0.8),
+                  Colors.transparent,
                 ],
               ),
               borderRadius: const BorderRadius.only(
@@ -65,17 +53,7 @@ class TripHeroHeader extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildHeaderBtn(
-                        context,
-                        LucideIcons.arrowLeft,
-                        () {
-                          if (Navigator.of(context).canPop()) {
-                            Navigator.of(context).pop();
-                          } else {
-                            MainShell.switchToTab(context, 3);
-                          }
-                        },
-                      ),
+                      _buildHeaderBtn(context, LucideIcons.arrowLeft, () => Navigator.pop(context)),
                       Row(
                         children: [
                           _buildHeaderBtn(context, LucideIcons.share, () {}),
@@ -88,24 +66,20 @@ class TripHeroHeader extends StatelessWidget {
                   const Spacer(),
                   Row(
                     children: [
-                      _buildBadge(statusLabel, AppColors.primary),
+                      _buildBadge('AI Planned', AppColors.primary),
                       const SizedBox(width: AppSpacing.sm),
-                      _buildBadge(trip.destination, AppColors.warning),
+                      _buildBadge('28°C Nắng đẹp', AppColors.warning),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
                     trip.title,
                     style: AppTextStyles.h1.copyWith(color: Colors.white),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    '$startStr — $endStr · $days ngày · ${trip.travelers} du khách',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: Colors.white.withOpacity(0.85),
-                    ),
+                    '12 Oct — 16 Oct · 5 days · \${trip.travelers} travelers',
+                    style: AppTextStyles.bodyMedium.copyWith(color: Colors.white.withOpacity(0.8)),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -138,23 +112,16 @@ class TripHeroHeader extends StatelessWidget {
   }
 
   Widget _buildBadge(String text, Color color) {
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.25),
-          borderRadius: BorderRadius.circular(9999),
-          border: Border.all(color: color.withOpacity(0.6)),
-        ),
-        child: Text(
-          text,
-          style: AppTextStyles.caption.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(9999),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Text(
+        text,
+        style: AppTextStyles.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
       ),
     );
   }
