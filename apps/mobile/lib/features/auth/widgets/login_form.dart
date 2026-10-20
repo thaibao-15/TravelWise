@@ -3,7 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
-import '../../../shared/widgets/main_shell.dart';
+import '../../home/screens/home_screen.dart';
 
 class LoginForm extends StatefulWidget {
   const LoginForm({Key? key}) : super(key: key);
@@ -157,11 +157,10 @@ class _LoginFormState extends State<LoginForm> {
             ),
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).pushAndRemoveUntil(
+                Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
-                    builder: (context) => MainShell(key: MainShell.shellKey),
+                    builder: (context) => const HomeScreen(),
                   ),
-                  (route) => false,
                 );
               },
               style: ElevatedButton.styleFrom(

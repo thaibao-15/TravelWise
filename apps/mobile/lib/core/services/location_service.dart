@@ -96,7 +96,7 @@ class LocationService {
   }
 
   /// Retrieves the user's fresh GPS location with a 15-second timeout.
-  /// Requests permission if not yet granted.
+  /// Does not silently rely on stale cached positions.
   Future<LocationResult> getCurrentPosition() async {
     // 1. Verify location services are active
     final serviceEnabled = await isLocationServiceEnabled();
@@ -108,13 +108,8 @@ class LocationService {
       );
     }
 
-    // 2. Verify permission status (request if denied or unableToDetermine on web)
+    // 2. Verify permission status
     LocationPermission permission = await checkPermission();
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.unableToDetermine) {
-      permission = await requestPermission();
-    }
-
     if (permission == LocationPermission.denied) {
       return const LocationResult.failure(
         errorMessage: 'Quyền truy cập vị trí bị từ chối.',
@@ -141,17 +136,6 @@ class LocationService {
 
       return LocationResult.success(position);
     } on TimeoutException {
-      // Fallback to medium accuracy if high accuracy times out (common on desktop/web)
-      try {
-        final fallbackPos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 10),
-          ),
-        );
-        return LocationResult.success(fallbackPos);
-      } catch (_) {}
-
       return const LocationResult.failure(
         errorMessage:
             'Hết thời gian chờ nhận tín hiệu GPS (15s). Vui lòng thử lại.',

@@ -13,9 +13,9 @@ import '../widgets/conversation_drawer.dart';
 import '../widgets/place_recommendation_card.dart';
 import '../widgets/assistant_input_bar.dart';
 import '../widgets/map_gps_card.dart';
-import '../widgets/trip_preview_card.dart';
 
-/// TravelSense Voice AI — connected to FastAPI + SQL Server backend.
+/// TravelSense Voice AI — full-screen demo.
+/// All data is mock / local. No API calls.
 class TravelAssistantScreen extends ConsumerWidget {
   const TravelAssistantScreen({super.key});
 
@@ -57,122 +57,13 @@ class TravelAssistantScreen extends ConsumerWidget {
 
                     const SizedBox(height: AppSpacing.xl),
 
-                    // ── Voice Orb ───────────────────────────────────────────
+                    // ── Voice Orb (tap to cycle state) ──────────────────────
                     VoiceOrb(
                       voiceState: state.voiceState,
                       onTap: notifier.toggleRecording,
                     ),
 
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // ── AI Planning: Generating Status Banner ───────────────
-                    if (state.planningState == TripPlanningState.generating) ...[
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                        ),
-                        child: const Row(
-                          children: [
-                            SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                              ),
-                            ),
-                            SizedBox(width: 14),
-                            Expanded(
-                              child: Text(
-                                'Đang đối chiếu dữ liệu điểm đến và tạo lịch trình từ địa điểm thực...',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
-
-                    // ── AI Planning: Ready to Generate Prompt ───────────────
-                    if (state.planningState == TripPlanningState.readyToGenerate &&
-                        state.tripPreview == null) ...[
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF2563EB).withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Đã đủ thông tin du lịch!',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Bấm để AI tạo lịch trình xem trước ngay.',
-                                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => notifier.generateItinerary(),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: AppColors.primary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
-                                ),
-                              ),
-                              child: const Text(
-                                'Tạo ngay',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
-
-                    // ── Generated Trip Preview Card ─────────────────────────
-                    if (state.tripPreview != null) ...[
-                      TripPreviewCard(trip: state.tripPreview!),
-                      const SizedBox(height: AppSpacing.lg),
-                    ],
+                    const SizedBox(height: AppSpacing.xxl),
 
                     // ── Location suggestions ────────────────────────────────
                     const LocationSuggestions(),
