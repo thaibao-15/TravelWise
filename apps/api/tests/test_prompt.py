@@ -49,6 +49,8 @@ class TestRAGPrompt(unittest.TestCase):
         self.assertIn("Context", RAG_SYSTEM_INSTRUCTION)
         self.assertIn("tiếng Việt", RAG_SYSTEM_INSTRUCTION)
         self.assertIn("không tự bịa đặt", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("context nội bộ", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("không tự nhắc lại", RAG_SYSTEM_INSTRUCTION.lower())
 
         # Human template check
         self.assertIn("## Context:", RAG_HUMAN_TEMPLATE)

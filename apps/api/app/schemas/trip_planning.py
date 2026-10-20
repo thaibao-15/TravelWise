@@ -381,6 +381,27 @@ class ExtractionMetadata(BaseModel):
     unresolved_conflicts: List[str] = Field(default_factory=list)
 
 
+class CurrentLocation(BaseModel):
+    """Optional device location used as a starting point for itinerary planning."""
+
+    latitude: float
+    longitude: float
+
+    @field_validator("latitude")
+    @classmethod
+    def validate_latitude(cls, value: float) -> float:
+        if not -90 <= value <= 90:
+            raise ValueError("Latitude phải nằm trong khoảng -90 đến 90.")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def validate_longitude(cls, value: float) -> float:
+        if not -180 <= value <= 180:
+            raise ValueError("Longitude phải nằm trong khoảng -180 đến 180.")
+        return value
+
+
 # -----------------------------------------------------------------------------
 # Root Model: TripPlanningContext
 # -----------------------------------------------------------------------------
@@ -393,6 +414,7 @@ class TripPlanningContext(BaseModel):
     schedule_constraints: ScheduleConstraints = Field(default_factory=ScheduleConstraints)
     logistics: LogisticsInfo = Field(default_factory=LogisticsInfo)
     requirements: SpecialRequirements = Field(default_factory=SpecialRequirements)
+    current_location: Optional[CurrentLocation] = None
     planning_state: PlanningState = Field(default_factory=PlanningState)
     extraction_metadata: ExtractionMetadata = Field(default_factory=ExtractionMetadata)
 

@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.messages import AIMessage, HumanMessage
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session
 
 from app.api.deps import get_current_user_optional, get_session
@@ -21,6 +22,11 @@ from app.schemas.rag import (
     RAGSearchResponse,
 )
 from app.services.conversation_service import ConversationService
+from app.services.conversation_summary_service import (
+    ConversationSummaryError,
+    ConversationSummaryService,
+)
+from app.services.weather_context_service import WeatherContextService
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +83,14 @@ def ask_knowledge(
         8. Return response (backward-compatible).
     """
     user_question = request.get_question()
+    location_context = (
+        f"Vĩ độ: {request.current_location.latitude:.6f}, "
+        f"Kinh độ: {request.current_location.longitude:.6f}. "
+        "Hãy dùng vị trí này làm vị trí hiện tại của người dùng; "
+        "không suy đoán địa chỉ cụ thể nếu không có dữ liệu bản đồ xác nhận."
+        if request.current_location
+        else None
+    )
 
     # 1. Resolve or create conversation
     if request.conversation_id is not None:
@@ -118,14 +132,36 @@ def ask_knowledge(
     except Exception as e:
         logger.error("Planning context extraction error for conversation %s: %s", conversation.id, e)
 
-    # 4. Load recent conversation history (5-10 messages)
+    # 4. Load persisted summaries and recent conversation history.
+    try:
+        current_summary = ConversationSummaryService.get_summary(
+            session=session,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
+        previous_summaries = ConversationSummaryService.get_recent_user_summaries(
+            session=session,
+            user_id=conversation.user_id,
+            exclude_conversation_id=conversation.id,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Conversation summary context unavailable for conversation %s: %s",
+            conversation.id,
+            type(exc).__name__,
+        )
+        current_summary = None
+        previous_summaries = []
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
         limit=10,
     )
 
-    chat_history = []
+    chat_history = ConversationSummaryService.build_context_history(
+        current_summary,
+        previous_summaries,
+    )
     for msg in recent_messages:
         if msg.id == user_msg.id:
             continue  # Avoid duplicating the current question in historical context
@@ -146,12 +182,22 @@ def ask_knowledge(
         if planning_context:
             planning_summary = TripPlanningContextExtractionService.format_context_summary(planning_context)
 
+        weather_question = (
+            standalone_question if isinstance(standalone_question, str) else user_question
+        )
+        weather_context = WeatherContextService.build_context_sync(
+            session=session,
+            question=weather_question,
+            current_location=request.current_location,
+        )
         result = chain.invoke(
             question=user_question,
             standalone_question=standalone_question,
             chat_history=chat_history,
             planning_summary=planning_summary,
             mode=request.mode or "chat",
+            location_context=location_context,
+            weather_context=weather_context,
         )
         answer = result["answer"]
     except RAGChainError as e:
@@ -176,6 +222,18 @@ def ask_knowledge(
         sender="AI",
         content=answer,
     )
+
+    try:
+        ConversationSummaryService.maybe_update_summary(
+            session=session,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
+    except ConversationSummaryError:
+        logger.warning(
+            "Conversation summary skipped after chat response for conversation %s",
+            conversation.id,
+        )
 
     # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
@@ -227,6 +285,14 @@ async def ask_rag_stream(
     from fastapi.responses import StreamingResponse
 
     user_question = request.get_question()
+    location_context = (
+        f"Vĩ độ: {request.current_location.latitude:.6f}, "
+        f"Kinh độ: {request.current_location.longitude:.6f}. "
+        "Hãy dùng vị trí này làm vị trí hiện tại của người dùng; "
+        "không suy đoán địa chỉ cụ thể nếu không có dữ liệu bản đồ xác nhận."
+        if request.current_location
+        else None
+    )
 
     # 1. Resolve or create conversation with ownership check
     if request.conversation_id is not None:
@@ -245,56 +311,35 @@ async def ask_rag_stream(
             title=title,
         )
 
-    # 2. Save USER message to database FIRST so context extraction has access to it
-    user_msg = ConversationService.save_message(
-        session=session,
-        conversation_id=conversation.id,
-        sender="USER",
-        content=user_question,
-    )
-
-    # 3. Extract and update TripPlanningContext BEFORE generating response
-    planning_context = None
     try:
-        from app.services.trip_planning_service import TripPlanningContextExtractionService
-
-        planning_context = TripPlanningContextExtractionService.extract_and_update_trip_context(
+        current_summary = ConversationSummaryService.get_summary(
             session=session,
             conversation_id=conversation.id,
-            current_user=current_user,
-            latest_message=user_msg,
+            user_id=conversation.user_id,
         )
-    except Exception as e:
-        logger.error("Planning context extraction error for stream: %s", e)
-
-    planning_summary = ""
-    planning_status = None
-    is_ready = False
-    planning_action = None
-    if planning_context:
-        from app.services.trip_planning_service import TripPlanningContextExtractionService
-
-        planning_summary = TripPlanningContextExtractionService.format_context_summary(planning_context)
-        is_ready = bool(planning_context.planning_state.is_ready_to_generate)
-        planning_status = "READY_TO_GENERATE" if is_ready else "COLLECTING_REQUIREMENTS"
-        clean_q = user_question.lower()
-        gen_cues = (
-            "tạo lịch trình", "lên lịch trình", "tạo giúp mình", "tạo đi",
-            "đồng ý", "ok tạo đi", "lên kế hoạch đi", "tạo ngay", "làm lịch trình", "tạo cho mình",
+        previous_summaries = ConversationSummaryService.get_recent_user_summaries(
+            session=session,
+            user_id=conversation.user_id,
+            exclude_conversation_id=conversation.id,
         )
-        if any(cue in clean_q for cue in gen_cues):
-            planning_action = "TRIGGER_GENERATION"
-        elif any(cue in clean_q for cue in ("lưu chuyến đi", "lưu lại", "xác nhận lưu", "lưu lịch trình")):
-            planning_action = "TRIGGER_SAVE"
-
-    # 4. Load recent conversation history (excluding current user message to avoid duplicate)
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Conversation summary context unavailable for streaming conversation %s: %s",
+            conversation.id,
+            type(exc).__name__,
+        )
+        current_summary = None
+        previous_summaries = []
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
         limit=10,
     )
 
-    chat_history = []
+    chat_history = ConversationSummaryService.build_context_history(
+        current_summary,
+        previous_summaries,
+    )
     for msg in recent_messages:
         if msg.id == user_msg.id:
             continue
@@ -311,6 +356,30 @@ async def ask_rag_stream(
             question=user_question,
             chat_history=chat_history,
         )
+
+    planning_summary = ""
+    try:
+        from app.services.trip_planning_service import TripPlanningContextExtractionService
+
+        existing_ctx = TripPlanningContextExtractionService.get_planning_context_by_conversation(
+            session=session,
+            conversation_id=conversation.id,
+            current_user=current_user,
+            check_ownership=False,
+        )
+        if existing_ctx:
+            planning_summary = TripPlanningContextExtractionService.format_context_summary(existing_ctx)
+    except Exception as e:
+        logger.debug("Could not retrieve existing planning context for stream: %s", e)
+
+    weather_question = (
+        standalone_question if isinstance(standalone_question, str) else user_question
+    )
+    weather_context = await WeatherContextService.build_context(
+        session=session,
+        question=weather_question,
+        current_location=request.current_location,
+    )
 
     async def event_generator():
         # Event 1: Init
@@ -338,6 +407,8 @@ async def ask_rag_stream(
                 chat_history=chat_history,
                 planning_summary=planning_summary,
                 mode=request.mode or "chat",
+                location_context=location_context,
+                weather_context=weather_context,
             ):
                 full_answer_parts.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'token': token}, ensure_ascii=False)}\n\n"
@@ -355,6 +426,18 @@ async def ask_rag_stream(
             sender="AI",
             content=final_answer,
         )
+
+        try:
+            ConversationSummaryService.maybe_update_summary(
+                session=session,
+                conversation_id=conversation.id,
+                user_id=conversation.user_id,
+            )
+        except ConversationSummaryError:
+            logger.warning(
+                "Conversation summary skipped after streaming response for conversation %s",
+                conversation.id,
+            )
 
         ConversationService.update_conversation_timestamp(session, conversation)
 

@@ -64,6 +64,7 @@ export interface ChatAskRequest {
   query?: string;
   conversation_id?: number | null;
   mode?: "chat" | "voice";
+  current_location?: { latitude: number; longitude: number };
 }
 
 export type RAGAskRequest = ChatAskRequest;

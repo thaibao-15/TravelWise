@@ -48,9 +48,11 @@ from app.schemas.itinerary import (
 from app.schemas.place_search import PlaceSearchResponse, SearchPlaceItem
 from app.schemas.trip_planning import TripPlanningContext
 from app.services.itinerary_persistence_service import ItineraryPersistenceService
-from app.services.place_search_service import PlaceSearchService
+from app.services.place_search_service import PlaceSearchService, haversine_distance
 
 logger = logging.getLogger(__name__)
+
+MAX_DAILY_PLACE_DISTANCE_KM = 15.0
 
 
 ITINERARY_SYSTEM_PROMPT = """Bạn là Chuyên gia Lập kế hoạch Du lịch AI (AI Travel Itinerary Planner) của TravelWise.
@@ -229,16 +231,20 @@ class ItineraryGenerationService:
         duration_days = cls._get_duration_days(context) or 1
 
         # 2. Query places via PlaceSearchService
+        current_location = context.current_location
         place_response: PlaceSearchResponse = PlaceSearchService.search_places_for_itinerary(
             session=session,
             context=context,
             skip=0,
             limit=35,
+            reference_lat=current_location.latitude if current_location else None,
+            reference_lon=current_location.longitude if current_location else None,
         )
 
         candidates: List[SearchPlaceItem] = place_response.places
         candidate_map: Dict[int, SearchPlaceItem] = {p.place_id: p for p in candidates}
         candidate_ids: Set[int] = set(candidate_map.keys())
+        geographic_groups = cls._build_geographic_groups(candidates, duration_days)
 
         # Collect unresolved must-visit items from search service
         unresolved_reqs: List[str] = [
@@ -269,6 +275,7 @@ class ItineraryGenerationService:
             candidates=candidates,
             unresolved_search_items=unresolved_reqs,
             user_prompt=user_prompt,
+            geographic_groups=geographic_groups,
         )
 
         messages = [
@@ -319,6 +326,12 @@ class ItineraryGenerationService:
             candidate_map=candidate_map,
             trip_id=trip_id,
         )
+        validation_warnings.extend(
+            cls._validate_daily_geographic_distance(
+                days=validated_response.days,
+                candidate_map=candidate_map,
+            )
+        )
 
         validated_response.warnings.extend(warnings)
         validated_response.warnings.extend(validation_warnings)
@@ -355,6 +368,7 @@ class ItineraryGenerationService:
         candidates: List[SearchPlaceItem],
         unresolved_search_items: List[str],
         user_prompt: Optional[str] = None,
+        geographic_groups: Optional[Dict[int, int]] = None,
     ) -> str:
         """Constructs human prompt containing planning context and candidate places list."""
         # Destination & Dates
@@ -375,6 +389,12 @@ class ItineraryGenerationService:
         interests = ", ".join(context.preferences.interests) or "Khám phá tổng quan"
         pace = context.schedule_constraints.pace or "MODERATE"
         max_act = context.schedule_constraints.max_activities_per_day
+        current_location = context.current_location
+        location_block = (
+            f"- Vị trí hiện tại: ({current_location.latitude:.6f}, {current_location.longitude:.6f})"
+            if current_location
+            else "- Vị trí hiện tại: Không được cung cấp"
+        )
 
         # Must visit & Excluded
         must_visit_names = [item.name for item in context.place_requirements.must_visit]
@@ -394,11 +414,25 @@ class ItineraryGenerationService:
             hours_str = p.opening_hours or "Chưa có dữ liệu giờ mở cửa"
             addr_str = p.address or "Chưa có địa chỉ"
             cat_str = p.category or "Tổng hợp"
+            group_number = geographic_groups.get(p.place_id) if geographic_groups else None
+            group_str = (
+                f" | Cụm địa lý ưu tiên: {group_number}"
+                if group_number is not None
+                else " | Cụm địa lý: Chưa đủ tọa độ"
+            )
 
             places_lines.append(
-                f"- ID: {p.place_id} | Tên: {p.name}{flag_str} | Danh mục: {cat_str} | Địa chỉ: {addr_str} | Giờ: {hours_str} | Giá: {price_str}"
+                f"- ID: {p.place_id} | Tên: {p.name}{flag_str} | Danh mục: {cat_str} | Địa chỉ: {addr_str} | Giờ: {hours_str} | Giá: {price_str}{group_str}"
             )
         places_block = "\n".join(places_lines)
+        grouping_rules = f"""
+=== QUY TẮC GOM ĐỊA ĐIỂM THEO KHU VỰC ===
+- Mỗi địa điểm có tọa độ được gán vào một "Cụm địa lý ưu tiên" trong danh sách trên.
+- Ưu tiên xếp các địa điểm cùng cụm vào cùng một ngày; không trộn các cụm xa nhau nếu vẫn còn lựa chọn khác.
+- Khoảng cách giữa hai địa điểm trong cùng ngày nên không vượt quá khoảng {MAX_DAILY_PLACE_DISTANCE_KM:g} km.
+- Nếu bắt buộc phải kết hợp các địa điểm khác cụm hoặc không có tọa độ, hãy ghi rõ trong warnings.
+- Các hoạt động MEAL, REST và TRANSIT nên được đặt gần các địa điểm tham quan của cùng ngày.
+"""
 
         user_req_block = ""
         if user_prompt:
@@ -418,6 +452,7 @@ QUY TẮC BẮT BUỘC KHI XỬ LÝ YÊU CẦU NÀY:
         prompt = f"""=== THÔNG TIN CHUYẾN ĐI CẦN LẬP LỊCH TRÌNH ===
 - Điểm đến chính: {city}
 - Điểm đến bổ sung: {add_dests or 'Không'}
+{location_block}
 - Thời lượng: {duration_days} ngày ({duration_days - 1} đêm)
 - Ngày bắt đầu: {start_date}
 - Ngày kết thúc: {end_date}
@@ -429,12 +464,101 @@ QUY TẮC BẮT BUỘC KHI XỬ LÝ YÊU CẦU NÀY:
 - Địa điểm bắt buộc (Must-Visit): {', '.join(must_visit_names) or 'Không'}
 - Địa điểm cần tránh (Excluded): {', '.join(excluded_names) or 'Không'}
 {user_req_block}
+{grouping_rules}
 === DANH SÁCH ĐỊA ĐIỂM THỰC TẾ TRUY VẤN TỪ CƠ SỞ DỮ LIỆU (CHỈ ĐƯỢC CHỌN TỪ ĐÂY) ===
 {places_block}
 
 Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ dùng place_id có trong danh sách trên!
 """
         return prompt
+
+    @classmethod
+    def _build_geographic_groups(
+        cls,
+        candidates: List[SearchPlaceItem],
+        duration_days: int,
+    ) -> Dict[int, int]:
+        """Assign coordinate-backed candidates to geographic groups for prompt guidance.
+
+        The farthest-point seeds make groups geographically distinct without requiring
+        an external routing API. Candidates without coordinates are intentionally
+        omitted because their location cannot be verified.
+        """
+        located = [
+            place
+            for place in candidates
+            if place.latitude is not None and place.longitude is not None
+        ]
+        group_count = min(max(duration_days, 1), len(located))
+        if group_count == 0:
+            return {}
+
+        seeds: List[SearchPlaceItem] = [located[0]]
+        while len(seeds) < group_count:
+            next_place = max(
+                (place for place in located if place not in seeds),
+                key=lambda place: min(
+                    haversine_distance(
+                        float(place.latitude),
+                        float(place.longitude),
+                        float(seed.latitude),
+                        float(seed.longitude),
+                    )
+                    for seed in seeds
+                ),
+            )
+            seeds.append(next_place)
+
+        groups: Dict[int, int] = {}
+        for place in located:
+            nearest_group = min(
+                range(len(seeds)),
+                key=lambda index: haversine_distance(
+                    float(place.latitude),
+                    float(place.longitude),
+                    float(seeds[index].latitude),
+                    float(seeds[index].longitude),
+                ),
+            )
+            groups[place.place_id] = nearest_group + 1
+        return groups
+
+    @classmethod
+    def _validate_daily_geographic_distance(
+        cls,
+        days: List[ItineraryDayItem],
+        candidate_map: Dict[int, SearchPlaceItem],
+    ) -> List[str]:
+        """Report days whose selected places exceed the preferred geographic distance."""
+        warnings: List[str] = []
+        for day in days:
+            places = [
+                candidate_map[activity.place_id]
+                for activity in day.activities
+                if activity.place_id in candidate_map
+                and candidate_map[activity.place_id].latitude is not None
+                and candidate_map[activity.place_id].longitude is not None
+            ]
+            if len(places) < 2:
+                continue
+
+            max_distance = max(
+                haversine_distance(
+                    float(first.latitude),
+                    float(first.longitude),
+                    float(second.latitude),
+                    float(second.longitude),
+                )
+                for index, first in enumerate(places)
+                for second in places[index + 1 :]
+            )
+            if max_distance > MAX_DAILY_PLACE_DISTANCE_KM:
+                warnings.append(
+                    f"Ngày {day.day_number} có các địa điểm cách nhau tối đa "
+                    f"{max_distance:.1f} km, vượt ngưỡng khoảng cách ưu tiên "
+                    f"{MAX_DAILY_PLACE_DISTANCE_KM:g} km."
+                )
+        return warnings
 
     @classmethod
     def _parse_json_from_llm(cls, text: str) -> Dict[str, Any]:
