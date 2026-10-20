@@ -1,50 +1,28 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
-import '../../models/trip_model.dart';
 
 class TripSearchFilter extends StatelessWidget {
   final String activeFilter;
   final Function(String) onFilterChanged;
   final Function(String) onSearchChanged;
-  final List<Trip> trips;
 
   const TripSearchFilter({
     super.key,
     required this.activeFilter,
     required this.onFilterChanged,
     required this.onSearchChanged,
-    this.trips = const [],
   });
-
-  int _countForFilter(String filterId) {
-    if (filterId == 'all') return trips.length;
-    return trips.where((t) {
-      final s = (t.status ?? '').toLowerCase();
-      switch (filterId) {
-        case 'upcoming':
-          return s == 'upcoming' || s == 'confirmed';
-        case 'planning':
-          return s == 'planning' || s == 'generated';
-        case 'draft':
-          return s == 'draft';
-        case 'completed':
-          return s == 'completed';
-        default:
-          return false;
-      }
-    }).length;
-  }
 
   @override
   Widget build(BuildContext context) {
     final filters = [
-      {'id': 'all', 'label': 'Tất cả (${_countForFilter('all')})'},
-      {'id': 'upcoming', 'label': 'Sắp tới (${_countForFilter('upcoming')})'},
-      {'id': 'planning', 'label': 'Đang lên kế hoạch (${_countForFilter('planning')})'},
-      {'id': 'draft', 'label': 'Bản nháp (${_countForFilter('draft')})'},
-      {'id': 'completed', 'label': 'Đã qua (${_countForFilter('completed')})'},
+      {'id': 'all', 'label': 'Tất cả (4)'},
+      {'id': 'upcoming', 'label': 'Sắp tới (1)'},
+      {'id': 'planning', 'label': 'Đang lên kế hoạch (1)'},
+      {'id': 'draft', 'label': 'Bản nháp (1)'},
+      {'id': 'completed', 'label': 'Đã qua (1)'},
     ];
 
     return Column(
@@ -111,3 +89,4 @@ class TripSearchFilter extends StatelessWidget {
     );
   }
 }
+

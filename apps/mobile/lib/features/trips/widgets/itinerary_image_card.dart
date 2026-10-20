@@ -23,10 +23,7 @@ class ItineraryImageCard extends StatelessWidget {
           Stack(
             children: [
               ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
                 child: Image.network(
                   activity.imageUrl!,
                   height: 128,
@@ -40,14 +37,8 @@ class ItineraryImageCard extends StatelessWidget {
                   left: 8,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      activity.overlayText!,
-                      style: AppTextStyles.caption.copyWith(color: Colors.white),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(8)),
+                    child: Text(activity.overlayText!, style: AppTextStyles.caption.copyWith(color: Colors.white)),
                   ),
                 ),
             ],
@@ -57,49 +48,20 @@ class ItineraryImageCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${activity.startTime} — ${activity.endTime}',
-                  style: AppTextStyles.label.copyWith(color: AppColors.primary),
-                ),
+                Text('\${activity.startTime} — \${activity.endTime}', style: AppTextStyles.label.copyWith(color: AppColors.primary)),
                 const SizedBox(height: 8),
                 Text(activity.title, style: AppTextStyles.h3),
                 const SizedBox(height: 4),
-                Text(
-                  '${activity.category} · ${activity.duration}',
-                  style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
-                ),
+                Text('\${activity.category} · \${activity.duration}', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
                 if (activity.description.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(activity.description, style: AppTextStyles.bodyMedium),
-                ],
-                if (activity.hasValidCoordinates) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.navigation,
-                        size: 13,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Xem đường đi & khoảng cách trên bản đồ',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
                 if (activity.aiSuggestion != null) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0F2FE),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFE0F2FE), borderRadius: BorderRadius.circular(8)),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -107,16 +69,14 @@ class ItineraryImageCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'AI gợi ý: ${activity.aiSuggestion}',
-                            style: AppTextStyles.caption.copyWith(
-                              color: const Color(0xFF0369A1),
-                            ),
+                            'AI gợi ý: \${activity.aiSuggestion}',
+                            style: AppTextStyles.caption.copyWith(color: const Color(0xFF0369A1)),
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                ]
               ],
             ),
           ),
