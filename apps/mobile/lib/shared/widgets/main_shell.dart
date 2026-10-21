@@ -1,4 +1,4 @@
-    import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../widgets/bottom_nav_bar.dart';
 
@@ -8,47 +8,115 @@ import '../../features/assistant/presentation/screens/travel_assistant_screen.da
 import '../../features/trips/screens/trips_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({super.key, this.pages, this.initialIndex = 0});
+
+  /// Optional tab pages override (used by widget tests).
+  final List<Widget>? pages;
+
+  /// Initial tab index when MainShell is first built.
+  final int initialIndex;
 
   /// Global key used to access the MainShell state from external routes.
-  static final GlobalKey<_MainShellState> shellKey =
-      GlobalKey<_MainShellState>();
+  static final GlobalKey<MainShellState> shellKey =
+      GlobalKey<MainShellState>();
+
+  /// Track the active MainShellState even if MainShell was instantiated without shellKey.
+  static MainShellState? _activeState;
+
+  static MainShellState? get _effectiveState =>
+      shellKey.currentState ?? _activeState;
+
+  /// Currently selected tab, or -1 when the shell is not mounted.
+  static int get currentTab => _effectiveState?._currentIndex ?? -1;
+
+  static bool _isNavigating = false;
 
   /// Navigate back to MainShell and switch to the given tab index.
-  /// Call this from pushed routes (e.g. MapScreen) to return to a tab.
+  /// Call this from pushed routes (e.g. MapScreen, TripDetailScreen) to return to a tab.
   static void switchToTab(BuildContext context, int index) {
-    // Pop all routes until we reach the MainShell route
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    // Switch to the requested tab
-    shellKey.currentState?._setTab(index);
+    if (_isNavigating) return;
+    if (!context.mounted) return;
+
+    _isNavigating = true;
+
+    try {
+      final shellState = _effectiveState;
+      final navigator = (shellState != null && shellState.mounted)
+          ? Navigator.of(shellState.context)
+          : Navigator.of(context);
+      final mainShellRoute = shellState != null && shellState.mounted
+          ? ModalRoute.of(shellState.context)
+          : null;
+
+      if (shellState != null && shellState.mounted) {
+        if (navigator.canPop()) {
+          navigator.popUntil((route) {
+            if (mainShellRoute != null && route == mainShellRoute) return true;
+            return route.isFirst;
+          });
+        }
+        shellState.setTab(index);
+      } else {
+        // Fallback if MainShell was not in the route stack (e.g. direct pushReplacement)
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => MainShell(
+              key: shellKey,
+              initialIndex: index,
+            ),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Navigation error in switchToTab: $e');
+    } finally {
+      _isNavigating = false;
+    }
   }
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() => MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
+class MainShellState extends State<MainShell> {
+  late int _currentIndex;
+  int get currentIndex => _currentIndex;
 
-  late final List<Widget> _pages = [
-    const HomeScreen(),
-    const ExploreScreen(),
-    const TravelAssistantScreen(),
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    MainShell._activeState = this;
+  }
 
-    const TripsScreen(),
-    const ProfilePlaceholderScreen(),
-  ];
+  @override
+  void dispose() {
+    if (MainShell._activeState == this) {
+      MainShell._activeState = null;
+    }
+    super.dispose();
+  }
 
-  void _setTab(int index) {
+  late final List<Widget> _pages = widget.pages ??
+      [
+        const HomeScreen(),
+        const ExploreScreen(),
+        const TravelAssistantScreen(),
+        const TripsScreen(),
+        const ProfilePlaceholderScreen(),
+      ];
+
+  void setTab(int index) {
+    if (!mounted) return;
+    if (_currentIndex == index) return;
     setState(() {
       _currentIndex = index;
     });
   }
 
   void _onBottomNavTap(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+    setTab(index);
   }
 
   @override

@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 import re
 from typing import Any, List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.schemas.trip_planning import CurrentLocation
 
 
@@ -35,12 +35,28 @@ class ActivityTypeEnum(str, Enum):
     OTHER = "OTHER"
 
 
+class ItineraryPlaceSummary(BaseModel):
+    """Place summary information attached to an activity."""
+
+    place_id: int = Field(validation_alias=AliasChoices("place_id", "id"))
+    name: str
+    category: Optional[str] = None
+    address: Optional[str] = None
+    description: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    image_url: Optional[str] = None
+
+    model_config = ConfigDict(use_enum_values=True, extra="ignore")
+
+
 class ItineraryActivityItem(BaseModel):
     """Activity item within an itinerary day."""
 
-    order_index: int
+    order_index: int = Field(default=1, validation_alias=AliasChoices("order_index", "activity_order", "order"))
     activity_type: str = "VISIT"
     place_id: Optional[int] = None
+    place: Optional[ItineraryPlaceSummary] = None
     title: str
     description: Optional[str] = None
     start_time: Optional[str] = None  # Format HH:MM
@@ -138,13 +154,19 @@ class ItineraryGenerationResponse(BaseModel):
     trip_id: Optional[int] = None
     title: Optional[str] = None
     summary: Optional[str] = None
-    duration_days: Optional[int] = None
+    duration_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("duration_days", "total_days"))
     currency: str = "VND"
     budget: Optional[BudgetEstimate] = None
     days: List[ItineraryDayItem] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     unresolved_requirements: List[str] = Field(default_factory=list)
     missing_information: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def compute_duration_days_if_missing(self) -> "ItineraryGenerationResponse":
+        if (self.duration_days is None or self.duration_days <= 0) and self.days:
+            self.duration_days = len(self.days)
+        return self
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
 
@@ -163,7 +185,7 @@ class ItineraryGenerationRequest(BaseModel):
 class ItineraryEditRequest(BaseModel):
     """Request payload for conversational itinerary modification."""
 
-    change_prompt: str
+    change_prompt: str = Field(validation_alias=AliasChoices("change_prompt", "instruction", "prompt", "message"))
     target_day: Optional[int] = None
     allow_overwrite: bool = True
 
@@ -217,19 +239,19 @@ class ValidationResult(BaseModel):
     unresolved_requirements: List[str] = Field(default_factory=list)
 
 
-class ItineraryPlaceSummary(BaseModel):
-    """Place summary information attached to an activity."""
+class SavePreviewTripRequest(BaseModel):
+    """Request payload to persist a reviewed itinerary preview into database."""
 
-    place_id: int
-    name: str
-    category: Optional[str] = None
-    address: Optional[str] = None
-    description: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    image_url: Optional[str] = None
+    preview: ItineraryGenerationResponse
+    trip_id: Optional[int] = None
+    conversation_id: Optional[int] = None
+    idempotency_key: Optional[str] = None
+    name: Optional[str] = None
+    destination_city: Optional[str] = None
+    destination_country: Optional[str] = "Việt Nam"
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
+
 
 
 class ItineraryActivityDetail(BaseModel):
