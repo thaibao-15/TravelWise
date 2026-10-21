@@ -180,7 +180,9 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   Future<(String, bool)> _checkLocationPermission() async {
     try {
-      final perm = await LocationService().checkPermission();
+      final perm = await LocationService()
+          .checkPermission()
+          .timeout(const Duration(seconds: 2));
       final isGranted =
           perm == LocationPermission.always ||
           perm == LocationPermission.whileInUse;

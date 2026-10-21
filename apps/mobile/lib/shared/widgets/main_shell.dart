@@ -12,11 +12,14 @@ class MainShell extends StatefulWidget {
   /// Global key used to access the MainShell state from external routes.
   static final GlobalKey<MainShellState> shellKey = GlobalKey<MainShellState>();
 
+  /// Fallback instance reference if MainShell wasn't given the shellKey.
+  static MainShellState? instance;
+
   /// Navigate back to MainShell and switch to the given tab index.
   /// Call this from pushed routes (e.g. MapScreen) to return to a tab.
   static void switchToTab(BuildContext context, int index) {
     Navigator.of(context).popUntil((route) => route.isFirst);
-    shellKey.currentState?.setTab(index);
+    (shellKey.currentState ?? instance)?.setTab(index);
   }
 
   @override
@@ -25,6 +28,21 @@ class MainShell extends StatefulWidget {
 
 class MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  int get currentIndex => _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    MainShell.instance = this;
+  }
+
+  @override
+  void dispose() {
+    if (MainShell.instance == this) {
+      MainShell.instance = null;
+    }
+    super.dispose();
+  }
 
   late final List<Widget> _pages = [
     const HomeScreen(),
@@ -36,9 +54,11 @@ class MainShellState extends State<MainShell> {
 
   void setTab(int index) {
     if (index >= 0 && index < _pages.length) {
-      setState(() {
-        _currentIndex = index;
-      });
+      if (_currentIndex != index) {
+        setState(() {
+          _currentIndex = index;
+        });
+      }
     }
   }
 

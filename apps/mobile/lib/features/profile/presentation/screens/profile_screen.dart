@@ -425,9 +425,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final profileState = ref.watch(profileProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+    return Material(
+      color: AppColors.background,
+      child: SafeArea(
+        bottom: false,
         child: switch (profileState) {
           ProfileLoading() => const Center(
             child: CircularProgressIndicator(color: AppColors.primary),

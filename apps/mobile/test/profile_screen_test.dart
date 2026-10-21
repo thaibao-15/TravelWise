@@ -9,6 +9,7 @@ import 'package:mobile/features/profile/domain/repositories/profile_repository.d
 import 'package:mobile/features/profile/presentation/providers/profile_provider.dart';
 import 'package:mobile/features/profile/presentation/screens/profile_screen.dart';
 import 'package:mobile/shared/widgets/bottom_nav_bar.dart';
+import 'package:mobile/shared/widgets/main_shell.dart';
 
 class FakeProfileRepository implements ProfileRepository {
   final ProfileEntity fakeProfile;
@@ -172,4 +173,40 @@ void main() {
     expect(find.byIcon(Icons.person), findsOneWidget);
     expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
   });
+
+  testWidgets(
+      'Tapping tabs in CustomBottomNavBar when on Profile tab triggers onTap',
+      (WidgetTester tester) async {
+    int tappedIndex = -1;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          bottomNavigationBar: CustomBottomNavBar(
+            currentIndex: 4,
+            onTap: (index) {
+              tappedIndex = index;
+            },
+          ),
+        ),
+      ),
+    );
+
+    // Tap Home (index 0)
+    await tester.tap(find.text('Home'));
+    expect(tappedIndex, 0);
+
+    // Tap Explore (index 1)
+    await tester.tap(find.text('Explore'));
+    expect(tappedIndex, 1);
+
+    // Tap AI Assistant (index 2)
+    await tester.tap(find.byIcon(Icons.auto_awesome));
+    expect(tappedIndex, 2);
+
+    // Tap Trips (index 3)
+    await tester.tap(find.text('Trips'));
+    expect(tappedIndex, 3);
+  });
 }
+
