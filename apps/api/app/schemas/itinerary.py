@@ -9,12 +9,8 @@ from datetime import datetime
 from enum import Enum
 import re
 from typing import Any, List, Optional
-<<<<<<<<< Temporary merge branch 1
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
-=========
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.trip_planning import CurrentLocation
->>>>>>>>> Temporary merge branch 2
 
 
 class ItineraryStatusEnum(str, Enum):
@@ -224,15 +220,6 @@ class ValidationResult(BaseModel):
 class ItineraryPlaceSummary(BaseModel):
     """Place summary information attached to an activity."""
 
-<<<<<<<<< Temporary merge branch 1
-    preview: ItineraryGenerationResponse
-    trip_id: Optional[int] = None
-    conversation_id: Optional[int] = None
-    idempotency_key: Optional[str] = None
-    name: Optional[str] = None
-    destination_city: Optional[str] = None
-    destination_country: Optional[str] = "Việt Nam"
-=========
     place_id: int
     name: str
     category: Optional[str] = None
@@ -241,7 +228,6 @@ class ItineraryPlaceSummary(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     image_url: Optional[str] = None
->>>>>>>>> Temporary merge branch 2
 
     model_config = ConfigDict(use_enum_values=True, extra="ignore")
 

@@ -290,51 +290,6 @@ async def ask_rag_stream(
             title=title,
         )
 
-<<<<<<<<< Temporary merge branch 1
-    # 2. Save USER message to database FIRST so context extraction has access to it
-    user_msg = ConversationService.save_message(
-        session=session,
-        conversation_id=conversation.id,
-        sender="USER",
-        content=user_question,
-    )
-
-    # 3. Extract and update TripPlanningContext BEFORE generating response
-    planning_context = None
-    try:
-        from app.services.trip_planning_service import TripPlanningContextExtractionService
-
-        planning_context = TripPlanningContextExtractionService.extract_and_update_trip_context(
-            session=session,
-            conversation_id=conversation.id,
-            current_user=current_user,
-            latest_message=user_msg,
-        )
-    except Exception as e:
-        logger.error("Planning context extraction error for stream: %s", e)
-
-    planning_summary = ""
-    planning_status = None
-    is_ready = False
-    planning_action = None
-    if planning_context:
-        from app.services.trip_planning_service import TripPlanningContextExtractionService
-
-        planning_summary = TripPlanningContextExtractionService.format_context_summary(planning_context)
-        is_ready = bool(planning_context.planning_state.is_ready_to_generate)
-        planning_status = "READY_TO_GENERATE" if is_ready else "COLLECTING_REQUIREMENTS"
-        clean_q = user_question.lower()
-        gen_cues = (
-            "tạo lịch trình", "lên lịch trình", "tạo giúp mình", "tạo đi",
-            "đồng ý", "ok tạo đi", "lên kế hoạch đi", "tạo ngay", "làm lịch trình", "tạo cho mình",
-        )
-        if any(cue in clean_q for cue in gen_cues):
-            planning_action = "TRIGGER_GENERATION"
-        elif any(cue in clean_q for cue in ("lưu chuyến đi", "lưu lại", "xác nhận lưu", "lưu lịch trình")):
-            planning_action = "TRIGGER_SAVE"
-
-    # 4. Load recent conversation history (excluding current user message to avoid duplicate)
-=========
     try:
         current_summary = ConversationSummaryService.get_summary(
             session=session,
@@ -354,7 +309,6 @@ async def ask_rag_stream(
         )
         current_summary = None
         previous_summaries = []
->>>>>>>>> Temporary merge branch 2
     recent_messages = ConversationService.get_recent_messages(
         session=session,
         conversation_id=conversation.id,
@@ -381,8 +335,6 @@ async def ask_rag_stream(
             chat_history=chat_history,
         )
 
-<<<<<<<<< Temporary merge branch 1
-=========
     planning_summary = ""
     try:
         from app.services.trip_planning_service import TripPlanningContextExtractionService
@@ -407,7 +359,6 @@ async def ask_rag_stream(
         current_location=request.current_location,
     )
 
->>>>>>>>> Temporary merge branch 2
     async def event_generator():
         yield f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
 
