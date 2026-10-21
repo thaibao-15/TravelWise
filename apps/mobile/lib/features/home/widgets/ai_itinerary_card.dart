@@ -3,6 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
+import '../../trips/widgets/create_trip_sheet.dart';
 import 'timeline_item.dart';
 
 class AiItineraryCard extends StatelessWidget {
@@ -58,7 +59,7 @@ class AiItineraryCard extends StatelessWidget {
             width: double.infinity,
             height: 44,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () => CreateTripSheet.show(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 shape: RoundedRectangleBorder(

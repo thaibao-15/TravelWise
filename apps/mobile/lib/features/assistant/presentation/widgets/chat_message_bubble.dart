@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../providers/voice_assistant_provider.dart';
 
+import 'package:mobile/features/trips/widgets/trip_itinerary_card.dart';
+
 /// A single chat message bubble — user (right, blue) or AI (left, light grey).
+/// Can seamlessly embed a TripItineraryCard inside AI responses.
 class ChatMessageBubble extends StatelessWidget {
   final ChatMessage message;
 
@@ -56,7 +59,7 @@ class ChatMessageBubble extends StatelessWidget {
               children: [
                 Container(
                   constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.70,
+                    maxWidth: MediaQuery.of(context).size.width * 0.72,
                   ),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 10),
@@ -72,7 +75,7 @@ class ChatMessageBubble extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
@@ -89,6 +92,20 @@ class ChatMessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
+
+                // ── Embedded Trip Itinerary Card (Requirement 6 & 7) ──────────
+                if (!isUser && message.tripItinerary != null) ...[
+                  const SizedBox(height: 6),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.85,
+                    ),
+                    child: TripItineraryCard(
+                      trip: message.tripItinerary!,
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 3),
                 Text(
                   timeStr,

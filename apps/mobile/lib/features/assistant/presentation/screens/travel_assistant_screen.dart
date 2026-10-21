@@ -65,8 +65,9 @@ class TravelAssistantScreen extends ConsumerWidget {
 
                     const SizedBox(height: AppSpacing.lg),
 
-                    // ── AI Planning: Generating Status Banner ───────────────
-                    if (state.planningState == TripPlanningState.generating) ...[
+                    // ── AI Planning: Generating / Revising Status Banner ──────
+                    if (state.planningState == TripPlanningState.generating ||
+                        state.planningState == TripPlanningState.revising) ...[
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                         padding: const EdgeInsets.all(16),
@@ -75,9 +76,9 @@ class TravelAssistantScreen extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: AppColors.primary.withOpacity(0.3)),
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
-                            SizedBox(
+                            const SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
@@ -85,11 +86,13 @@ class TravelAssistantScreen extends ConsumerWidget {
                                 valueColor: AlwaysStoppedAnimation(AppColors.primary),
                               ),
                             ),
-                            SizedBox(width: 14),
+                            const SizedBox(width: 14),
                             Expanded(
                               child: Text(
-                                'Đang đối chiếu dữ liệu điểm đến và tạo lịch trình từ địa điểm thực...',
-                                style: TextStyle(
+                                state.planningState == TripPlanningState.revising
+                                    ? 'AI đang tối ưu và cập nhật lại lịch trình theo yêu cầu của bạn...'
+                                    : 'Đang đối chiếu dữ liệu điểm đến và tạo lịch trình từ địa điểm thực...',
+                                style: const TextStyle(
                                   color: AppColors.primary,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -145,7 +148,7 @@ class TravelAssistantScreen extends ConsumerWidget {
                               ),
                             ),
                             ElevatedButton(
-                              onPressed: () => notifier.generateItinerary(),
+                              onPressed: () => notifier.requestGenerateItinerary(),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: AppColors.primary,

@@ -154,7 +154,42 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ActionChip(
+                        label: const Text(
+                          'Thêm quán ăn đặc sản buổi tối',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.primary),
+                        ),
+                        backgroundColor: AppColors.primary.withOpacity(0.08),
+                        side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        onPressed: () {
+                          _editController.text = 'Thêm quán ăn đặc sản buổi tối';
+                        },
+                      ),
+                      ActionChip(
+                        label: const Text(
+                          'Đổi ngày 2 sang đi biển thư giãn',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.primary),
+                        ),
+                        backgroundColor: AppColors.primary.withOpacity(0.08),
+                        side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        onPressed: () {
+                          _editController.text = 'Đổi ngày 2 sang đi biển thư giãn';
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _editController,
                     maxLines: 3,
@@ -180,69 +215,103 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isEditing
-                          ? null
-                          : () async {
-                              final text = _editController.text.trim();
-                              if (text.isEmpty) return;
-                              setModalState(() => _isEditing = true);
-                              setState(() => _isEditing = true);
-                              try {
-                                final notifier = ref.read(voiceAssistantProvider.notifier);
-                                await notifier.editSavedTrip(
-                                  tripId: currentTrip.id,
-                                  instruction: text,
-                                );
-                                if (ctx.mounted) {
-                                  Navigator.pop(ctx);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Đã cập nhật lịch trình thành công!'),
-                                      backgroundColor: AppColors.success,
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (ctx.mounted) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Lỗi: $e'),
-                                      backgroundColor: AppColors.error,
-                                    ),
-                                  );
-                                }
-                              } finally {
-                                if (mounted) {
-                                  setState(() => _isEditing = false);
-                                  _editController.clear();
-                                }
-                              }
-                            },
-                      icon: _isEditing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.send_rounded, size: 18),
-                      label: Text(
-                        _isEditing ? 'AI đang cập nhật...' : 'Gửi yêu cầu chỉnh sửa',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            Navigator.of(context).popUntil((route) => route.isFirst);
+                            MainShell.switchToTab(context, 2);
+                            Future.delayed(const Duration(milliseconds: 300), () {
+                              ref.read(voiceAssistantProvider.notifier).toggleRecording();
+                            });
+                          },
+                          icon: const Icon(Icons.mic_rounded, size: 18),
+                          label: const Text('Nói với AI'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: _isEditing
+                              ? null
+                              : () async {
+                                  final text = _editController.text.trim();
+                                  if (text.isEmpty) return;
+                                  setModalState(() => _isEditing = true);
+                                  setState(() => _isEditing = true);
+                                  try {
+                                    final notifier = ref.read(voiceAssistantProvider.notifier);
+                                    final targetTripId = currentTrip.id.isNotEmpty
+                                        ? currentTrip.id
+                                        : ref.read(voiceAssistantProvider).savedTripId;
+                                    if (targetTripId != null && targetTripId.isNotEmpty) {
+                                      await notifier.editSavedTrip(
+                                        tripId: targetTripId,
+                                        instruction: text,
+                                      );
+                                    } else {
+                                      await notifier.sendMessage(text);
+                                    }
+                                    if (ctx.mounted) {
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Đã cập nhật lịch trình thành công!'),
+                                          backgroundColor: AppColors.success,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (ctx.mounted) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Lỗi: $e'),
+                                          backgroundColor: AppColors.error,
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isEditing = false);
+                                      _editController.clear();
+                                    }
+                                  }
+                                },
+                          icon: _isEditing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded, size: 18),
+                          label: Text(
+                            _isEditing ? 'AI đang cập nhật...' : 'Cập nhật lịch trình',
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -329,6 +398,33 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                     color: AppColors.textSecondary,
                                   ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        if (tripAsync?.hasError == true && trip.days.isEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 20),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Không thể tải chi tiết lịch trình: ${tripAsync?.error}',
+                                    style: const TextStyle(color: AppColors.error, fontSize: 13),
+                                  ),
+                                ),
+                                if (effectiveTripId != null && effectiveTripId.isNotEmpty)
+                                  TextButton(
+                                    onPressed: () => ref.refresh(tripDetailProvider(effectiveTripId)),
+                                    child: const Text('Thử lại'),
+                                  ),
                               ],
                             ),
                           ),
