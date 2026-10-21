@@ -1,6 +1,21 @@
 import 'dart:typed_data';
 
 class VoiceAudioService {
+  void initStreamingQueue({
+    void Function()? onPlay,
+    void Function()? onEnded,
+    void Function(String err)? onError,
+  }) {}
+
+  void enqueueSentence({
+    required String baseUrl,
+    required String sentence,
+    String speed = '1.25',
+    String speakerId = 'HN-Nam-1-BL',
+  }) {}
+
+  void markStreamDone() {}
+
   void playWavBytes(
     Uint8List bytes, {
     void Function()? onPlay,

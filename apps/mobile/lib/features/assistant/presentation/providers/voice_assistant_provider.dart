@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 
@@ -36,12 +37,14 @@ class ChatMessage {
   final bool isUser;
   final DateTime timestamp;
   final Uint8List? audioBytes;
+  final Trip? tripItinerary;
 
   const ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,
     this.audioBytes,
+    this.tripItinerary,
   });
 }
 
@@ -63,6 +66,7 @@ class VoiceAssistantState {
   final Trip? tripPreview;
   final String? savedTripId;
   final String? planningContextSummary;
+  final Map<String, dynamic>? planningContext;
 
   const VoiceAssistantState({
     this.voiceState = VoiceState.idle,
@@ -80,6 +84,7 @@ class VoiceAssistantState {
     this.tripPreview,
     this.savedTripId,
     this.planningContextSummary,
+    this.planningContext,
   });
 
   VoiceAssistantState copyWith({
@@ -96,8 +101,11 @@ class VoiceAssistantState {
     bool? isTtsEnabled,
     Uint8List? lastAudioBytes,
     Trip? tripPreview,
+    bool clearTripPreview = false,
     String? savedTripId,
+    bool clearSavedTripId = false,
     String? planningContextSummary,
+    Map<String, dynamic>? planningContext,
   }) {
     return VoiceAssistantState(
       voiceState: voiceState ?? this.voiceState,
@@ -113,10 +121,11 @@ class VoiceAssistantState {
       conversationId: conversationId ?? this.conversationId,
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
       lastAudioBytes: lastAudioBytes ?? this.lastAudioBytes,
-      tripPreview: tripPreview ?? this.tripPreview,
-      savedTripId: savedTripId ?? this.savedTripId,
+      tripPreview: clearTripPreview ? null : (tripPreview ?? this.tripPreview),
+      savedTripId: clearSavedTripId ? null : (savedTripId ?? this.savedTripId),
       planningContextSummary:
           planningContextSummary ?? this.planningContextSummary,
+      planningContext: planningContext ?? this.planningContext,
     );
   }
 }
@@ -142,7 +151,7 @@ class VoiceListeningConfig {
   final int maxAutoRestarts;
 
   const VoiceListeningConfig({
-    this.pauseFor = const Duration(milliseconds: 3500),
+    this.pauseFor = const Duration(milliseconds: 1100),
     this.listenFor = const Duration(seconds: 120),
     this.noSpeechTimeout = const Duration(seconds: 10),
     this.maxAutoRestarts = 2,
@@ -275,7 +284,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   void dismissPreview() {
     state = state.copyWith(
       planningState: TripPlanningState.idle,
-      tripPreview: null,
+      clearTripPreview: true,
     );
   }
 
@@ -480,8 +489,12 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     // Any recognised speech resets the silence window, so natural pauses
     // shorter than [pauseFor] keep the turn open.
+    // When STT sends a final segment (isFinal == true), use a faster 800ms window.
     _silenceTimer?.cancel();
-    _silenceTimer = Timer(_config.pauseFor, () {
+    final waitDuration = isFinal
+        ? const Duration(milliseconds: 800)
+        : _config.pauseFor;
+    _silenceTimer = Timer(waitDuration, () {
       if (!mounted || !_listeningTurnActive) return;
       log('silence_threshold_reached', {
         'textLength': _accumulatedTranscript.length,
@@ -540,14 +553,220 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _maxSessionTimer?.cancel();
   }
 
-  // ── Send message (RAG ask) ────────────────────────────────────────────────
+  // ── Intent Detection Helpers (ported from Web useChat.ts & utils.ts) ─────
+
+  static final RegExp _affirmativeIntentRegex = RegExp(
+    r"(?:^|\b)(?:dạ\s+)?(?:có|tạo\s*đi|tạo\s*cho\s*mình|tạo\s*giúp|tạo\s*hộ|tạo\s*luôn|tạo\s*ngay|tạo\s*lịch(?:\s*trình)?(?:\s*đi|\s*luôn|\s*ngay|\s*nha|\s*nhé|\s*cho\s*mình|\s*giúp)?|đồng\s*ý|nhất\s*trí|chốt(?:\s*đơn|\s*nha|\s*nhé|\s*luôn)?|triển(?:\s*thôi|\s*đi|\s*luôn)?|duyệt(?:\s*luôn|\s*nha)?|lên\s*lịch(?:\s*đi|\s*trình|\s*kế\s*hoạch)?|làm\s*đi|làm\s*luôn|ok|okie|oke|uki|yes|yep|sure|let's\s*go|tiến\s*hành\s*đi|chuẩn\s*rồi|được\s*đấy|được\s*nha|ừ(?:\s*tạo\s*đi)?)\b",
+    caseSensitive: false,
+  );
+
+  static String _removeVietnameseAccents(String str) {
+    var result = str;
+    const vietnamese = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const nonVietnamese = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+    for (var i = 0; i < vietnamese.length; i++) {
+      result = result.replaceAll(vietnamese[i], nonVietnamese[i]);
+    }
+    return result;
+  }
+
+  static bool isCreateItineraryCommand(String text) {
+    final clean = text
+        .toLowerCase()
+        .replaceAll(RegExp(r"""[.,?!:;~^`'"()\[\]{}]"""), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (clean.isEmpty) return false;
+
+    final noAccent = _removeVietnameseAccents(clean);
+
+    final hasActionVerb = RegExp(
+          r'(?:hãy\s+)?(?:tạo|lên|lập|thiết\s*kế|xây\s*dựng|gợi\s*ý|chuẩn\s*bị|làm|viết|sắp\s*xếp|cho\s*(?:mình|tôi|em|anh|chị))',
+          caseSensitive: false,
+        ).hasMatch(clean) ||
+        RegExp(
+          r'(?:hay\s+)?(?:tao|len|lap|thiet\s*ke|xay\s*dung|goi\s*y|chuan\s*bi|lam|viet|sap\s*xep|cho\s*(?:minh|toi|em|anh|chi))',
+          caseSensitive: false,
+        ).hasMatch(noAccent);
+
+    final hasTargetNoun = RegExp(
+          r'(?:lịch\s*trình|kế\s*hoạch|lộ\s*trình|tour|chuyến\s*đi)',
+          caseSensitive: false,
+        ).hasMatch(clean) ||
+        RegExp(
+          r'(?:lich\s*trinh|ke\s*hoach|lo\s*trinh|tour|chuyen\s*di)',
+          caseSensitive: false,
+        ).hasMatch(noAccent);
+
+    if (hasActionVerb && hasTargetNoun) return true;
+
+    if (RegExp(r'(?:tạo|lên|lập)\s*lịch\b', caseSensitive: false).hasMatch(clean) ||
+        RegExp(r'(?:tao|len|lap)\s*lich\b', caseSensitive: false).hasMatch(noAccent)) {
+      return true;
+    }
+
+    if (RegExp(
+      r'(?:create|make|build|generate|plan)\s+(?:an?\s+)?(?:itinerary|trip|travel\s*plan)',
+      caseSensitive: false,
+    ).hasMatch(clean)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _hasDestinationInContext(Map<String, dynamic>? ctx) {
+    if (ctx == null) return false;
+    final trip = ctx['trip'] as Map<String, dynamic>?;
+    final dest = trip?['destination'] as Map<String, dynamic>?;
+    final city = dest?['city']?.toString().trim();
+    final country = dest?['country']?.toString().trim();
+    final topDest = ctx['destination']?.toString().trim();
+    return (city != null && city.isNotEmpty) ||
+        (country != null && country.isNotEmpty && country.toLowerCase() != 'việt nam') ||
+        (topDest != null && topDest.isNotEmpty);
+  }
+
+  bool _hasDurationInContext(Map<String, dynamic>? ctx) {
+    if (ctx == null) return false;
+    final trip = ctx['trip'] as Map<String, dynamic>?;
+    final dates = trip?['dates'] as Map<String, dynamic>?;
+    final duration = trip?['duration'] as Map<String, dynamic>?;
+    return dates?['duration_days'] != null ||
+        dates?['start_date'] != null ||
+        duration?['days'] != null ||
+        ctx['duration_days'] != null;
+  }
+
+  bool _isReadyInContext(Map<String, dynamic>? ctx) {
+    if (ctx == null) return false;
+    final pState = ctx['planning_state'] as Map<String, dynamic>?;
+    if (pState != null) {
+      if (pState['is_ready_to_generate'] == true ||
+          pState['is_ready_for_generation'] == true) {
+        return true;
+      }
+    }
+    return _hasDestinationInContext(ctx);
+  }
+
+  String? _activeTripIdFromState([Map<String, dynamic>? ctx]) {
+    if (state.savedTripId != null && state.savedTripId!.isNotEmpty) {
+      return state.savedTripId;
+    }
+    if (state.tripPreview != null && state.tripPreview!.id.isNotEmpty) {
+      return state.tripPreview!.id;
+    }
+    final c = ctx ?? state.planningContext;
+    final tripMap = c?['trip'] as Map<String, dynamic>?;
+    final tid = tripMap?['trip_id']?.toString();
+    if (tid != null && tid.isNotEmpty) return tid;
+    return null;
+  }
+
+  /// Trích xuất nhanh điểm đến và số ngày từ câu lệnh tạo lịch trình trực tiếp ở phía Client
+  /// để gọi thẳng `/api/v1/trips/generate` mà không cần chờ qua bước trung gian `/api/v1/rag/ask`.
+  Map<String, dynamic>? _extractQuickPlanningContext(String text) {
+    final lower = text.toLowerCase();
+    const destinations = <String, String>{
+      'đà nẵng': 'Đà Nẵng',
+      'da nang': 'Đà Nẵng',
+      'hội an': 'Hội An',
+      'hoi an': 'Hội An',
+      'huế': 'Huế',
+      'hue': 'Huế',
+      'đà lạt': 'Đà Lạt',
+      'da lat': 'Đà Lạt',
+      'nha trang': 'Nha Trang',
+      'phú quốc': 'Phú Quốc',
+      'phu quoc': 'Phú Quốc',
+      'hà nội': 'Hà Nội',
+      'ha noi': 'Hà Nội',
+      'hồ chí minh': 'TP. Hồ Chí Minh',
+      'sài gòn': 'TP. Hồ Chí Minh',
+      'sai gon': 'TP. Hồ Chí Minh',
+      'quy nhơn': 'Quy Nhơn',
+      'quy nhon': 'Quy Nhơn',
+      'vũng tàu': 'Vũng Tàu',
+      'vung tau': 'Vũng Tàu',
+      'hạ long': 'Hạ Long',
+      'ha long': 'Hạ Long',
+      'sapa': 'Sa Pa',
+      'sa pa': 'Sa Pa',
+      'ninh bình': 'Ninh Bình',
+      'ninh binh': 'Ninh Bình',
+      'phan thiết': 'Phan Thiết',
+      'mũi né': 'Mũi Né',
+      'cần thơ': 'Cần Thơ',
+      'hà giang': 'Hà Giang',
+    };
+
+    String? matchedCity;
+    for (final entry in destinations.entries) {
+      if (lower.contains(entry.key)) {
+        matchedCity = entry.value;
+        break;
+      }
+    }
+    if (matchedCity == null) return null;
+
+    int durationDays = 3;
+    final dayMatch = RegExp(r'(\d+)\s*ngày', caseSensitive: false).firstMatch(lower) ??
+        RegExp(r'(\d+)\s*ngay', caseSensitive: false).firstMatch(_removeVietnameseAccents(lower));
+    if (dayMatch != null) {
+      final parsed = int.tryParse(dayMatch.group(1) ?? '');
+      if (parsed != null && parsed >= 1 && parsed <= 14) {
+        durationDays = parsed;
+      }
+    }
+
+    final existing = state.planningContext != null
+        ? Map<String, dynamic>.from(state.planningContext!)
+        : <String, dynamic>{};
+    final existingTrip = existing['trip'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(existing['trip'] as Map<String, dynamic>)
+        : <String, dynamic>{};
+
+    existingTrip['destination'] = {
+      'city': matchedCity,
+      'country': 'Việt Nam',
+    };
+    existingTrip['dates'] = {
+      'duration_days': durationDays,
+    };
+    existing['trip'] = existingTrip;
+    existing['planning_state'] = {
+      'is_ready_to_generate': true,
+    };
+    return existing;
+  }
+
+  /// Kiểm tra nhanh câu nói có khả năng là lệnh chỉnh sửa lịch trình hay không
+  /// (giúp câu hỏi thông thường bỏ qua lời gọi LLM `/detect-intent` tốn 2-3 giây).
+  bool _looksLikePotentialEditRequest(String text) {
+    final lower = text.toLowerCase();
+    final noAccent = _removeVietnameseAccents(lower);
+    final hasEditCue = RegExp(
+          r'(?:thêm|bớt|xóa|xoá|bỏ|đổi|thay|sửa|dời|chuyển|cập\s*nhật|chỉnh|sắp\s*xếp|rút\s*gọn|kéo\s*dài|bắt\s*đầu|kết\s*thúc|lúc\s*\d|ngày\s*\d|buổi\s*(?:sáng|trưa|chiều|tối)|thay\s*vì|không\s*muốn\s*đi|ghé\s*thêm|cho\s*thêm)',
+          caseSensitive: false,
+        ).hasMatch(lower) ||
+        RegExp(
+          r'(?:them|bot|xoa|bo|doi|thay|sua|doi|chuyen|cap\s*nhat|chinh|sap\s*xep|rut\s*gon|keo\s*dai|bat\s*dau|ket\s*thuc|luc\s*\d|ngay\s*\d|buoi\s*(?:sang|trua|chieu|toi))',
+          caseSensitive: false,
+        ).hasMatch(noAccent);
+    return hasEditCue;
+  }
+
+  // ── Send message (RAG ask + Web useChat.ts Itinerary Flow) ───────────────
 
   Future<void> sendMessage(String text, {bool isVoiceMode = false}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     if (_isCommitting ||
         state.voiceState == VoiceState.thinking ||
-        state.voiceState == VoiceState.processing) {
+        state.voiceState == VoiceState.processing ||
+        state.planningState == TripPlanningState.generating ||
+        state.planningState == TripPlanningState.revising) {
       log('rag_submit_skipped_busy', {'voiceState': state.voiceState.name});
       return;
     }
@@ -584,6 +803,149 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     );
 
     try {
+      final ctx = state.planningContext;
+      final hasDestination = _hasDestinationInContext(ctx);
+      final hasDuration = _hasDurationInContext(ctx);
+      final isReadyToGenerate = _isReadyInContext(ctx) ||
+          state.planningState == TripPlanningState.readyToGenerate;
+
+      final isCreateCmd = isCreateItineraryCommand(trimmed);
+      final isAffirmative = isCreateCmd ||
+          _affirmativeIntentRegex.hasMatch(trimmed) ||
+          RegExp(
+            r'(?:tạo|lên|lập)\s*(?:cho\s*[\w\s]+\s+)?(?:lịch\s*trình|kế\s*hoạch|lịch|tour)?\s*(?:đi|luôn|ngay|nha|nhé|giúp|hộ)',
+            caseSensitive: false,
+          ).hasMatch(trimmed) ||
+          (trimmed.length <= 30 &&
+              RegExp(
+                r'^(dạ\s+)?(có|tạo|ok|được|làm|yes|đồng ý|nhất trí|chốt|triển|hãy tạo|cứ tạo)',
+                caseSensitive: false,
+              ).hasMatch(trimmed));
+
+      // 1. Kiểm tra ý định XÓA / HỦY LỊCH TRÌNH (giống Web useChat.ts)
+      final isClearIntent = RegExp(
+            r'(?:xóa|xoá|hủy|bỏ|reset|clear)\s+(?:lịch\s*trình|kế\s*hoạch)(?:\s+(?:này|hiện\s*tại|đi|giúp\s*mình|hộ\s*mình))?',
+            caseSensitive: false,
+          ).hasMatch(trimmed) &&
+          !RegExp(r'(?:thêm|sửa|đổi|ngày\s*\d)', caseSensitive: false)
+              .hasMatch(trimmed);
+
+      if (isClearIntent) {
+        final hadItin = state.tripPreview != null;
+        state = state.copyWith(
+          clearTripPreview: true,
+          planningState: TripPlanningState.idle,
+        );
+        _ref.read(currentTripPreviewProvider.notifier).state = null;
+
+        final replyContent = hadItin
+            ? 'Mình đã xóa lịch trình hiện tại cho bạn rồi nhé! Bây giờ bạn có thể chia sẻ điểm đến, số ngày hoặc yêu cầu mới để mình lên lại lịch trình khác cho bạn nhé!'
+            : 'Hiện tại chưa có lịch trình nào đang mở để xóa bạn nhé! Bạn có thể chia sẻ điểm đến hoặc yêu cầu để mình tạo lịch trình mới ngay.';
+
+        final aiMsg = ChatMessage(
+          text: replyContent,
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+        state = state.copyWith(
+          messages: [...state.messages, aiMsg],
+          currentTranscript: replyContent,
+        );
+        if (isVoiceMode || state.isTtsEnabled) {
+          await _playTts(replyContent);
+        } else {
+          state = state.copyWith(voiceState: VoiceState.idle);
+        }
+        return;
+      }
+
+      // 2. Kiểm tra ý định TẠO LẠI LỊCH TRÌNH KHÁC (giống Web useChat.ts)
+      final isRegenerateIntent = RegExp(
+            r'(?:tạo\s*lại|làm\s*lại|lên\s*lại|thiết\s*kế\s*lại)\s+(?:lịch\s*trình|kế\s*hoạch)(?:\s+(?:khác|mới|đi|cho\s*mình|giúp\s*mình))?',
+            caseSensitive: false,
+          ).hasMatch(trimmed) ||
+          RegExp(
+            r'(?:tạo|lên|làm)\s+(?:lịch\s*trình|kế\s*hoạch)\s+khác',
+            caseSensitive: false,
+          ).hasMatch(trimmed);
+
+      if (isRegenerateIntent && hasDestination && state.conversationId != null) {
+        state = state.copyWith(clearTripPreview: true);
+        await generateItinerary(
+          convId: state.conversationId,
+          userPrompt: 'Tạo lại lịch trình khác với các địa điểm và hoạt động mới mẻ hơn',
+        );
+        return;
+      }
+
+      // 3. Nếu người dùng ra lệnh tạo lịch trình trực tiếp có sẵn điểm đến (VD: "Tạo lịch trình đi Đà Nẵng 3 ngày")
+      //    -> Gọi thẳng generateItinerary với quick context (bỏ qua bước chờ /rag/ask trung gian để phản hồi nhanh gấp đôi)
+      if (isCreateCmd) {
+        final quickCtx = _extractQuickPlanningContext(trimmed);
+        if (quickCtx != null) {
+          state = state.copyWith(
+            clearTripPreview: true,
+            planningContext: quickCtx,
+            planningState: TripPlanningState.readyToGenerate,
+          );
+          await generateItinerary(
+            convId: state.conversationId,
+            context: quickCtx,
+            userPrompt: trimmed,
+          );
+          return;
+        }
+      }
+
+      // 3b. Nếu đã có điểm đến trong context và người dùng xác nhận "Tạo đi" / "Đồng ý" / "Ok"
+      //     (và câu ngắn không chứa thông tin điểm đến mới) -> Tạo lịch trình ngay lập tức
+      final hasNewPlaceOrDaysInPrompt = RegExp(
+        r'(?:đi\s+\S+|\d+\s*ngày|\d+\s*đêm)',
+        caseSensitive: false,
+      ).hasMatch(trimmed);
+
+      if (hasDestination &&
+          (hasDuration || isReadyToGenerate || isCreateCmd) &&
+          isAffirmative &&
+          !hasNewPlaceOrDaysInPrompt &&
+          state.conversationId != null) {
+        state = state.copyWith(clearTripPreview: true);
+        await generateItinerary(
+          convId: state.conversationId,
+          userPrompt: trimmed,
+        );
+        return;
+      }
+
+      // 4. Tự động xác định ý định CHỈNH SỬA LỊCH TRÌNH (Fast-path: Gọi thẳng /itinerary/edit khi có dấu hiệu sửa,
+      //    bỏ qua bước gọi trùng lặp /detect-intent vì /itinerary/edit đã tự kiểm tra intent và trả ANSWERED nếu là câu hỏi)
+      final activeTripId = _activeTripIdFromState();
+      if (activeTripId != null &&
+          state.tripPreview != null &&
+          !isCreateCmd &&
+          _looksLikePotentialEditRequest(trimmed)) {
+        await editSavedTrip(
+          tripId: activeTripId,
+          instruction: trimmed,
+        );
+        return;
+      }
+
+      // 5. Hỏi đáp AI siêu tốc qua SSE Streaming (/api/v1/rag/ask-stream) kết hợp phát giọng nói từng câu tức thì
+      final shouldSpeak = isVoiceMode || state.isTtsEnabled;
+      final streamHandled = await _askRagStream(
+        trimmed,
+        isVoiceMode: isVoiceMode,
+        shouldSpeak: shouldSpeak,
+        isCreateCmd: isCreateCmd,
+        isAffirmative: isAffirmative,
+        isRegenerateIntent: isRegenerateIntent,
+      );
+      if (streamHandled) {
+        return;
+      }
+
+      // Fallback sang /api/v1/rag/ask đồng bộ nếu stream không khả dụng
       final response = await _dio.post(
         '/api/v1/rag/ask',
         data: {
@@ -606,12 +968,22 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         final planningStatus = data['planning_status']?.toString();
         final isReady = data['is_ready_to_generate'] == true;
         final planningAction = data['planning_action']?.toString();
+        final planningCtx = data['planning_context'] as Map<String, dynamic>?;
+
+        bool isReadyFromCtx = _isReadyInContext(planningCtx);
+        bool hasDestAfterAsk = _hasDestinationInContext(planningCtx);
+        String? ctxTripId;
+        if (planningCtx != null) {
+          final tripMap = planningCtx['trip'] as Map<String, dynamic>?;
+          ctxTripId = tripMap?['trip_id']?.toString();
+        }
 
         log('rag_success', {
           'contentLength': content.length,
           'conversationId': convId,
           'planningStatus': planningStatus,
-          'isReady': isReady,
+          'isReady': isReady || isReadyFromCtx,
+          'hasDestAfterAsk': hasDestAfterAsk,
           'planningAction': planningAction,
         });
 
@@ -624,7 +996,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         TripPlanningState derivedPlanning = state.planningState;
         if (planningStatus == 'collecting_requirements') {
           derivedPlanning = TripPlanningState.collectingRequirements;
-        } else if (planningStatus == 'ready_to_generate' || isReady) {
+        } else if (planningStatus == 'ready_to_generate' ||
+            isReady ||
+            isReadyFromCtx ||
+            hasDestAfterAsk) {
           derivedPlanning = TripPlanningState.readyToGenerate;
         }
 
@@ -633,19 +1008,35 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           conversationId: convId,
           currentTranscript: content,
           planningState: derivedPlanning,
+          planningContext: planningCtx,
+          savedTripId: (ctxTripId != null && ctxTripId.isNotEmpty)
+              ? ctxTripId
+              : state.savedTripId,
         );
 
-        if (isVoiceMode || state.isTtsEnabled) {
-          await _playTts(content);
-        } else {
-          state = state.copyWith(voiceState: VoiceState.idle);
-        }
+        final shouldAutoGenerate = convId != null &&
+            (planningAction == 'TRIGGER_GENERATION' ||
+                ((isCreateCmd || isAffirmative || isRegenerateIntent) &&
+                    (derivedPlanning == TripPlanningState.readyToGenerate ||
+                        hasDestAfterAsk)));
 
-        // Orchestrate automatic generation or saving based on structured backend planning_action
-        if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
-          await generateItinerary(convId: convId);
-        } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
+        if (shouldAutoGenerate) {
+          // Tự động sinh lịch trình ngay và phát giọng đọc thông báo kết quả lịch trình
+          await generateItinerary(
+            convId: convId,
+            context: planningCtx,
+            userPrompt: trimmed,
+          );
+        } else if (planningAction == 'TRIGGER_SAVE' &&
+            state.tripPreview != null &&
+            convId != null) {
           await saveCurrentTrip(convId: convId);
+        } else {
+          if (isVoiceMode || state.isTtsEnabled) {
+            await _playTts(content);
+          } else {
+            state = state.copyWith(voiceState: VoiceState.idle);
+          }
         }
       } else {
         state = state.copyWith(
@@ -673,7 +1064,6 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       );
     } finally {
       _isCommitting = false;
-      // Allow a later identical utterance after this turn completes.
       Future<void>.delayed(const Duration(seconds: 2), () {
         if (_lastSubmittedTranscript == trimmed) {
           _lastSubmittedTranscript = null;
@@ -682,28 +1072,357 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
+  // ── SSE Streaming RAG + Realtime Sentence TTS Queue ─────────────────────
+
+  /// Gọi `/api/v1/rag/ask-stream` để stream từng token câu trả lời thời gian thực
+  /// và đẩy từng câu vào hàng đợi âm thanh (`StreamingTTSQueue`) ngay khi câu kết thúc.
+  Future<bool> _askRagStream(
+    String trimmed, {
+    required bool isVoiceMode,
+    required bool shouldSpeak,
+    required bool isCreateCmd,
+    required bool isAffirmative,
+    required bool isRegenerateIntent,
+  }) async {
+    try {
+      final response = await _dio.post<ResponseBody>(
+        '/api/v1/rag/ask-stream',
+        data: {
+          'message': trimmed,
+          if (state.conversationId != null)
+            'conversation_id': state.conversationId,
+          // Luôn gửi mode 'voice' trên luồng stream để backend bỏ qua bước contextualize LLM (tiết kiệm 2s)
+          'mode': 'voice',
+        },
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {'Accept': 'text/event-stream'},
+        ),
+      );
+
+      if (response.statusCode != 200 || response.data == null) {
+        return false;
+      }
+
+      if (shouldSpeak) {
+        prepareForTtsPlayback();
+        _audioService.initStreamingQueue(
+          onPlay: () {
+            if (!mounted) return;
+            log('tts_stream_playback_started');
+            state = state.copyWith(
+              voiceState: VoiceState.speaking,
+              error: null,
+            );
+          },
+          onEnded: () {
+            if (!mounted) return;
+            log('tts_stream_playback_finished');
+            if (state.planningState != TripPlanningState.generating &&
+                state.planningState != TripPlanningState.revising) {
+              state = state.copyWith(voiceState: VoiceState.idle);
+            }
+          },
+          onError: (err) {
+            if (!mounted) return;
+            log('tts_stream_playback_error', {'error': err});
+            if (state.planningState != TripPlanningState.generating &&
+                state.planningState != TripPlanningState.revising) {
+              state = state.copyWith(voiceState: VoiceState.idle);
+            }
+          },
+        );
+      }
+
+      final baseMessages = List<ChatMessage>.from(state.messages);
+      String accumulatedText = '';
+      String sentenceBuffer = '';
+      String sseBuffer = '';
+      int? convId = state.conversationId;
+      Map<String, dynamic>? planningCtx = state.planningContext;
+      bool enqueuedAnySentence = false;
+
+      final stream = response.data!.stream;
+      await for (final chunk in stream) {
+        if (!mounted) return true;
+        sseBuffer += utf8.decode(chunk, allowMalformed: true);
+
+        while (sseBuffer.contains('\n\n')) {
+          final splitIdx = sseBuffer.indexOf('\n\n');
+          final rawEvent = sseBuffer.substring(0, splitIdx).trim();
+          sseBuffer = sseBuffer.substring(splitIdx + 2);
+
+          if (!rawEvent.startsWith('data:')) continue;
+          final jsonStr = rawEvent.substring(5).trim();
+          if (jsonStr.isEmpty) continue;
+
+          Map<String, dynamic> eventData;
+          try {
+            eventData = jsonDecode(jsonStr) as Map<String, dynamic>;
+          } catch (_) {
+            continue;
+          }
+
+          final type = eventData['type']?.toString();
+          if (type == 'init') {
+            final initConvId = eventData['conversation_id'];
+            if (initConvId is int) {
+              convId = initConvId;
+              state = state.copyWith(conversationId: convId);
+            }
+          } else if (type == 'token') {
+            final token = eventData['token']?.toString() ?? '';
+            if (token.isEmpty) continue;
+
+            accumulatedText += token;
+            final streamingMsg = ChatMessage(
+              text: accumulatedText,
+              isUser: false,
+              timestamp: DateTime.now(),
+            );
+            state = state.copyWith(
+              messages: [...baseMessages, streamingMsg],
+              currentTranscript: accumulatedText,
+            );
+
+            if (shouldSpeak) {
+              sentenceBuffer += token;
+              final match =
+                  RegExp(r'^(.*?[.!?\n])(\s+|$)').firstMatch(sentenceBuffer);
+              if (match != null) {
+                final candidate = (match.group(1) ?? '').trim();
+                if (candidate.length >= 6) {
+                  final cleanedSentence = _cleanTextForTts(candidate);
+                  if (cleanedSentence.isNotEmpty) {
+                    enqueuedAnySentence = true;
+                    _audioService.enqueueSentence(
+                      baseUrl: ApiConfig.baseUrl,
+                      sentence: cleanedSentence,
+                      speed: '1.25',
+                    );
+                  }
+                  sentenceBuffer =
+                      sentenceBuffer.substring(match.group(0)!.length);
+                }
+              }
+            }
+          } else if (type == 'done') {
+            if (eventData['conversation_id'] is int) {
+              convId = eventData['conversation_id'] as int;
+            }
+            final doneContent = eventData['content']?.toString().trim();
+            if (doneContent != null && doneContent.isNotEmpty) {
+              accumulatedText = doneContent;
+            }
+            if (eventData['planning_context'] is Map<String, dynamic>) {
+              planningCtx =
+                  eventData['planning_context'] as Map<String, dynamic>;
+            }
+          } else if (type == 'error') {
+            throw Exception(
+                eventData['message']?.toString() ?? 'Lỗi tạo câu trả lời');
+          }
+        }
+      }
+
+      if (accumulatedText.trim().isEmpty) {
+        return false;
+      }
+
+      if (shouldSpeak && sentenceBuffer.trim().isNotEmpty) {
+        final cleanedTail = _cleanTextForTts(sentenceBuffer.trim());
+        if (cleanedTail.isNotEmpty) {
+          enqueuedAnySentence = true;
+          _audioService.enqueueSentence(
+            baseUrl: ApiConfig.baseUrl,
+            sentence: cleanedTail,
+            speed: '1.25',
+          );
+        }
+        sentenceBuffer = '';
+      }
+
+      final finalMsg = ChatMessage(
+        text: accumulatedText,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
+      final isReadyFromCtx = _isReadyInContext(planningCtx);
+      final hasDestAfterAsk = _hasDestinationInContext(planningCtx);
+      String? ctxTripId;
+      if (planningCtx != null) {
+        final tripMap = planningCtx['trip'] as Map<String, dynamic>?;
+        ctxTripId = tripMap?['trip_id']?.toString();
+      }
+
+      TripPlanningState derivedPlanning = state.planningState;
+      if (isReadyFromCtx || hasDestAfterAsk) {
+        derivedPlanning = TripPlanningState.readyToGenerate;
+      }
+
+      state = state.copyWith(
+        messages: [...baseMessages, finalMsg],
+        conversationId: convId,
+        currentTranscript: accumulatedText,
+        planningState: derivedPlanning,
+        planningContext: planningCtx,
+        savedTripId: (ctxTripId != null && ctxTripId.isNotEmpty)
+            ? ctxTripId
+            : state.savedTripId,
+      );
+
+      final shouldAutoGenerate = convId != null &&
+          (isCreateCmd || isAffirmative || isRegenerateIntent) &&
+          (derivedPlanning == TripPlanningState.readyToGenerate ||
+              hasDestAfterAsk);
+
+      if (shouldAutoGenerate) {
+        _audioService.stopTts();
+        await generateItinerary(
+          convId: convId,
+          context: planningCtx,
+          userPrompt: trimmed,
+        );
+      } else if (shouldSpeak) {
+        if (enqueuedAnySentence) {
+          _audioService.markStreamDone();
+        } else {
+          await _playTts(accumulatedText);
+        }
+      } else {
+        state = state.copyWith(voiceState: VoiceState.idle);
+      }
+
+      return true;
+    } catch (e) {
+      log('rag_stream_fallback', {'error': e.toString()});
+      return false;
+    }
+  }
+
   // ── Trip Planning Generation & Persistence ──────────────────────────────
 
-  Future<void> generateItinerary({int? convId}) async {
+  /// Validates planning context from backend before generating itinerary.
+  Future<void> requestGenerateItinerary({int? convId, String? userPrompt}) async {
     final cid = convId ?? state.conversationId;
-    if (cid == null) return;
+    if (cid == null) {
+      const warnMsg =
+          'Bạn hãy nói hoặc nhập điểm đến và thời gian chuyến đi (ví dụ: "Tạo lịch trình đi Đà Nẵng 3 ngày") để mình hỗ trợ tạo lịch trình nhé!';
+      final aiMsg = ChatMessage(
+        text: warnMsg,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      state = state.copyWith(
+        messages: [...state.messages, aiMsg],
+        currentTranscript: warnMsg,
+      );
+      if (state.isTtsEnabled) await _playTts(warnMsg);
+      return;
+    }
 
+    if (state.planningState == TripPlanningState.generating) return;
+
+    Map<String, dynamic>? ctx = state.planningContext;
+    try {
+      final serverCtx = await _tripRepo.getPlanningContext(cid);
+      if (serverCtx != null) {
+        ctx = serverCtx;
+      }
+    } catch (_) {}
+
+    if (ctx != null) {
+      final hasDest = _hasDestinationInContext(ctx);
+      final isReady = _isReadyInContext(ctx);
+
+      if (!hasDest && !isReady) {
+        const promptMsg =
+            'AI cần biết thêm điểm đến và số ngày cho chuyến đi của bạn (ví dụ: "Đà Nẵng 3 ngày"). Bạn hãy cung cấp thêm thông tin nhé!';
+        final aiMsg = ChatMessage(
+          text: promptMsg,
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+        state = state.copyWith(
+          messages: [...state.messages, aiMsg],
+          currentTranscript: promptMsg,
+          planningState: TripPlanningState.collectingRequirements,
+        );
+        if (state.isTtsEnabled) await _playTts(promptMsg);
+        return;
+      }
+    }
+
+    await generateItinerary(convId: cid, context: ctx, userPrompt: userPrompt);
+  }
+
+  Future<void> generateItinerary({
+    int? convId,
+    Map<String, dynamic>? context,
+    String? userPrompt,
+  }) async {
+    final cid = convId ?? state.conversationId;
+    if (cid == null && context == null) return;
+    if (state.planningState == TripPlanningState.generating) {
+      log('generate_itinerary_skipped_already_busy');
+      return;
+    }
+
+    final effectiveCtx = context ?? state.planningContext;
     log('generating_itinerary', {'conversationId': cid});
-    state = state.copyWith(planningState: TripPlanningState.generating, error: null);
+    state = state.copyWith(
+      planningState: TripPlanningState.generating,
+      voiceState: VoiceState.processing,
+      error: null,
+    );
 
     try {
-      final trip = await _tripRepo.generateItineraryPreview(conversationId: cid);
+      Trip trip;
+      final existingTripId = _activeTripIdFromState(effectiveCtx);
+
+      if (existingTripId != null && existingTripId.isNotEmpty) {
+        final generated = await _tripRepo.generateItineraryForTrip(
+          existingTripId,
+          userPrompt: userPrompt,
+          saveToDb: true,
+        );
+        if (generated != null) {
+          trip = generated;
+        } else {
+          trip = await _tripRepo.generateItineraryPreview(
+            conversationId: cid ?? 0,
+            context: effectiveCtx,
+            userPrompt: userPrompt,
+          );
+        }
+      } else {
+        trip = await _tripRepo.generateItineraryPreview(
+          conversationId: cid ?? 0,
+          context: effectiveCtx,
+          userPrompt: userPrompt,
+        );
+      }
+
+      _ref.invalidate(tripsListProvider);
+      if (trip.id.isNotEmpty) {
+        _ref.invalidate(tripDetailProvider(trip.id));
+      }
+
       state = state.copyWith(
         planningState: TripPlanningState.previewReady,
         tripPreview: trip,
+        savedTripId: trip.id.isNotEmpty ? trip.id : state.savedTripId,
       );
       _ref.read(currentTripPreviewProvider.notifier).state = trip;
 
-      const previewMsg = 'Mình đã tạo xong lịch trình xem trước cho bạn với các địa điểm thực tế từ hệ thống! Bạn có thể xem trên bản đồ hoặc bấm Lưu chuyến đi.';
+      final previewMsg =
+          'Mình đã hoàn thành lịch trình ${trip.title} (${trip.daysCount} ngày, ${trip.totalStops} địa điểm)! Bạn có thể xem chi tiết ngay bên dưới hoặc nói yêu cầu để mình chỉnh sửa lịch trình nhé.';
       final aiMsg = ChatMessage(
         text: previewMsg,
         isUser: false,
         timestamp: DateTime.now(),
+        tripItinerary: trip,
       );
       state = state.copyWith(
         messages: [...state.messages, aiMsg],
@@ -712,11 +1431,14 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       if (state.isTtsEnabled) {
         await _playTts(previewMsg);
+      } else {
+        state = state.copyWith(voiceState: VoiceState.idle);
       }
     } catch (e) {
       log('generate_itinerary_error', {'error': e.toString()});
       state = state.copyWith(
         planningState: TripPlanningState.error,
+        voiceState: VoiceState.idle,
         error: 'Không thể tạo lịch trình: $e',
       );
     }
@@ -737,17 +1459,26 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       // Invalidate tripsListProvider to trigger immediate refresh of trips history
       _ref.invalidate(tripsListProvider);
+      if (savedId.isNotEmpty) {
+        _ref.invalidate(tripDetailProvider(savedId));
+      }
+
+      final updatedPreview =
+          state.tripPreview!.copyWith(id: savedId, status: 'CONFIRMED');
 
       state = state.copyWith(
         planningState: TripPlanningState.saved,
         savedTripId: savedId,
+        tripPreview: updatedPreview,
       );
 
-      const savedMsg = 'Chuyến đi của bạn đã được lưu thành công vào cơ sở dữ liệu! Bạn có thể xem lại bất cứ lúc nào trong mục Chuyến đi.';
+      const savedMsg =
+          'Chuyến đi của bạn đã được lưu thành công vào cơ sở dữ liệu! Bạn có thể xem lại bất cứ lúc nào trong mục Chuyến đi.';
       final aiMsg = ChatMessage(
         text: savedMsg,
         isUser: false,
         timestamp: DateTime.now(),
+        tripItinerary: updatedPreview,
       );
       state = state.copyWith(
         messages: [...state.messages, aiMsg],
@@ -769,30 +1500,76 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   Future<void> editSavedTrip({
     required String tripId,
     required String instruction,
+    int? targetDay,
   }) async {
     log('editing_trip', {'tripId': tripId, 'instruction': instruction});
-    state = state.copyWith(planningState: TripPlanningState.revising, error: null);
+    state = state.copyWith(
+      planningState: TripPlanningState.revising,
+      voiceState: VoiceState.processing,
+      error: null,
+    );
 
     try {
-      final updatedTrip = await _tripRepo.editItinerary(
+      final serverRes = await _tripRepo.editItineraryRaw(
         tripId: tripId,
         instruction: instruction,
+        targetDay: targetDay,
       );
 
-      if (updatedTrip != null) {
+      if (serverRes != null) {
+        final statusStr = serverRes['status']?.toString();
+        final serverMsg = serverRes['message']?.toString();
+        final itineraryData = serverRes['itinerary'] is Map<String, dynamic>
+            ? serverRes['itinerary'] as Map<String, dynamic>
+            : serverRes;
+
+        if (statusStr == 'ANSWERED') {
+          // LLM & RAG nhận định đây là câu hỏi tham khảo và trả lời trực tiếp
+          final answerMsg =
+              serverMsg ?? 'Lịch trình hiện tại vẫn được giữ nguyên.';
+          final aiMsg = ChatMessage(
+            text: answerMsg,
+            isUser: false,
+            timestamp: DateTime.now(),
+            tripItinerary: state.tripPreview,
+          );
+          state = state.copyWith(
+            planningState: state.savedTripId != null
+                ? TripPlanningState.saved
+                : TripPlanningState.previewReady,
+            messages: [...state.messages, aiMsg],
+            currentTranscript: answerMsg,
+          );
+          if (state.isTtsEnabled) {
+            await _playTts(answerMsg);
+          } else {
+            state = state.copyWith(voiceState: VoiceState.idle);
+          }
+          return;
+        }
+
+        final updatedTrip = Trip.fromJson(itineraryData);
+        final resolvedTrip = updatedTrip.id.isNotEmpty
+            ? updatedTrip
+            : updatedTrip.copyWith(id: tripId);
+
         _ref.invalidate(tripsListProvider);
         _ref.invalidate(tripDetailProvider(tripId));
+        _ref.read(currentTripPreviewProvider.notifier).state = resolvedTrip;
 
         state = state.copyWith(
-          planningState: TripPlanningState.saved,
-          tripPreview: updatedTrip,
+          planningState: TripPlanningState.previewReady,
+          tripPreview: resolvedTrip,
+          savedTripId: tripId,
         );
 
-        final editMsg = 'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
+        final editMsg = serverMsg ??
+            'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
         final aiMsg = ChatMessage(
           text: editMsg,
           isUser: false,
           timestamp: DateTime.now(),
+          tripItinerary: resolvedTrip,
         );
         state = state.copyWith(
           messages: [...state.messages, aiMsg],
@@ -801,18 +1578,46 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
         if (state.isTtsEnabled) {
           await _playTts(editMsg);
+        } else {
+          state = state.copyWith(voiceState: VoiceState.idle);
         }
+      } else {
+        state = state.copyWith(
+          planningState: TripPlanningState.previewReady,
+          voiceState: VoiceState.idle,
+        );
       }
     } catch (e) {
       log('edit_trip_error', {'error': e.toString()});
       state = state.copyWith(
         planningState: TripPlanningState.error,
+        voiceState: VoiceState.idle,
         error: 'Không thể chỉnh sửa lịch trình: $e',
       );
     }
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────
+
+  List<String> _splitSentencesForTts(String cleaned) {
+    if (cleaned.isEmpty) return const [];
+    final rawParts = cleaned.split(RegExp(r'(?<=[.!?\n])\s+'));
+    final sentences = <String>[];
+    String current = '';
+
+    for (final part in rawParts) {
+      final p = part.trim();
+      if (p.isEmpty) continue;
+      if (current.isNotEmpty && (current.length + p.length) < 55) {
+        current = '$current $p';
+      } else {
+        if (current.isNotEmpty) sentences.add(current);
+        current = p;
+      }
+    }
+    if (current.isNotEmpty) sentences.add(current);
+    return sentences.isNotEmpty ? sentences : [cleaned];
+  }
 
   Future<void> _playTts(String text) async {
     if (!mounted) return;
@@ -823,59 +1628,46 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       return;
     }
 
-    log('tts_request', {'textLength': cleanText.length});
+    final sentences = _splitSentencesForTts(cleanText);
+    log('tts_request', {
+      'textLength': cleanText.length,
+      'sentenceCount': sentences.length,
+    });
 
     try {
-      final response = await _dio.post(
-        '/api/v1/tts',
-        data: {
-          'text': cleanText,
-          'speaker_id': 'HN-Nam-1-BL',
-          'speed': '1',
+      _audioService.initStreamingQueue(
+        onPlay: () {
+          if (!mounted) return;
+          log('tts_playback_started');
+          state = state.copyWith(
+            voiceState: VoiceState.speaking,
+            error: null,
+          );
         },
-        options: Options(responseType: ResponseType.bytes),
+        onEnded: () {
+          if (!mounted) return;
+          log('tts_playback_finished');
+          state = state.copyWith(voiceState: VoiceState.idle);
+        },
+        onError: (err) {
+          if (!mounted) return;
+          log('tts_playback_error', {'error': err});
+          state = state.copyWith(
+            voiceState: VoiceState.idle,
+            error: 'Không thể phát audio: $err',
+          );
+        },
       );
 
-      if (!mounted) return;
-
-      final contentType = response.headers.value('content-type');
-      final bytes = response.data as Uint8List;
-      log('tts_response', {
-        'statusCode': response.statusCode,
-        'contentType': contentType,
-        'bytes': bytes.length,
-      });
-
-      if (response.statusCode == 200 && bytes.isNotEmpty) {
-        state = state.copyWith(lastAudioBytes: bytes);
-
-        _audioService.playWavBytes(
-          bytes,
-          onPlay: () {
-            if (!mounted) return;
-            log('tts_playback_started');
-            state = state.copyWith(
-              voiceState: VoiceState.speaking,
-              error: null,
-            );
-          },
-          onEnded: () {
-            if (!mounted) return;
-            log('tts_playback_finished');
-            state = state.copyWith(voiceState: VoiceState.idle);
-          },
-          onError: (err) {
-            if (!mounted) return;
-            log('tts_playback_error', {'error': err});
-            state = state.copyWith(
-              voiceState: VoiceState.idle,
-              error: 'Không thể phát audio: $err',
-            );
-          },
+      for (final sentence in sentences) {
+        _audioService.enqueueSentence(
+          baseUrl: ApiConfig.baseUrl,
+          sentence: sentence,
+          speed: '1.25',
+          speakerId: 'HN-Nam-1-BL',
         );
-      } else {
-        state = state.copyWith(voiceState: VoiceState.idle);
       }
+      _audioService.markStreamDone();
     } catch (e) {
       log('tts_exception', {'error': e.toString()});
       if (mounted) {

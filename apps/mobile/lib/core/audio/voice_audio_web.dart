@@ -4,6 +4,60 @@ import 'dart:js_util' as js_util;
 import 'dart:typed_data';
 
 class VoiceAudioService {
+  void initStreamingQueue({
+    void Function()? onPlay,
+    void Function()? onEnded,
+    void Function(String err)? onError,
+  }) {
+    try {
+      final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (twAudio == null) return;
+
+      final onPlayJs = js_util.allowInterop(() {
+        if (onPlay != null) onPlay();
+      });
+      final onEndedJs = js_util.allowInterop(() {
+        if (onEnded != null) onEnded();
+      });
+      final onErrorJs = js_util.allowInterop((err) {
+        if (onError != null) onError(err?.toString() ?? 'Lỗi phát stream TTS');
+      });
+
+      js_util.callMethod(twAudio, 'initStreamingQueue', [
+        onPlayJs,
+        onEndedJs,
+        onErrorJs,
+      ]);
+    } catch (_) {}
+  }
+
+  void enqueueSentence({
+    required String baseUrl,
+    required String sentence,
+    String speed = '1.25',
+    String speakerId = 'HN-Nam-1-BL',
+  }) {
+    try {
+      final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (twAudio == null) return;
+      js_util.callMethod(twAudio, 'enqueueSentence', [
+        baseUrl,
+        sentence,
+        speed,
+        speakerId,
+      ]);
+    } catch (_) {}
+  }
+
+  void markStreamDone() {
+    try {
+      final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (twAudio != null) {
+        js_util.callMethod(twAudio, 'markStreamDone', []);
+      }
+    } catch (_) {}
+  }
+
   void playWavBytes(
     Uint8List bytes, {
     void Function()? onPlay,
