@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../domain/entities/user.dart';
 import '../../domain/usecases/get_current_user_usecase.dart';
 import '../../domain/usecases/login_usecase.dart';
+import '../../domain/usecases/logout_usecase.dart';
 import '../../domain/usecases/register_usecase.dart';
 import '../../auth_di.dart';
 import 'auth_state.dart';
@@ -11,21 +13,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final LoginUseCase _loginUseCase;
   final RegisterUseCase _registerUseCase;
   final GetCurrentUserUseCase _getCurrentUserUseCase;
+  final LogoutUseCase _logoutUseCase;
 
   AuthNotifier({
     required LoginUseCase loginUseCase,
     required RegisterUseCase registerUseCase,
     required GetCurrentUserUseCase getCurrentUserUseCase,
-  })  : _loginUseCase = loginUseCase,
-        _registerUseCase = registerUseCase,
-        _getCurrentUserUseCase = getCurrentUserUseCase,
-        super(const AuthInitial());
+    required LogoutUseCase logoutUseCase,
+  }) : _loginUseCase = loginUseCase,
+       _registerUseCase = registerUseCase,
+       _getCurrentUserUseCase = getCurrentUserUseCase,
+       _logoutUseCase = logoutUseCase,
+       super(const AuthInitial());
 
   /// Performs login, saves token (handled by repo), then fetches user profile.
-  Future<void> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> login({required String email, required String password}) async {
     state = const AuthLoading();
 
     final result = await _loginUseCase(email: email, password: password);
@@ -66,6 +68,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
+  /// Logs out the user, clears credentials, and resets state.
+  Future<void> logout() async {
+    state = const AuthLoading();
+    final result = await _logoutUseCase();
+    result.fold(
+      (failure) => state = AuthError(failure.message),
+      (_) => state = const AuthInitial(),
+    );
+  }
+
+  /// Updates the authenticated user in state.
+  void updateUser(User updatedUser) {
+    if (state is AuthAuthenticated) {
+      state = AuthAuthenticated(updatedUser);
+    }
+  }
+
   /// Resets state to initial (e.g., after showing an error snackbar).
   void resetState() {
     state = const AuthInitial();
@@ -78,5 +97,6 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     loginUseCase: ref.watch(loginUseCaseProvider),
     registerUseCase: ref.watch(registerUseCaseProvider),
     getCurrentUserUseCase: ref.watch(getCurrentUserUseCaseProvider),
+    logoutUseCase: ref.watch(logoutUseCaseProvider),
   );
 });
