@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../shared/widgets/main_shell.dart';
 
 class HeaderBar extends StatelessWidget {
   const HeaderBar({super.key});
@@ -23,12 +24,15 @@ class HeaderBar extends StatelessWidget {
             ],
           ),
           Row(
-            children: const [
-              Icon(Icons.notifications_none, color: AppColors.textPrimary),
-              SizedBox(width: AppSpacing.md),
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: NetworkImage('https://i.pravatar.cc/100'),
+            children: [
+              const Icon(Icons.notifications_none, color: AppColors.textPrimary),
+              const SizedBox(width: AppSpacing.md),
+              GestureDetector(
+                onTap: () => MainShell.switchToTab(context, 4),
+                child: const CircleAvatar(
+                  radius: 16,
+                  backgroundImage: NetworkImage('https://i.pravatar.cc/100'),
+                ),
               ),
             ],
           ),

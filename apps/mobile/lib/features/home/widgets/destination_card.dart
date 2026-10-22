@@ -65,10 +65,17 @@ class _DestinationCardState extends State<DestinationCard> with SingleTickerProv
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
                     child: Image.network(
-                      'https://images.unsplash.com/photo-1555921015-c262060f0c0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', // Da Nang bridge
+                      'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', // Da Nang bridge
                       height: 160,
                       width: double.infinity,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 160,
+                        width: double.infinity,
+                        color: AppColors.surfaceContainerHigh,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_outlined, color: AppColors.textSecondary, size: 32),
+                      ),
                     ),
                   ),
                   Positioned(

@@ -52,6 +52,13 @@ class TripListCard extends StatelessWidget {
             height: 160,
             width: double.infinity,
             fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              height: 160,
+              width: double.infinity,
+              color: AppColors.surfaceContainerHigh,
+              alignment: Alignment.center,
+              child: const Icon(Icons.image_outlined, color: AppColors.textSecondary, size: 32),
+            ),
           ),
         ),
         Positioned.fill(

@@ -1,4 +1,4 @@
-﻿
+
 import 'trip_model.dart';
 
 final List<Trip> mockTripsList = [
@@ -55,7 +55,7 @@ final List<Trip> mockTripsList = [
     distanceKm: 25.0,
     estimatedBudget: '3.5M',
     optimized: false,
-    coverImage: 'https://images.unsplash.com/photo-1626587979672-0050e828d506',
+    coverImage: 'https://images.unsplash.com/photo-1509030450996-dd1a26dda07a?auto=format&fit=crop&w=1000&q=80',
     days: [],
     status: 'draft',
     category: 'Săn mây & Cafe',
