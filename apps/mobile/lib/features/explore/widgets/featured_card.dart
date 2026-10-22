@@ -31,6 +31,13 @@ class FeaturedCard extends StatelessWidget {
                   height: 180,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 180,
+                    width: double.infinity,
+                    color: AppColors.surfaceContainerHigh,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.image_outlined, color: AppColors.textSecondary, size: 32),
+                  ),
                 ),
               ),
               Positioned(

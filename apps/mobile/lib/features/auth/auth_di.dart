@@ -8,6 +8,8 @@ import 'domain/usecases/get_current_user_usecase.dart';
 import 'domain/usecases/login_usecase.dart';
 import 'domain/usecases/register_usecase.dart';
 
+import 'domain/usecases/logout_usecase.dart';
+
 // ─── Core Providers ───────────────────────────────────────────────
 
 final secureStorageProvider = Provider<SecureStorageService>((ref) {
@@ -47,4 +49,8 @@ final registerUseCaseProvider = Provider<RegisterUseCase>((ref) {
 
 final getCurrentUserUseCaseProvider = Provider<GetCurrentUserUseCase>((ref) {
   return GetCurrentUserUseCase(ref.watch(authRepositoryProvider));
+});
+
+final logoutUseCaseProvider = Provider<LogoutUseCase>((ref) {
+  return LogoutUseCase(ref.watch(authRepositoryProvider));
 });

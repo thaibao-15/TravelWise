@@ -26,6 +26,13 @@ class NearbyCard extends StatelessWidget {
               width: 80,
               height: 80,
               fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 80,
+                height: 80,
+                color: AppColors.surfaceContainerHigh,
+                alignment: Alignment.center,
+                child: const Icon(Icons.restaurant, color: AppColors.textSecondary, size: 24),
+              ),
             ),
           ),
           const SizedBox(width: AppSpacing.md),
