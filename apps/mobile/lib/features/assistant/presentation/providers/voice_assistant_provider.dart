@@ -183,6 +183,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   final List<String> _finalSegments = [];
   String _partialSegment = '';
 
+  /// Flag indicating if TTS playback has been stopped/cancelled by the user.
+  bool _ttsCancelled = false;
+
   VoiceAssistantNotifier(
     this._ref, {
     VoiceAudioService? audioService,
@@ -249,6 +252,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   void toggleRecording() {
+    if (state.voiceState == VoiceState.speaking) {
+      log('user_toggle_recording_stop_speech');
+      stopAudio();
+      return;
+    }
     if (_listeningTurnActive ||
         state.isRecording ||
         state.voiceState == VoiceState.connecting ||
@@ -263,8 +271,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
       if (_isCommitting ||
           state.voiceState == VoiceState.thinking ||
-          state.voiceState == VoiceState.processing ||
-          state.voiceState == VoiceState.speaking) {
+          state.voiceState == VoiceState.processing) {
         log('record_blocked_busy', {'voiceState': state.voiceState.name});
         return;
       }
@@ -275,6 +282,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   void stopAudio() {
     log('tts_stop');
+    _ttsCancelled = true;
     _audioService.stopTts();
     if (state.voiceState == VoiceState.speaking) {
       state = state.copyWith(voiceState: VoiceState.idle);
@@ -285,6 +293,23 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     state = state.copyWith(
       planningState: TripPlanningState.idle,
       clearTripPreview: true,
+    );
+  }
+
+  /// Clears the chat conversation history and planning state.
+  void clearConversation() {
+    log('chat_clear_conversation');
+    stopAudio();
+    _abortListening();
+    state = state.copyWith(
+      messages: [],
+      currentTranscript: '',
+      planningState: TripPlanningState.idle,
+      clearTripPreview: true,
+      planningContext: null,
+      planningContextSummary: null,
+      voiceState: VoiceState.idle,
+      isRecording: false,
     );
   }
 
@@ -299,6 +324,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   /// Must run before any TTS playback so the AI never hears itself.
   void prepareForTtsPlayback() {
+    _ttsCancelled = false;
     if (_listeningTurnActive || state.isRecording) {
       log('stt_suspended_for_tts');
       _abortListening();
@@ -1109,6 +1135,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         _audioService.initStreamingQueue(
           onPlay: () {
             if (!mounted) return;
+            if (_ttsCancelled) {
+              _audioService.stopTts();
+              return;
+            }
             log('tts_stream_playback_started');
             state = state.copyWith(
               voiceState: VoiceState.speaking,
@@ -1185,7 +1215,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
               currentTranscript: accumulatedText,
             );
 
-            if (shouldSpeak) {
+            if (shouldSpeak && !_ttsCancelled) {
               sentenceBuffer += token;
               final match =
                   RegExp(r'^(.*?[.!?\n])(\s+|$)').firstMatch(sentenceBuffer);
@@ -1193,7 +1223,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
                 final candidate = (match.group(1) ?? '').trim();
                 if (candidate.length >= 6) {
                   final cleanedSentence = _cleanTextForTts(candidate);
-                  if (cleanedSentence.isNotEmpty) {
+                  if (cleanedSentence.isNotEmpty && !_ttsCancelled) {
                     enqueuedAnySentence = true;
                     _audioService.enqueueSentence(
                       baseUrl: ApiConfig.baseUrl,
@@ -1229,7 +1259,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         return false;
       }
 
-      if (shouldSpeak && sentenceBuffer.trim().isNotEmpty) {
+      if (shouldSpeak && !_ttsCancelled && sentenceBuffer.trim().isNotEmpty) {
         final cleanedTail = _cleanTextForTts(sentenceBuffer.trim());
         if (cleanedTail.isNotEmpty) {
           enqueuedAnySentence = true;
@@ -1284,7 +1314,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           context: planningCtx,
           userPrompt: trimmed,
         );
-      } else if (shouldSpeak) {
+      } else if (shouldSpeak && !_ttsCancelled) {
         if (enqueuedAnySentence) {
           _audioService.markStreamDone();
         } else {
@@ -1620,7 +1650,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   Future<void> _playTts(String text) async {
-    if (!mounted) return;
+    if (!mounted || _ttsCancelled) return;
+    if (state.isMuted || !state.isTtsEnabled) {
+      state = state.copyWith(voiceState: VoiceState.idle);
+      return;
+    }
     prepareForTtsPlayback();
     final cleanText = _cleanTextForTts(text);
     if (cleanText.isEmpty) {
@@ -1638,6 +1672,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       _audioService.initStreamingQueue(
         onPlay: () {
           if (!mounted) return;
+          if (_ttsCancelled) {
+            _audioService.stopTts();
+            return;
+          }
           log('tts_playback_started');
           state = state.copyWith(
             voiceState: VoiceState.speaking,
@@ -1660,6 +1698,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       );
 
       for (final sentence in sentences) {
+        if (_ttsCancelled) break;
         _audioService.enqueueSentence(
           baseUrl: ApiConfig.baseUrl,
           sentence: sentence,
@@ -1667,7 +1706,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           speakerId: 'HN-Nam-1-BL',
         );
       }
-      _audioService.markStreamDone();
+      if (!_ttsCancelled) {
+        _audioService.markStreamDone();
+      }
     } catch (e) {
       log('tts_exception', {'error': e.toString()});
       if (mounted) {

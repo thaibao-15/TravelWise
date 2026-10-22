@@ -95,7 +95,7 @@ class _VoiceOrbState extends State<VoiceOrb>
       case VoiceState.thinking:
         return '◌ Đang xử lý';
       case VoiceState.speaking:
-        return '▷ Đang nói';
+        return '■ Chạm để dừng';
       case VoiceState.error:
         return '⚠ Lỗi';
     }
