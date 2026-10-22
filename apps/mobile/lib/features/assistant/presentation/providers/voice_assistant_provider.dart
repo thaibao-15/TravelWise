@@ -296,6 +296,23 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     );
   }
 
+  /// Clears the chat conversation history and planning state.
+  void clearConversation() {
+    log('chat_clear_conversation');
+    stopAudio();
+    _abortListening();
+    state = state.copyWith(
+      messages: [],
+      currentTranscript: '',
+      planningState: TripPlanningState.idle,
+      clearTripPreview: true,
+      planningContext: null,
+      planningContextSummary: null,
+      voiceState: VoiceState.idle,
+      isRecording: false,
+    );
+  }
+
   /// Cancels an active listening turn without submitting (e.g. user left the
   /// assistant tab).
   void cancelListening() {
