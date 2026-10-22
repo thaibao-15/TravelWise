@@ -33,6 +33,17 @@ export default function NewTripPage() {
     setIsSubmitting(true);
     setError(null);
     try {
+      const currentLocation = await new Promise<{ latitude: number; longitude: number } | undefined>((resolve) => {
+        if (!navigator.geolocation) {
+          resolve(undefined);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+          () => resolve(undefined),
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 },
+        );
+      });
       const trip = await createTrip({
         ...form,
         name: form.name?.trim() || undefined,
@@ -44,7 +55,7 @@ export default function NewTripPage() {
 
       await apiFetch(`/api/v1/trips/${trip.id}/itinerary/generate`, {
         method: "POST",
-        body: JSON.stringify({ save_to_db: true }),
+        body: JSON.stringify({ save_to_db: true, current_location: currentLocation }),
       });
       router.push(`/trips/${trip.id}`);
     } catch (err) {

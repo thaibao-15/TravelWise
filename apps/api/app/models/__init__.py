@@ -25,6 +25,8 @@ from app.models.message import Message
 from app.models.trip import Trip
 from app.models.trip_preference import TripPreference
 from app.models.ai_context import AIContext
+from app.models.conversation_summary import ConversationSummary
+from app.models.user_profile import UserProfile
 from app.models.itinerary_day import ItineraryDay
 from app.models.itinerary_activity import ItineraryActivity
 
@@ -42,7 +44,8 @@ __all__ = [
     "Trip",
     "TripPreference",
     "AIContext",
+    "ConversationSummary",
+    "UserProfile",
     "ItineraryDay",
     "ItineraryActivity",
 ]
-

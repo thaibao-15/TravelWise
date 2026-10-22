@@ -157,10 +157,11 @@ class _LoginFormState extends State<LoginForm> {
             ),
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).pushReplacement(
+                Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(
                     builder: (context) => MainShell(key: MainShell.shellKey),
                   ),
+                  (route) => false,
                 );
               },
               style: ElevatedButton.styleFrom(

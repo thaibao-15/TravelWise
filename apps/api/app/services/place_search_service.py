@@ -246,9 +246,10 @@ class PlaceSearchService:
         target_destinations.extend(additional_destinations)
 
         if not target_destinations:
-            warnings.append(
-                "Chuyến đi chưa có điểm đến cụ thể; kết quả tìm kiếm không bị giới hạn theo khu vực."
-            )
+            if reference_lat is not None and reference_lon is not None:
+                warnings.append("Đang ưu tiên các địa điểm trong bán kính 50 km từ vị trí hiện tại.")
+            else:
+                warnings.append("Chuyến đi chưa có điểm đến cụ thể; kết quả tìm kiếm không bị giới hạn theo khu vực.")
 
         # 2. Query all active places with eager-loaded relations
         statement = (
@@ -352,6 +353,17 @@ class PlaceSearchService:
             cat_name_norm = remove_accents(cat_name or "")
 
             is_must_visit = place.id in resolved_must_visit_ids
+
+            if (
+                not target_destinations
+                and reference_lat is not None
+                and reference_lon is not None
+                and place.latitude is not None
+                and place.longitude is not None
+                and haversine_distance(reference_lat, reference_lon, place.latitude, place.longitude) > 50
+                and not is_must_visit
+            ):
+                continue
 
             # HARD FILTER: Excluded places by name
             if not is_must_visit and any(

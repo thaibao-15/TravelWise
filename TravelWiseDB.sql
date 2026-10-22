@@ -28,6 +28,46 @@ CREATE TABLE users (
     updated_at DATETIME DEFAULT GETDATE()
 );
 
+CREATE TABLE user_profiles (
+    id BIGINT IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+
+    -- Thông tin cá nhân
+    phone NVARCHAR(20),
+    date_of_birth DATE,
+    gender NVARCHAR(20),
+    nationality NVARCHAR(100),
+    preferred_language NVARCHAR(10) DEFAULT 'vi',
+
+    -- Sở thích du lịch
+    travel_style NVARCHAR(50),
+    favorite_categories NVARCHAR(MAX),
+    interests NVARCHAR(MAX),
+
+    -- Ngân sách và di chuyển
+    budget_min DECIMAL(12, 2),
+    budget_max DECIMAL(12, 2),
+    currency NVARCHAR(10) DEFAULT 'VND',
+    preferred_transport NVARCHAR(50),
+
+    -- Nhu cầu du lịch
+    accommodation_type NVARCHAR(50),
+    dietary_preferences NVARCHAR(MAX),
+    accessibility_needs NVARCHAR(MAX),
+
+    -- Cá nhân hóa AI
+    preferred_travel_pace NVARCHAR(30),
+    additional_preferences NVARCHAR(MAX),
+
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+
+    CONSTRAINT FK_user_profiles_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
 -- =========================================
 -- CATEGORIES
 -- =========================================
@@ -167,12 +207,54 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id);
 -- =========================================
 -- AI CONTEXT (MEMORY)
 -- =========================================
-CREATE TABLE ai_context (
-    id BIGINT IDENTITY PRIMARY KEY,
-    conversation_id BIGINT,
-    summary NVARCHAR(MAX),
-    updated_at DATETIME DEFAULT GETDATE(),
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+CREATE TABLE user_memories (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+
+    memory_type NVARCHAR(50) NOT NULL,
+    content NVARCHAR(MAX) NOT NULL,
+
+    importance FLOAT DEFAULT 0.5,
+
+    source_conversation_id BIGINT NULL,
+    source_message_id BIGINT NULL,
+
+    created_at DATETIME2 DEFAULT SYSDATETIME(),
+    updated_at DATETIME2 DEFAULT SYSDATETIME(),
+    last_accessed_at DATETIME2 NULL,
+
+    is_active BIT DEFAULT 1,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (source_conversation_id)
+        REFERENCES conversations(id) ON DELETE NO ACTION,
+
+    FOREIGN KEY (source_message_id)
+        REFERENCES messages(id) ON DELETE NO ACTION
+);
+
+CREATE INDEX IX_user_memories_user_type
+ON user_memories(user_id, memory_type, is_active);
+
+CREATE TABLE conversation_summaries (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    conversation_id BIGINT NOT NULL,
+
+    summary NVARCHAR(MAX) NOT NULL,
+    last_summarized_message_id BIGINT NULL,
+
+    updated_at DATETIME2 DEFAULT SYSDATETIME(),
+
+    FOREIGN KEY (conversation_id)
+        REFERENCES conversations(id) ON DELETE CASCADE,
+
+    FOREIGN KEY (last_summarized_message_id)
+        REFERENCES messages(id) ON DELETE NO ACTION,
+
+    CONSTRAINT UQ_conversation_summaries_conversation
+        UNIQUE (conversation_id)
 );
 
 -- =========================================
@@ -4371,3 +4453,4 @@ select * from trip_items
 select * from trip_preferences 
 select * from itinerary_days 
 select * from itinerary_activities 
+select * from conversation_summaries 

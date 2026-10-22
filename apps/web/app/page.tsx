@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import TodayWeatherCard from "@/components/weather/TodayWeatherCard";
 
 export default function Home() {
   const router = useRouter();
@@ -155,6 +156,8 @@ export default function Home() {
 
       {/* Hero Section */}
       <main className="flex-1">
+        <TodayWeatherCard />
+
         <section className="pt-16 pb-20 px-4 max-w-5xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded-full bg-slate-900 border border-teal-500/30 text-teal-300 text-xs font-medium shadow-inner shadow-teal-500/10">

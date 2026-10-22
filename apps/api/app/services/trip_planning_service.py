@@ -468,8 +468,10 @@ class TripPlanningContextExtractionService:
             known_items.append(f"Thời gian: từ {context.trip.dates.start_date} đến {context.trip.dates.end_date}")
         if context.trip.travelers.adults:
             known_items.append(f"Số người lớn: {context.trip.travelers.adults}")
-        if context.trip.travelers.group_type and context.trip.travelers.group_type != GroupTypeEnum.UNKNOWN:
-            known_items.append(f"Nhóm: {context.trip.travelers.group_type.value}")
+        group_type = context.trip.travelers.group_type
+        if group_type and group_type != GroupTypeEnum.UNKNOWN and group_type != "UNKNOWN":
+            group_val = getattr(group_type, "value", str(group_type))
+            known_items.append(f"Nhóm: {group_val}")
         if context.budget.total:
             known_items.append(f"Ngân sách: {context.budget.total:,.0f} {context.budget.currency}")
         if context.preferences.interests:

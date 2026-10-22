@@ -163,10 +163,13 @@ export default function TripDetailPage() {
         return;
       }
 
+      // Thứ tự marker phải bắt đầu lại từ 1 cho từng ngày, không dùng
+      // order_index toàn itinerary vì giá trị đó có thể bị nhảy giữa các ngày.
+      let dayMapOrder = 0;
       (day.activities || []).forEach((act) => {
         // Chỉ thêm marker nếu có tọa độ hợp lệ
         if (isValidCoordinate(act.latitude, act.longitude)) {
-          const orderNum = act.order_index ?? act.activity_order ?? 1;
+          dayMapOrder += 1;
           list.push({
             id: act.id, // Dùng ID hoạt động duy nhất để phân biệt cả khi trùng place_id
             name: act.place_name || act.title || "Địa điểm tham quan",
@@ -174,10 +177,14 @@ export default function TripDetailPage() {
             address: act.place_address,
             latitude: act.latitude,
             longitude: act.longitude,
-            order: orderNum,
+            image_url: act.image_url ?? act.place?.image_url,
+            order: dayMapOrder,
             day_number: day.day_number,
             time: act.time_slot,
-            badge_label: filterDay === "all" ? `N${day.day_number}-${orderNum}` : `${orderNum}`,
+            badge_label:
+              filterDay === "all"
+                ? `N${day.day_number}-${dayMapOrder}`
+                : `${dayMapOrder}`,
           });
         }
       });

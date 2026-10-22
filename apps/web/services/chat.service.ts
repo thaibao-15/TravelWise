@@ -9,12 +9,14 @@ export const chatService = {
   async askAI(
     query: string,
     conversationId?: number | null,
-    mode?: "chat" | "voice"
+    mode?: "chat" | "voice",
+    currentLocation?: { latitude: number; longitude: number }
   ): Promise<ChatAskResponse> {
     const payload: ChatAskRequest = {
       message: query,
       conversation_id: conversationId || undefined,
       mode: mode || "chat",
+      current_location: currentLocation,
     };
 
     return await apiFetch<ChatAskResponse>(AI_ENDPOINTS.ASK, {
@@ -30,6 +32,7 @@ export const chatService = {
     query: string,
     conversationId: number | null | undefined,
     mode: "chat" | "voice" = "chat",
+    currentLocation: { latitude: number; longitude: number } | undefined,
     callbacks: {
       onToken: (token: string) => void;
       onInit?: (convId: number) => void;
@@ -54,6 +57,7 @@ export const chatService = {
       message: query,
       conversation_id: conversationId || undefined,
       mode,
+      current_location: currentLocation,
     };
 
     const res = await fetch(`${apiUrl}${AI_ENDPOINTS.ASK_STREAM}`, {
@@ -181,6 +185,7 @@ export const chatService = {
     conversation_id?: number | null;
     save_to_db?: boolean;
     user_prompt?: string;
+    current_location?: { latitude: number; longitude: number };
   }) {
     return await apiFetch<any>(`/api/v1/trips/generate`, {
       method: "POST",
@@ -189,6 +194,7 @@ export const chatService = {
         conversation_id: options.conversation_id || undefined,
         save_to_db: options.save_to_db ?? true,
         user_prompt: options.user_prompt,
+        current_location: options.current_location,
       }),
     });
   },

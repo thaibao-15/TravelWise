@@ -31,6 +31,7 @@ from app.schemas.itinerary import (
     TripListResponse,
     TripSummaryItem,
     TripUpdateRequest,
+    SavePreviewTripRequest,
 )
 from app.schemas.place_search import PlaceSearchRequest, PlaceSearchResponse
 from app.schemas.trip_planning import TripPlanningContext
@@ -463,7 +464,7 @@ def generate_itinerary_direct(
             session=session,
             conversation_id=request_data.conversation_id,
             current_user=current_user,
-            check_ownership=False,
+            check_ownership=True if current_user else False,
         )
 
     if not context:
@@ -471,6 +472,9 @@ def generate_itinerary_direct(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cần cung cấp context hoặc conversation_id để tạo lịch trình.",
         )
+
+    if request_data and request_data.current_location:
+        context.current_location = request_data.current_location
 
     # Automatically create Trip in SQL Server if save_to_db is True
     target_trip_id = context.trip.trip_id
@@ -496,6 +500,155 @@ def generate_itinerary_direct(
         trip_id=target_trip_id,
         save_to_db=request_data.save_to_db,
         user_prompt=request_data.user_prompt,
+    )
+
+
+@router.post(
+    "/api/v1/trips/save-preview",
+    response_model=ItineraryDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Save a reviewed itinerary preview to SQL Server",
+    description="Lưu chính xác bản xem trước lịch trình đã duyệt vào cơ sở dữ liệu SQL Server, liên kết với người dùng và cuộc trò chuyện.",
+)
+@router.post(
+    "/api/trips/save-preview",
+    response_model=ItineraryDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+def save_trip_preview(
+    data: SavePreviewTripRequest,
+    session: Session = Depends(get_session),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> ItineraryDetailResponse:
+    """Atomically and idempotently save a reviewed itinerary preview to SQL Server."""
+    target_trip: Optional[Trip] = None
+
+    # 0. Idempotency check: if matching idempotency_key was already saved by this user
+    if data.idempotency_key and current_user:
+        pref = session.exec(
+            select(TripPreference)
+            .join(Trip, Trip.id == TripPreference.trip_id)
+            .where(
+                Trip.user_id == current_user.id,
+                TripPreference.raw_context_snapshot.contains(data.idempotency_key),
+            )
+        ).first()
+        if pref and pref.trip_id:
+            existing_trip = session.get(Trip, pref.trip_id)
+            if existing_trip and existing_trip.status == "CONFIRMED":
+                return ItineraryPersistenceService.get_itinerary_by_trip_id(
+                    session=session,
+                    trip_id=existing_trip.id,
+                    current_user=current_user,
+                    check_ownership=True,
+                )
+
+    # 1. Resolve existing trip if trip_id provided
+    if data.trip_id:
+        target_trip = session.get(Trip, data.trip_id)
+        if target_trip and target_trip.user_id is not None and current_user:
+            if target_trip.user_id != current_user.id and current_user.role != "ADMIN":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Bạn không có quyền chỉnh sửa chuyến đi này.",
+                )
+        # Idempotency check: if already confirmed and has activities, return existing
+        if target_trip and target_trip.status == "CONFIRMED" and target_trip.itinerary_days:
+            return ItineraryPersistenceService.get_itinerary_by_trip_id(
+                session=session,
+                trip_id=target_trip.id,
+                current_user=current_user,
+                check_ownership=True if current_user else False,
+            )
+
+    # 2. Check draft trip by conversation_id if available
+    if not target_trip and data.conversation_id:
+        draft_stmt = (
+            select(Trip)
+            .where(Trip.conversation_id == data.conversation_id, Trip.status == "DRAFT")
+            .order_by(Trip.updated_at.desc() if Trip.updated_at is not None else Trip.created_at.desc())
+        )
+        target_trip = session.exec(draft_stmt).first()
+
+    # 3. If no trip entity exists yet, create one
+    if not target_trip:
+        dest_city = data.destination_city or (data.preview.title or "Việt Nam")
+        trip_name = data.name or data.preview.title or f"Chuyến đi {dest_city}"
+
+        start_date_obj = None
+        end_date_obj = None
+        if data.preview.days and data.preview.days[0].date:
+            try:
+                start_date_obj = datetime.strptime(data.preview.days[0].date, "%Y-%m-%d").date()
+                if data.preview.days[-1].date:
+                    end_date_obj = datetime.strptime(data.preview.days[-1].date, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+
+        now = _utcnow()
+        target_trip = Trip(
+            user_id=current_user.id if current_user else None,
+            conversation_id=data.conversation_id,
+            name=trip_name,
+            destination_city=dest_city,
+            destination_country=data.destination_country or "Việt Nam",
+            status="DRAFT",
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(target_trip)
+        session.commit()
+        session.refresh(target_trip)
+    else:
+        # Link user if previously anonymous and user is now authenticated
+        if current_user and target_trip.user_id is None:
+            target_trip.user_id = current_user.id
+            session.add(target_trip)
+            session.commit()
+
+    # 4. Save exact reviewed itinerary into SQL Server
+    ItineraryPersistenceService.save_itinerary(
+        session=session,
+        trip_id=target_trip.id,
+        itinerary=data.preview,
+        current_user=current_user,
+        allow_overwrite_confirmed=True,
+        check_ownership=True if current_user else False,
+    )
+
+    # 5. Mark trip as CONFIRMED
+    target_trip.status = "CONFIRMED"
+    target_trip.updated_at = _utcnow()
+    session.add(target_trip)
+    session.commit()
+    session.refresh(target_trip)
+
+    # 6. Save idempotency key snapshot if provided
+    if data.idempotency_key:
+        pref = session.exec(
+            select(TripPreference).where(TripPreference.trip_id == target_trip.id)
+        ).first()
+        if not pref:
+            pref = TripPreference(trip_id=target_trip.id)
+        snapshot = {}
+        if pref.raw_context_snapshot:
+            try:
+                snapshot = json.loads(pref.raw_context_snapshot)
+            except Exception:
+                snapshot = {}
+        snapshot["idempotency_key"] = data.idempotency_key
+        pref.raw_context_snapshot = json.dumps(snapshot, ensure_ascii=False)
+        session.add(pref)
+        session.commit()
+
+    return ItineraryPersistenceService.get_itinerary_by_trip_id(
+        session=session,
+        trip_id=target_trip.id,
+        current_user=current_user,
+        check_ownership=True if current_user else False,
     )
 
 
@@ -559,7 +712,7 @@ def generate_itinerary_for_trip(
                 session=session,
                 conversation_id=trip.conversation_id,
                 current_user=current_user,
-                check_ownership=False,
+                check_ownership=True if current_user else False,
             )
 
         if not context and trip.destination_city:
@@ -579,6 +732,9 @@ def generate_itinerary_for_trip(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Chuyến đi {trip_id} chưa có thông tin lập kế hoạch (TripPlanningContext).",
         )
+
+    if request_data and request_data.current_location:
+        context.current_location = request_data.current_location
 
     save_to_db = request_data.save_to_db if request_data is not None else True
     user_prompt = request_data.user_prompt if request_data is not None else None
@@ -689,7 +845,7 @@ def edit_itinerary_for_trip(
             session=session,
             trip_id=trip.id,
             current_user=current_user,
-            check_ownership=False,
+            check_ownership=True if current_user else False,
         )
         rag_msg = intent_check.get("reason") or "Lịch trình hiện tại vẫn được giữ nguyên."
         try:
@@ -732,7 +888,7 @@ def edit_itinerary_for_trip(
             session=session,
             conversation_id=trip.conversation_id,
             current_user=current_user,
-            check_ownership=False,
+            check_ownership=True if current_user else False,
         )
 
     if not context:
@@ -755,7 +911,7 @@ def edit_itinerary_for_trip(
         session=session,
         trip_id=trip.id,
         current_user=current_user,
-        check_ownership=False,
+        check_ownership=True if current_user else False,
     )
 
     edit_summary = getattr(gen_res, "summary", None) or f"Đã tối ưu và cập nhật lại lịch trình cho chuyến đi của bạn! 🗺️✨"

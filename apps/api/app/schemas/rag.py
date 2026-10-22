@@ -126,6 +126,10 @@ class RAGAskRequest(BaseModel):
         description="Chế độ hội thoại: 'chat' (chi tiết đầy đủ) hoặc 'voice' (ngắn gọn trực tiếp, tối ưu cho đàm thoại giọng nói)",
         examples=["chat", "voice"],
     )
+    current_location: Optional[CurrentLocation] = Field(
+        default=None,
+        description="Vị trí GPS hiện tại của người dùng nếu đã cấp quyền.",
+    )
 
     @field_validator("query", "message")
     @classmethod
@@ -158,7 +162,7 @@ class RAGAskRequest(BaseModel):
     )
 
 
-from app.schemas.trip_planning import TripPlanningContext
+from app.schemas.trip_planning import CurrentLocation, TripPlanningContext
 
 
 class RAGAskResponse(BaseModel):
@@ -167,6 +171,9 @@ class RAGAskResponse(BaseModel):
     conversation_id: int
     message: MessageResponse
     planning_context: Optional[TripPlanningContext] = None
+    planning_status: Optional[str] = None
+    is_ready_to_generate: Optional[bool] = None
+    planning_action: Optional[str] = None
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -184,5 +191,4 @@ class RAGAskResponse(BaseModel):
             }
         },
     )
-
 

@@ -1,12 +1,21 @@
+
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
 import '../../core/constants/colors.dart';
 
-/// TravelSense Floating Glassmorphic Bottom Navigation Bar.
-/// Features an elevated gradient AI button in the center and 4 tab destinations.
+/// TravelSense glassmorphic bottom navigation bar.
+///
+/// Destinations:
+/// 0: Home
+/// 1: Explore
+/// 2: AI Assistant
+/// 3: Trips
+/// 4: Profile
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
-  final Function(int) onTap;
+  final ValueChanged<int> onTap;
 
   const CustomBottomNavBar({
     super.key,
@@ -23,8 +32,8 @@ class CustomBottomNavBar extends StatelessWidget {
           height: 80,
           child: Stack(
             alignment: Alignment.bottomCenter,
+            clipBehavior: Clip.none,
             children: [
-              // Glassmorphic Dock Container
               Positioned(
                 left: 0,
                 right: 0,
@@ -33,9 +42,11 @@ class CustomBottomNavBar extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(28),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    filter: ImageFilter.blur(
+                      sigmaX: 20,
+                      sigmaY: 20,
+                    ),
                     child: Container(
-                      height: 68,
                       decoration: BoxDecoration(
                         color: AppColors.surfaceContainerLowest.withValues(
                           alpha: 0.92,
@@ -72,7 +83,6 @@ class CustomBottomNavBar extends StatelessWidget {
                               'Explore',
                             ),
                           ),
-                          // Spacer for elevated AI button
                           const SizedBox(width: 60),
                           Expanded(
                             child: _buildNavItem(
@@ -96,9 +106,10 @@ class CustomBottomNavBar extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Elevated Floating AI Button
-              Positioned(top: 0, child: _buildElevatedAiButton(2)),
+              Positioned(
+                top: 0,
+                child: _buildElevatedAiButton(2),
+              ),
             ],
           ),
         ),
@@ -113,6 +124,7 @@ class CustomBottomNavBar extends StatelessWidget {
     String label,
   ) {
     final isSelected = currentIndex == index;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -126,17 +138,21 @@ class CustomBottomNavBar extends StatelessWidget {
             children: [
               Icon(
                 isSelected ? filledIcon : outlineIcon,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
                 size: 22,
               ),
               const SizedBox(height: 2),
               Text(
                 label,
                 style: TextStyle(
-                  color:
-                      isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.textSecondary,
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight:
+                      isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -162,6 +178,7 @@ class CustomBottomNavBar extends StatelessWidget {
 
   Widget _buildElevatedAiButton(int index) {
     final isSelected = currentIndex == index;
+
     return Material(
       color: Colors.transparent,
       shape: const CircleBorder(),
@@ -174,12 +191,18 @@ class CustomBottomNavBar extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.secondaryContainer],
+              colors: [
+                AppColors.primary,
+                AppColors.secondaryContainer,
+              ],
               begin: Alignment.bottomLeft,
               end: Alignment.topRight,
             ),
             border: isSelected
-                ? Border.all(color: Colors.white, width: 2.5)
+                ? Border.all(
+                    color: Colors.white,
+                    width: 2.5,
+                  )
                 : Border.all(
                     color: Colors.white.withValues(alpha: 0.8),
                     width: 1.5,
@@ -197,7 +220,11 @@ class CustomBottomNavBar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.auto_awesome, color: Colors.white, size: 26),
+          child: const Icon(
+            Icons.auto_awesome,
+            color: Colors.white,
+            size: 26,
+          ),
         ),
       ),
     );

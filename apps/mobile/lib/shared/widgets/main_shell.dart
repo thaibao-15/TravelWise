@@ -1,4 +1,6 @@
+
 import 'package:flutter/material.dart';
+
 import '../widgets/bottom_nav_bar.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/explore/screens/explore_screen.dart';
@@ -7,19 +9,85 @@ import '../../features/trips/screens/trips_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({
+    super.key,
+    this.pages,
+    this.initialIndex = 0,
+  });
 
-  /// Global key used to access the MainShell state from external routes.
-  static final GlobalKey<MainShellState> shellKey = GlobalKey<MainShellState>();
+  /// Optional pages override for widget tests.
+  final List<Widget>? pages;
 
-  /// Fallback instance reference if MainShell wasn't given the shellKey.
-  static MainShellState? instance;
+  /// Initial selected tab.
+  final int initialIndex;
 
-  /// Navigate back to MainShell and switch to the given tab index.
-  /// Call this from pushed routes (e.g. MapScreen) to return to a tab.
+  /// Global key for accessing the active shell.
+  static final GlobalKey<MainShellState> shellKey =
+      GlobalKey<MainShellState>();
+
+  /// Fallback reference when the shell is mounted without shellKey.
+  static MainShellState? _activeState;
+
+  static MainShellState? get _effectiveState =>
+      shellKey.currentState ?? _activeState;
+
+  /// Currently selected tab, or -1 if the shell is not mounted.
+  static int get currentTab => _effectiveState?._currentIndex ?? -1;
+
+  static bool _isNavigating = false;
+
+  /// Return to MainShell and select the requested tab.
+  ///
+  /// Use this from pushed screens such as MapScreen and TripDetailScreen.
   static void switchToTab(BuildContext context, int index) {
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    (shellKey.currentState ?? instance)?.setTab(index);
+    if (_isNavigating || !context.mounted) return;
+
+    final shellState = _effectiveState;
+    final hasMountedShell =
+        shellState != null && shellState.mounted;
+
+    if (hasMountedShell && (index < 0 || index >= shellState._pages.length)) {
+      debugPrint('Invalid tab index: $index');
+      return;
+    }
+
+    _isNavigating = true;
+
+    try {
+      if (hasMountedShell) {
+        final navigator = Navigator.of(shellState.context);
+        final shellRoute = ModalRoute.of(shellState.context);
+
+        if (navigator.canPop()) {
+          navigator.popUntil((route) {
+            if (shellRoute != null && route == shellRoute) {
+              return true;
+            }
+            return route.isFirst;
+          });
+        }
+
+        // Change tabs only after requesting the return navigation.
+        shellState.setTab(index);
+      } else {
+        final navigator = Navigator.of(context);
+
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) => MainShell(
+              key: shellKey,
+              initialIndex: index,
+            ),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Navigation error in switchToTab: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _isNavigating = false;
+    }
   }
 
   @override
@@ -27,39 +95,52 @@ class MainShell extends StatefulWidget {
 }
 
 class MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
+  late int _currentIndex;
+
   int get currentIndex => _currentIndex;
+
+  late final List<Widget> _pages = widget.pages ??
+      [
+        const HomeScreen(),
+        const ExploreScreen(),
+        const TravelAssistantScreen(),
+        const TripsScreen(),
+        const ProfileScreen(),
+      ];
 
   @override
   void initState() {
     super.initState();
-    MainShell.instance = this;
+
+    _currentIndex = _pages.isEmpty
+        ? 0
+        : widget.initialIndex.clamp(0, _pages.length - 1).toInt();
+
+    MainShell._activeState = this;
   }
 
   @override
   void dispose() {
-    if (MainShell.instance == this) {
-      MainShell.instance = null;
+    if (MainShell._activeState == this) {
+      MainShell._activeState = null;
     }
+
     super.dispose();
   }
 
-  late final List<Widget> _pages = [
-    const HomeScreen(),
-    const ExploreScreen(),
-    const TravelAssistantScreen(),
-    const TripsScreen(),
-    const ProfileScreen(),
-  ];
-
+  /// Select a tab without pushing a new route.
   void setTab(int index) {
-    if (index >= 0 && index < _pages.length) {
-      if (_currentIndex != index) {
-        setState(() {
-          _currentIndex = index;
-        });
-      }
+    if (!mounted || index < 0 || index >= _pages.length) {
+      return;
     }
+
+    if (_currentIndex == index) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = index;
+    });
   }
 
   void _onBottomNavTap(int index) {
@@ -70,7 +151,12 @@ class MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: _pages.isEmpty
+          ? const Center(child: Text('No pages available'))
+          : IndexedStack(
+              index: _currentIndex,
+              children: _pages,
+            ),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentIndex,
         onTap: _onBottomNavTap,

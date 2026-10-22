@@ -110,8 +110,11 @@ class _RegisterFormState extends State<RegisterForm> {
             ),
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => MainShell(key: MainShell.shellKey)),
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => MainShell(key: MainShell.shellKey),
+                  ),
+                  (route) => false,
                 );
               },
               style: ElevatedButton.styleFrom(
