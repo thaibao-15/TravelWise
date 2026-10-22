@@ -28,47 +28,53 @@ class CategoryGrid extends StatelessWidget {
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
           mainAxisSpacing: AppSpacing.md,
-          crossAxisSpacing: AppSpacing.md,
-          childAspectRatio: 0.8,
+          crossAxisSpacing: AppSpacing.sm,
+          childAspectRatio: 0.85,
         ),
         itemCount: categories.length,
         itemBuilder: (context, index) {
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                height: 56,
-                width: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+          return Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    height: 52,
+                    width: 52,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  categories[index]['icon']!,
-                  style: const TextStyle(fontSize: 24),
-                ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      categories[index]['icon']!,
+                      style: const TextStyle(fontSize: 22),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    categories[index]['label']!,
+                    style: AppTextStyles.caption.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                categories[index]['label']!,
-                style: AppTextStyles.caption.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+            ),
           );
         },
       ),

@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
-// import '../../../shared/widgets/bottom_nav_bar.dart';
-import '../widgets/header_section.dart';
+import '../../../shared/widgets/custom_app_bar.dart';
 import '../widgets/search_bar.dart' as custom_search;
 import '../widgets/suggestion_chips.dart';
 import '../widgets/destination_card.dart';
@@ -18,25 +17,29 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: SafeArea(
-              bottom: false,
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const HeaderSection(),
+                  const CustomAppBar(),
                   const custom_search.SearchBar(),
                   const SuggestionChips(),
                   const SizedBox(height: AppSpacing.xl),
                   _buildSectionHeader('Thịnh hành'),
                   const SizedBox(height: AppSpacing.md),
                   SizedBox(
-                    height: 280,
+                    height: 300,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
                       itemCount: 3,
                       itemBuilder: (context, index) {
                         return const Padding(
@@ -67,17 +70,15 @@ class HomeScreen extends StatelessWidget {
                       return const NearbyCard();
                     },
                   ),
-                  const SizedBox(height: AppSpacing.xl),
+                  const SizedBox(
+                    height: 100,
+                  ), // Spacing for bottom nav & floating bar
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      // bottomNavigationBar: CustomBottomNavBar(
-      //   currentIndex: 0,
-      //   onTap: (index) {},
-      // ),
     );
   }
 
@@ -87,15 +88,25 @@ class HomeScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: AppTextStyles.h3,
+          Expanded(
+            child: Text(
+              title,
+              style: AppTextStyles.h3,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          Text(
-            'Xem tất cả',
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w600,
+          InkWell(
+            onTap: () {},
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                'Xem tất cả',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],

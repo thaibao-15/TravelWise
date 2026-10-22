@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../shared/widgets/custom_app_bar.dart';
 import '../models/place_model.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/featured_card.dart';
 import '../widgets/filter_row.dart';
 import '../widgets/floating_ai_button.dart';
-import '../widgets/header_bar.dart';
 import '../widgets/place_card.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/section_header.dart';
@@ -21,7 +21,8 @@ class ExploreScreen extends StatelessWidget {
       Place(
         id: '1',
         name: 'Bán đảo Sơn Trà & Chùa Linh...',
-        description: 'Tầm nhìn toàn cảnh vịnh Đà Nẵng, viếng tượng Phật Bà cao 67m và ngắm loài Voọc chà vá chân nâu quý hiếm.',
+        description:
+            'Tầm nhìn toàn cảnh vịnh Đà Nẵng, viếng tượng Phật Bà cao 67m và ngắm loài Voọc chà vá chân nâu quý hiếm.',
         rating: 4.9,
         reviews: 18200,
         distance: 8.5,
@@ -33,7 +34,8 @@ class ExploreScreen extends StatelessWidget {
       Place(
         id: '2',
         name: 'Cà phê Trình - Bánh & Cà ph...',
-        description: 'Quán cà phê sân vườn yên tĩnh đặc trưng món cà phê muối béo ngậy và bánh sừng bò nướng thủ công thơm...',
+        description:
+            'Quán cà phê sân vườn yên tĩnh đặc trưng món cà phê muối béo ngậy và bánh sừng bò nướng thủ công thơm...',
         rating: 4.7,
         reviews: 3500,
         distance: 1.1,
@@ -45,11 +47,13 @@ class ExploreScreen extends StatelessWidget {
       Place(
         id: '3',
         name: 'Bún Chả Cá 109 Nguyễn Chí...',
-        description: 'Món ăn truyền thống đậm đà hơn 40 năm với chả cá thu tươi dai giòn và nước dùng hầm rau củ thanh ngọt.',
+        description:
+            'Món ăn truyền thống đậm đà hơn 40 năm với chả cá thu tươi dai giòn và nước dùng hầm rau củ thanh ngọt.',
         rating: 4.8,
         reviews: 6900,
         distance: 1.5,
-        imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246',
+        imageUrl:
+            'https://images.unsplash.com/photo-1585032226651-759b368d7246',
         price: '35k - 60k',
         tags: ['Ẩm thực địa phương'],
         isOpen: false,
@@ -59,13 +63,15 @@ class ExploreScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
+        bottom: false,
         child: Stack(
           children: [
             SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const HeaderBar(),
+                  const CustomAppBar(),
                   const ExploreSearchBar(),
                   const SizedBox(height: AppSpacing.lg),
                   const CategoryChips(),
@@ -81,13 +87,16 @@ class ExploreScreen extends StatelessWidget {
                   const SizedBox(height: AppSpacing.md),
                   ListView.builder(
                     shrinkWrap: true,
+                    padding: EdgeInsets.zero,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: places.length,
                     itemBuilder: (context, index) {
                       return PlaceCard(place: places[index]);
                     },
                   ),
-                  const SizedBox(height: 100), // Spacing for floating ai button
+                  const SizedBox(
+                    height: 120,
+                  ), // Spacing for floating ai button & nav
                 ],
               ),
             ),
@@ -100,7 +109,6 @@ class ExploreScreen extends StatelessWidget {
           ],
         ),
       ),
-      // bottomNavigationBar: const BottomNavBar(),
     );
   }
 }
