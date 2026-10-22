@@ -57,6 +57,11 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
   }
 
   void _toggleMic() {
+    final state = ref.read(voiceAssistantProvider);
+    if (state.voiceState == VoiceState.speaking) {
+      ref.read(voiceAssistantProvider.notifier).stopAudio();
+      return;
+    }
     ref.read(voiceAssistantProvider.notifier).toggleRecording();
   }
 
@@ -71,6 +76,7 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
 
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
+    final isSpeaking = state.voiceState == VoiceState.speaking;
     final micActive = state.isRecording ||
         state.voiceState == VoiceState.listening ||
         state.voiceState == VoiceState.connecting;
@@ -160,7 +166,7 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
 
           const SizedBox(width: 8),
 
-          // ── Mic button ───────────────────────────────────────────────────
+          // ── Mic / Stop speech button ─────────────────────────────────────
           GestureDetector(
             onTap: _toggleMic,
             child: ScaleTransition(
@@ -171,13 +177,15 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: micActive
-                      ? AppColors.error
-                      : AppColors.border.withOpacity(0.5),
-                  boxShadow: micActive
+                  color: isSpeaking
+                      ? const Color(0xFFEF4444)
+                      : (micActive
+                          ? AppColors.error
+                          : AppColors.border.withOpacity(0.5)),
+                  boxShadow: (micActive || isSpeaking)
                       ? [
                           BoxShadow(
-                            color: AppColors.error.withOpacity(0.4),
+                            color: const Color(0xFFEF4444).withOpacity(0.4),
                             blurRadius: 10,
                             spreadRadius: 2,
                           )
@@ -185,9 +193,11 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
                       : [],
                 ),
                 child: Icon(
-                  micActive ? Icons.mic : Icons.mic_none,
-                  size: 20,
-                  color: micActive
+                  isSpeaking
+                      ? Icons.stop_rounded
+                      : (micActive ? Icons.mic : Icons.mic_none),
+                  size: isSpeaking ? 22 : 20,
+                  color: (micActive || isSpeaking)
                       ? Colors.white
                       : AppColors.textSecondary,
                 ),

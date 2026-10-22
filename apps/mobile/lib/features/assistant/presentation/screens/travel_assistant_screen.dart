@@ -5,7 +5,6 @@ import '../../../../core/constants/spacing.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/assistant_header.dart';
 import '../widgets/voice_profile_bar.dart';
-import '../widgets/voice_state_selector.dart';
 import '../widgets/transcript_view.dart';
 import '../widgets/voice_orb.dart';
 import '../widgets/location_suggestions.dart';
@@ -45,11 +44,6 @@ class TravelAssistantScreen extends ConsumerWidget {
                     // ── Voice profile pill ──────────────────────────────────
                     const VoiceProfileBar(),
 
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // ── State selector ──────────────────────────────────────
-                    const VoiceStateSelector(),
-
                     const SizedBox(height: AppSpacing.xl),
 
                     // ── Transcript ──────────────────────────────────────────
@@ -60,8 +54,16 @@ class TravelAssistantScreen extends ConsumerWidget {
                     // ── Voice Orb ───────────────────────────────────────────
                     VoiceOrb(
                       voiceState: state.voiceState,
-                      onTap: notifier.toggleRecording,
+                      onTap: state.voiceState == VoiceState.speaking
+                          ? notifier.stopAudio
+                          : notifier.toggleRecording,
                     ),
+
+                    // ── Stop speaking button (active when AI is speaking) ────
+                    if (state.voiceState == VoiceState.speaking) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _StopSpeakingButton(onPressed: notifier.stopAudio),
+                    ],
 
                     const SizedBox(height: AppSpacing.lg),
 
@@ -209,3 +211,68 @@ class TravelAssistantScreen extends ConsumerWidget {
     );
   }
 }
+
+class _StopSpeakingButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _StopSpeakingButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(24),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2.5),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Dừng đọc AI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white70,
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
