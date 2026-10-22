@@ -38,6 +38,24 @@ class FakeVoiceAudioService implements VoiceAudioService {
   void stopTts() => ttsStopCount++;
 
   @override
+  void initStreamingQueue({
+    void Function()? onPlay,
+    void Function()? onEnded,
+    void Function(String err)? onError,
+  }) {}
+
+  @override
+  void enqueueSentence({
+    required String baseUrl,
+    required String sentence,
+    String speed = '1.25',
+    String speakerId = 'HN-Nam-1-BL',
+  }) {}
+
+  @override
+  void markStreamDone() {}
+
+  @override
   void playWavBytes(
     Uint8List bytes, {
     void Function()? onPlay,
