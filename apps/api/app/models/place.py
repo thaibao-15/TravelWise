@@ -19,7 +19,7 @@ PostgreSQL migration note for `location`:
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Column, Float, LargeBinary, Text
+from sqlalchemy import BigInteger, Column, Float, LargeBinary, Text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.db.base import TimestampMixin
@@ -105,6 +105,24 @@ class Place(TimestampMixin, SQLModel, table=True):
     category_id: Optional[int] = Field(
         default=None,
         foreign_key="categories.id",
+    )
+
+    # Source tracking & OSM Identifiers
+    source: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        # 'osm', 'manual', etc.
+    )
+
+    osm_type: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        # 'node', 'way', 'relation'
+    )
+
+    osm_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True),
     )
 
     is_deleted: bool = Field(

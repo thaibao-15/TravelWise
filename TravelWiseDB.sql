@@ -1,3 +1,4 @@
+use master
 IF DB_ID('TravelWiseDB') IS NOT NULL
 BEGIN
     ALTER DATABASE TravelWiseDB
@@ -4455,6 +4456,7 @@ GO
 
 select * from users 
 select * from places 
+select * from places  where category_id = 3
 select * from place_images
 select * from knowledge
 select * from conversations where id =15
