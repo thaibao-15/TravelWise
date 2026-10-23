@@ -1,8 +1,20 @@
-# 🗺️ OpenStreetMap Restaurant Fetching & Normalization Module
+# 🗺️ OpenStreetMap Data Ingestion (Restaurants & Hotels)
 
-Tài liệu này mô tả chi tiết module thu thập và chuẩn hóa dữ liệu nhà hàng từ **OpenStreetMap (OSM)** thông qua **Overpass API** trong backend TravelWise (`apps/api`).
+> [!TIP]
+> ### ⚡ Lệnh Nhanh — Tự động kéo dữ liệu về và nạp vào DB (1 Lệnh Duy Nhất)
+> 
+> * **Nhà hàng (OSM Restaurants Pipeline):**
+>   ```powershell
+>   uv run python scripts/import_osm_restaurants.py pipeline
+>   ```
+> 
+> * **Khách sạn (OSM Hotels Pipeline):**
+>   ```powershell
+>   uv run python scripts/import_osm_hotels.py pipeline
+>   ```
 
-Module được thiết kế để chuẩn bị nguồn dữ liệu phong phú về ẩm thực và nhà hàng tại Đà Nẵng, phục vụ trực tiếp cho cơ sở dữ liệu địa điểm du lịch (`places`), chi tiết nhà hàng (`restaurant_details`), giờ mở cửa (`opening_hours`), và công cụ lập lịch trình AI (Trip Planner).
+Tài liệu này mô tả chi tiết module thu thập và chuẩn hóa dữ liệu từ **OpenStreetMap (OSM)** thông qua **Overpass API** trong backend TravelWise (`apps/api`) cho cả **Nhà hàng** (`restaurant_details`) và **Khách sạn** (`hotel_details`).
+
 
 ---
 
@@ -289,3 +301,72 @@ Quy trình chạy tuần tự 3 bước: **Fetch ➔ Normalize ➔ Database (Dry
   ```powershell
   uv run python scripts/import_osm_restaurants.py pipeline
   ```
+
+---
+
+## 9. 🏨 Hướng dẫn CLI Quản lý & Import Khách Sạn (OSM Hotels Pipeline)
+
+Kịch bản CLI [`scripts/import_osm_hotels.py`](scripts/import_osm_hotels.py) là công cụ điều khiển thống nhất cho toàn bộ quy trình import khách sạn: bóc tách hạng sao (`stars`), tiện nghi (`amenities`), số phòng (`rooms`), liên kết bảng `hotel_details`, định danh OSM và gán danh mục **"Lưu trú và nghỉ dưỡng"** (Category ID = 7).
+
+### 9.1. Chế độ Từng Bước (Individual Modes)
+
+1. **Chế độ Fetch (Thu thập JSON gốc từ Overpass API):**
+   ```powershell
+   uv run python scripts/import_osm_hotels.py fetch
+   # Hoặc tùy biến bounding box và output:
+   uv run python scripts/import_osm_hotels.py fetch --output data/osm_hotels_raw.json --timeout 60
+   ```
+
+2. **Chế độ Normalize (Chuẩn hóa schema từ file raw):**
+   ```powershell
+   uv run python scripts/import_osm_hotels.py normalize
+   # Hoặc chỉ định file đầu vào/ra:
+   uv run python scripts/import_osm_hotels.py normalize -i data/osm_hotels_raw.json -o data/osm_hotels_normalized.json
+   ```
+
+3. **Chế độ Dry-Run (Kiểm tra an toàn tầng database, Rollback hoàn toàn):**
+   ```powershell
+   # Kiểm tra thử 20 khách sạn:
+   uv run python scripts/import_osm_hotels.py dry-run --limit 20
+   # Dùng file fixture tùy ý:
+   uv run python scripts/import_osm_hotels.py dry-run --fixture data/osm_hotels_normalized.json
+   # Hoặc dùng cờ tắt root:
+   uv run python scripts/import_osm_hotels.py --dry-run --limit 20
+   ```
+
+4. **Chế độ Import (Ghi và cập nhật vào SQL Server):**
+   ```powershell
+   # Import toàn bộ 513 khách sạn chuẩn hóa:
+   uv run python scripts/import_osm_hotels.py import
+   # Hoặc giới hạn số lượng kiểm tra trước:
+   uv run python scripts/import_osm_hotels.py import --limit 100
+   ```
+
+5. **Chế độ Verify-DB (Kiểm tra dữ liệu thực tế sau import):**
+   ```powershell
+   uv run python scripts/import_osm_hotels.py verify-db
+   ```
+
+---
+
+### 9.2. Chế độ Toàn Bộ Quy Trình (Pipeline Mode - 1 Lệnh Duy Nhất)
+
+Quy trình chạy tuần tự 3 bước: **Fetch ➔ Normalize ➔ Database (Dry-run hoặc Import thật)**.
+*Nếu một bước thất bại, toàn bộ quy trình sẽ dừng ngay lập tức để bảo vệ dữ liệu hợp lệ.*
+
+* **Chạy Pipeline ở chế độ Dry-Run (An toàn tuyệt đối):**
+  ```powershell
+  uv run python scripts/import_osm_hotels.py pipeline --dry-run
+  ```
+
+* **Chạy Pipeline bỏ qua bước gọi Overpass (Dùng file raw sẵn có):**
+  ```powershell
+  uv run python scripts/import_osm_hotels.py pipeline --skip-fetch --dry-run --limit 20
+  ```
+
+* **Chạy Pipeline Import Thật (Tự động kéo về và nạp vào DB chỉ với 1 lệnh):**
+  ```powershell
+  uv run python scripts/import_osm_hotels.py pipeline
+  ```
+
+

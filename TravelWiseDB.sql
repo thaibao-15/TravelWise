@@ -118,6 +118,11 @@ CREATE TABLE hotel_details (
     star_rating INT,
     price_per_night DECIMAL(10,2),
     amenities NVARCHAR(MAX),
+    phone NVARCHAR(50),
+    website NVARCHAR(500),
+    email NVARCHAR(255),
+    rooms INT,
+    beds INT,
     FOREIGN KEY (place_id) REFERENCES places(id) ON DELETE CASCADE
 );
 
@@ -4457,6 +4462,9 @@ GO
 select * from users 
 select * from places 
 select * from places  where category_id = 3
+select * from places  where category_id = 7
+select * from  hotel_details
+
 select * from place_images
 select * from knowledge
 select * from conversations where id =15

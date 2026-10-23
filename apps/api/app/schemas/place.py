@@ -18,6 +18,11 @@ class HotelDetailResponse(BaseModel):
     star_rating: Optional[int] = None
     price_per_night: Optional[Decimal] = None
     amenities: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    email: Optional[str] = None
+    rooms: Optional[int] = None
+    beds: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
