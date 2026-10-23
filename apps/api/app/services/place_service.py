@@ -31,6 +31,17 @@ class PlaceService:
         return list(session.exec(statement).all())
 
     @staticmethod
+    def get_places_by_category(
+        session: Session,
+        category_id: int,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> List[Place]:
+        return PlaceService.list_places(
+            session, category_id=category_id, skip=skip, limit=limit
+        )
+
+    @staticmethod
     def get_place_by_id(session: Session, place_id: int) -> Place:
         statement = (
             select(Place)
