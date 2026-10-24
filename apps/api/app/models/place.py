@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from app.models.knowledge import Knowledge
     from app.models.opening_hours import OpeningHours
     from app.models.place_image import PlaceImage
+    from app.models.place_review import PlaceReview
     from app.models.restaurant_detail import RestaurantDetail
 
 
@@ -130,11 +131,22 @@ class Place(TimestampMixin, SQLModel, table=True):
         # BIT DEFAULT 0 → bool (False)
     )
 
+    rating_avg: Optional[float] = Field(
+        default=0.0,
+        description="Điểm đánh giá trung bình từ người dùng",
+    )
+
+    review_count: Optional[int] = Field(
+        default=0,
+        description="Tổng số lượng đánh giá của địa điểm",
+    )
+
     # created_at / updated_at inherited from TimestampMixin
 
     # Relationships
     category: Optional["Category"] = Relationship(back_populates="places")
     images: List["PlaceImage"] = Relationship(back_populates="place")
+    reviews: List["PlaceReview"] = Relationship(back_populates="place")
     opening_hours: List["OpeningHours"] = Relationship(back_populates="place")
     restaurant_detail: Optional["RestaurantDetail"] = Relationship(back_populates="place")
     hotel_detail: Optional["HotelDetail"] = Relationship(back_populates="place")

@@ -29,6 +29,7 @@ from app.models.conversation_summary import ConversationSummary
 from app.models.user_profile import UserProfile
 from app.models.itinerary_day import ItineraryDay
 from app.models.itinerary_activity import ItineraryActivity
+from app.models.place_review import PlaceReview, ReviewHelpfulVote, ReviewImage
 
 __all__ = [
     "User",
@@ -37,6 +38,9 @@ __all__ = [
     "RestaurantDetail",
     "HotelDetail",
     "PlaceImage",
+    "PlaceReview",
+    "ReviewImage",
+    "ReviewHelpfulVote",
     "OpeningHours",
     "Knowledge",
     "Conversation",

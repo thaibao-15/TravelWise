@@ -36,6 +36,10 @@ export interface MapPlace {
   longitude: number | null | undefined;
   image_url?: string | null;
   category_id?: number | null;
+  category_name?: string | null;
+  pin_color?: string | null;
+  rating_avg?: number | null;
+  review_count?: number | null;
   order?: number | string; // Thứ tự trong lịch trình (nếu có)
   day_number?: number; // Ngày trong chuyến đi (1, 2, 3...)
   time?: string | null; // Thời gian bắt đầu hoặc time_slot (ví dụ "08:30" hoặc "08:30 - 10:00")
@@ -108,9 +112,27 @@ export function TravelMap({
     // Tag Ngày & Giờ (nếu thuộc lịch trình)
     if (place.day_number != null || place.time) {
       const dayPill = document.createElement("div");
-      dayPill.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-[10px] font-bold text-teal-800 border border-teal-200 mb-1.5";
+      dayPill.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-[10px] font-bold text-teal-800 border border-teal-200 mb-1.5 mr-1";
       dayPill.textContent = `🗓️ Ngày ${place.day_number || 1}${place.time ? ` • ⏰ ${place.time}` : ""}`;
       container.appendChild(dayPill);
+    }
+
+    // Tag Danh mục (nếu có category_name)
+    if (place.category_name) {
+      const catPill = document.createElement("div");
+      catPill.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-bold text-slate-700 border border-slate-200 mb-1.5 mr-1";
+      catPill.textContent = place.category_name;
+      container.appendChild(catPill);
+    }
+
+    // Tag Đánh giá (Rating badge)
+    if (place.rating_avg != null && place.rating_avg > 0) {
+      const ratingPill = document.createElement("div");
+      ratingPill.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-[10px] font-bold text-amber-800 border border-amber-200 mb-1.5";
+      ratingPill.textContent = `★ ${place.rating_avg.toFixed(1)}${
+        place.review_count ? ` (${place.review_count})` : ""
+      }`;
+      container.appendChild(ratingPill);
     }
 
     const titleEl = document.createElement("h4");
@@ -145,22 +167,52 @@ export function TravelMap({
     return container;
   }, []);
 
-  // Màu sắc chủ đạo cho Pin giọt nước
-  const getPinColor = (dayNumber?: number, isSelected?: boolean): string => {
+  // Màu sắc chủ đạo cho Pin giọt nước (theo ngày hoặc danh mục)
+  const getPinColor = (place: MapPlace, isSelected?: boolean): string => {
     if (isSelected) return "#e11d48"; // Rose-600 khi được chọn
-    switch (dayNumber) {
-      case 1:
-        return "#0d9488"; // Teal
-      case 2:
-        return "#4f46e5"; // Indigo
-      case 3:
-        return "#ea580c"; // Orange
-      case 4:
-        return "#059669"; // Emerald
-      default:
-        // Màu xanh Navy chuẩn Google/Apple Maps như ảnh mẫu của người dùng
-        return dayNumber && dayNumber > 4 ? "#e11d48" : "#0d3b85";
+    if (place.pin_color) return place.pin_color;
+    if (place.day_number) {
+      switch (place.day_number) {
+        case 1:
+          return "#0d9488"; // Teal
+        case 2:
+          return "#4f46e5"; // Indigo
+        case 3:
+          return "#ea580c"; // Orange
+        case 4:
+          return "#059669"; // Emerald
+        default:
+          return place.day_number > 4 ? "#e11d48" : "#0d3b85";
+      }
     }
+    // Màu theo Category ID
+    if (place.category_id != null) {
+      switch (place.category_id) {
+        case 1: // Thiên nhiên và cảnh quan
+          return "#10b981"; // Emerald
+        case 2: // Văn hóa và lịch sử
+          return "#d97706"; // Amber
+        case 3: // Ẩm thực
+          return "#ea580c"; // Orange
+        case 4: // Quán cà phê
+          return "#b45309"; // Warm Brown / Amber-700
+        case 5: // Vui chơi và giải trí
+          return "#ec4899"; // Pink
+        case 6: // Mua sắm và chợ
+          return "#e11d48"; // Rose
+        case 7: // Lưu trú và nghỉ dưỡng
+          return "#3b82f6"; // Blue
+        case 8: // Trải nghiệm và hoạt động
+          return "#06b6d4"; // Cyan
+        case 9: // Thư giãn và chăm sóc sức khỏe
+          return "#14b8a6"; // Teal
+        case 10: // Giao thông
+          return "#6366f1"; // Indigo
+        default:
+          return "#0d9488";
+      }
+    }
+    return "#0d3b85";
   };
 
   /**
@@ -184,7 +236,7 @@ export function TravelMap({
           ? String(place.order)
           : "";
 
-    const pinColor = getPinColor(place.day_number, isSelected);
+    const pinColor = getPinColor(place, isSelected);
 
     // Xử lý chiều rộng nếu có nhãn text dài (ví dụ: "N1-1")
     const isLongLabel = labelText.length > 2;

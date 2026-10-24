@@ -14,6 +14,8 @@ export interface PlaceItem {
   latitude?: number | null;
   longitude?: number | null;
   category_id?: number | null;
+  rating_avg?: number | null;
+  review_count?: number | null;
   is_deleted?: boolean;
   created_at?: string;
   updated_at?: string;

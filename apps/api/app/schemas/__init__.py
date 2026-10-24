@@ -31,6 +31,15 @@ from app.schemas.place_search import (
     SearchPlaceItem,
     UnresolvedMustVisitItem,
 )
+from app.schemas.place_review import (
+    HelpfulVoteResponse,
+    PlaceReviewCreate,
+    PlaceReviewListResponse,
+    PlaceReviewResponse,
+    PlaceReviewUpdate,
+    ReviewImageCreate,
+    ReviewImageResponse,
+)
 
 __all__ = [
     "RegisterRequest",
@@ -65,5 +74,12 @@ __all__ = [
     "SearchPlaceItem",
     "UnresolvedMustVisitItem",
     "PlaceSearchRequest",
+    "PlaceReviewCreate",
+    "PlaceReviewUpdate",
+    "PlaceReviewResponse",
+    "PlaceReviewListResponse",
+    "ReviewImageCreate",
+    "ReviewImageResponse",
+    "HelpfulVoteResponse",
 ]
 

@@ -92,6 +92,8 @@ CREATE TABLE places (
     location GEOGRAPHY,
 
     category_id BIGINT,
+    rating_avg DECIMAL(3, 2) DEFAULT 0.0,
+    review_count INT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
     is_deleted BIT DEFAULT 0,
@@ -149,6 +151,113 @@ CREATE TABLE opening_hours (
     close_time TIME,
     FOREIGN KEY (place_id) REFERENCES places(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE place_reviews (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    user_id BIGINT NOT NULL,
+    place_id BIGINT NOT NULL,
+
+    -- Điểm đánh giá từ 1 đến 5 sao
+    rating TINYINT NOT NULL,
+
+    -- Tiêu đề ngắn gọn & nội dung nhận xét
+    title NVARCHAR(255) NULL,
+    comment NVARCHAR(MAX) NULL,
+
+    -- Ngữ cảnh chuyến đi phục vụ AI/RAG Recommendation
+    -- ('solo', 'couple', 'family', 'friends', 'business')
+    trip_type VARCHAR(20) NULL,
+    visited_at DATE NULL,
+
+    -- Lượt tương tác & Phản hồi từ chủ điểm/admin
+    helpful_count INT NOT NULL DEFAULT 0,
+    owner_reply NVARCHAR(MAX) NULL,
+    owner_replied_at DATETIME2 NULL,
+
+    -- Trạng thái kiểm duyệt & xóa mềm
+    is_visible BIT NOT NULL DEFAULT 1,
+    is_deleted BIT NOT NULL DEFAULT 0,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_place_reviews_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT FK_place_reviews_places
+        FOREIGN KEY (place_id)
+        REFERENCES places(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT CK_place_reviews_rating
+        CHECK (rating BETWEEN 1 AND 5),
+
+    -- Mỗi người chỉ đánh giá 1 lần cho 1 địa điểm
+    CONSTRAINT UQ_place_reviews_user_place
+        UNIQUE (user_id, place_id)
+);
+
+-- Index tối ưu hóa truy vấn lọc trang chi tiết địa điểm
+CREATE INDEX IX_place_reviews_place_lookup
+    ON place_reviews(place_id, is_visible, is_deleted, created_at DESC)
+    INCLUDE (rating, user_id, trip_type);
+
+CREATE INDEX IX_place_reviews_user_id
+    ON place_reviews(user_id);
+
+
+CREATE TABLE review_images (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    review_id BIGINT NOT NULL,
+    image_url NVARCHAR(2048) NOT NULL,
+    caption NVARCHAR(255) NULL,
+    display_order INT NOT NULL DEFAULT 0,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_review_images_place_reviews
+        FOREIGN KEY (review_id)
+        REFERENCES place_reviews(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IX_review_images_review_id
+    ON review_images(review_id, display_order);
+
+
+CREATE TABLE review_helpful_votes (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    review_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_review_helpful_votes_reviews
+        FOREIGN KEY (review_id)
+        REFERENCES place_reviews(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT FK_review_helpful_votes_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE NO ACTION,
+
+    CONSTRAINT UQ_review_helpful_votes_user_review
+        UNIQUE (user_id, review_id)
+);
+
+CREATE INDEX IX_review_helpful_votes_review_id
+    ON review_helpful_votes(review_id);
+
+CREATE INDEX IX_review_helpful_votes_user_id
+    ON review_helpful_votes(user_id);
+
 
 -- =========================================
 -- KNOWLEDGE (RAG)

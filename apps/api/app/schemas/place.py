@@ -53,6 +53,8 @@ class PlaceResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     category_id: Optional[int] = None
+    rating_avg: Optional[float] = 0.0
+    review_count: Optional[int] = 0
     is_deleted: bool
     created_at: datetime
     updated_at: datetime

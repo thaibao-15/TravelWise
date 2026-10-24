@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { placeService, PlaceItem } from "@/services/place.service";
 import { TravelMap, MapPlace } from "@/components/map/TravelMap";
+import { PlaceReviewsModal } from "@/components/places/PlaceReviewsModal";
 
 export default function PlaceDetailPage() {
   const params = useParams();
@@ -14,6 +15,7 @@ export default function PlaceDetailPage() {
   const [place, setPlace] = useState<PlaceItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
 
   useEffect(() => {
     if (!placeId) return;
@@ -109,10 +111,23 @@ export default function PlaceDetailPage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] font-semibold text-teal-300 bg-teal-500/10 border border-teal-500/25 px-2.5 py-1 rounded-full">
                     Tọa độ: {place.latitude?.toFixed(4)}, {place.longitude?.toFixed(4)}
                   </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsReviewOpen(true)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-3 py-1 rounded-full transition-colors shadow-sm"
+                  >
+                    <span>★</span>
+                    <span>
+                      {place.rating_avg != null && place.rating_avg > 0
+                        ? `${place.rating_avg.toFixed(1)} (${place.review_count || 0} đánh giá)`
+                        : "Viết đánh giá"}
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -190,6 +205,19 @@ export default function PlaceDetailPage() {
           </div>
         ) : null}
       </main>
+
+      {place && (
+        <PlaceReviewsModal
+          place={place}
+          isOpen={isReviewOpen}
+          onClose={() => setIsReviewOpen(false)}
+          onReviewSubmitted={(id, avg, count) => {
+            setPlace((prev) =>
+              prev ? { ...prev, rating_avg: avg, review_count: count } : null
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
