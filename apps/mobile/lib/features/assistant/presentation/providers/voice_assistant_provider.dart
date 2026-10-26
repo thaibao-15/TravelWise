@@ -173,6 +173,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   /// Finalised transcript segments of the current turn + the live partial.
   final List<String> _finalSegments = [];
   String _partialSegment = '';
+  bool _hasGreeted = false;
 
   VoiceAssistantNotifier(
     this._ref, {
@@ -277,6 +278,45 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       planningState: TripPlanningState.idle,
       tripPreview: null,
     );
+  }
+
+  /// AI tự động chào và giới thiệu với người dùng khi mở màn hình Trợ lý du lịch.
+  Future<void> greetUser({String? userName}) async {
+    if (_hasGreeted || state.messages.isNotEmpty) return;
+    _hasGreeted = true;
+
+    final displayName = (userName != null && userName.trim().isNotEmpty)
+        ? userName.trim()
+        : 'bạn';
+
+    final greetingText =
+        'Xin chào $displayName! Mình là Linh AI - trợ lý du lịch đồng hành cùng bạn tại TravelWise. Hôm nay bạn muốn lên lịch trình hay khám phá điểm đến nào?';
+
+    log('ai_greeting_user', {'displayName': displayName});
+
+    final greetingMsg = ChatMessage(
+      text: greetingText,
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      messages: [greetingMsg],
+      currentTranscript: greetingText,
+    );
+
+    if (state.isTtsEnabled) {
+      await _playTts(greetingText);
+    }
+  }
+
+  /// Khởi tạo lại cuộc trò chuyện và chào lại nếu cần.
+  void resetConversation({String? userName}) {
+    _abortListening();
+    stopAudio();
+    _hasGreeted = false;
+    state = const VoiceAssistantState();
+    greetUser(userName: userName);
   }
 
   /// Cancels an active listening turn without submitting (e.g. user left the
@@ -451,9 +491,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       _abortListening();
       state = state.copyWith(
         isRecording: false,
-        voiceState: VoiceState.error,
-        error:
-            'Không nhận được giọng nói. Hãy nói rõ hơn hoặc kiểm tra microphone / kết nối STT.',
+        voiceState: VoiceState.idle,
       );
     });
   }
@@ -863,6 +901,19 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             if (!mounted) return;
             log('tts_playback_finished');
             state = state.copyWith(voiceState: VoiceState.idle);
+
+            // Khi chat box vừa nói xong thì đến lượt mình nói luôn không cần ấn "nhấn để nói"
+            if (!state.isMuted) {
+              Future.delayed(const Duration(milliseconds: 350), () {
+                if (mounted &&
+                    state.voiceState == VoiceState.idle &&
+                    !state.isMuted &&
+                    !_listeningTurnActive) {
+                  log('auto_start_listening_after_tts');
+                  _beginListening();
+                }
+              });
+            }
           },
           onError: (err) {
             if (!mounted) return;

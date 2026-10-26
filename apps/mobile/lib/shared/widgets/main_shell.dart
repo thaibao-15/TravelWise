@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../widgets/bottom_nav_bar.dart';
 
@@ -7,7 +8,10 @@ import '../../features/explore/screens/explore_screen.dart';
 import '../../features/assistant/presentation/screens/travel_assistant_screen.dart';
 import '../../features/trips/screens/trips_screen.dart';
 
-class MainShell extends StatefulWidget {
+/// Provider lưu trữ tab index hiện tại của MainShell để các màn hình con nhận diện khi được kích hoạt.
+final mainTabProvider = StateProvider<int>((ref) => 0);
+
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key, this.pages, this.initialIndex = 0});
 
   /// Optional tab pages override (used by widget tests).
@@ -76,10 +80,10 @@ class MainShell extends StatefulWidget {
   }
 
   @override
-  State<MainShell> createState() => MainShellState();
+  ConsumerState<MainShell> createState() => MainShellState();
 }
 
-class MainShellState extends State<MainShell> {
+class MainShellState extends ConsumerState<MainShell> {
   late int _currentIndex;
   int get currentIndex => _currentIndex;
 
@@ -88,6 +92,11 @@ class MainShellState extends State<MainShell> {
     super.initState();
     _currentIndex = widget.initialIndex;
     MainShell._activeState = this;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(mainTabProvider.notifier).state = _currentIndex;
+      }
+    });
   }
 
   @override
@@ -113,6 +122,7 @@ class MainShellState extends State<MainShell> {
     setState(() {
       _currentIndex = index;
     });
+    ref.read(mainTabProvider.notifier).state = index;
   }
 
   void _onBottomNavTap(int index) {

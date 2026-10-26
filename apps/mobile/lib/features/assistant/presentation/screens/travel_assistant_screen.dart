@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
+import '../../../auth/presentation/providers/auth_notifier.dart';
+import '../../../auth/presentation/providers/auth_state.dart';
+import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/assistant_input_bar.dart';
@@ -30,6 +33,25 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     )..repeat();
+
+    // Tự động kiểm tra và chào người dùng khi vào màn hình
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndGreetIfActive();
+    });
+  }
+
+  void _checkAndGreetIfActive() {
+    if (!mounted) return;
+    final currentTab = ref.read(mainTabProvider);
+    // Kích hoạt khi đang ở tab Assistant (tab 2) hoặc mở độc lập
+    if (currentTab == 2 || MainShell.currentTab == -1 || MainShell.currentTab == 2) {
+      final authState = ref.read(authProvider);
+      String? userName;
+      if (authState is AuthAuthenticated) {
+        userName = authState.user.fullName;
+      }
+      ref.read(voiceAssistantProvider.notifier).greetUser(userName: userName);
+    }
   }
 
   @override
@@ -42,6 +64,17 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   Widget build(BuildContext context) {
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
+
+    // Lắng nghe thay đổi tab: Khi người dùng chuyển đến trang Assistant thì AI tự chào và giới thiệu
+    ref.listen<int>(mainTabProvider, (prev, next) {
+      if (next == 2) {
+        _checkAndGreetIfActive();
+      } else if (prev == 2 && next != 2) {
+        // Dừng nghe và dừng phát audio nếu chuyển sang tab khác
+        notifier.cancelListening();
+        notifier.stopAudio();
+      }
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
@@ -268,7 +301,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       if (state.currentTranscript.isNotEmpty) {
         latestAiSpeech = state.currentTranscript;
       } else {
-        latestAiSpeech = 'Tuyệt vời! Đà Nẵng là một điểm đến rất đặc biệt. Bạn muốn mình gợi ý lịch trình 3 ngày 2 đêm không?';
+        latestAiSpeech = 'Xin chào bạn! Mình là Linh AI - trợ lý và hướng dẫn viên du lịch đồng hành cùng bạn tại TravelWise.';
       }
     }
 
@@ -973,11 +1006,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       case VoiceState.speaking:
         return 'Linh AI đang nói...';
       case VoiceState.connecting:
-        return 'Đang kết nối mic...';
+        return 'Đang mở micro...';
       case VoiceState.error:
         return 'Đã có lỗi, chạm để thử lại';
       case VoiceState.idle:
-        return 'Đang trò chuyện...';
+        return 'Chạm micro hoặc bắt đầu trò chuyện';
     }
   }
 
