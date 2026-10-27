@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.auth import router as auth_router
 from app.api.routes.categories import router as categories_router
 from app.api.routes.conversations import router as conversations_router
+from app.api.routes.livekit import router as livekit_router
 from app.api.routes.places import router as places_router
 from app.api.routes.reviews import router as reviews_router
 from app.api.routes.rag import router as rag_router
@@ -40,4 +41,5 @@ app.include_router(rag_router)
 app.include_router(trips_router)
 app.include_router(stt_router)
 app.include_router(tts_router)
-app.include_router(weather_router)
+app.include_router(livekit_router)
+app.include_router(weather_router)

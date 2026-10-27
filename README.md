@@ -1,10 +1,11 @@
 # 🌍 TravelWise
 
-**TravelWise** là ứng dụng hỗ trợ du lịch thông minh tích hợp AI (RAG - Retrieval-Augmented Generation), trợ lý ảo tư vấn địa điểm và lập kế hoạch du lịch.
+**TravelWise** là nền tảng hỗ trợ du lịch thông minh toàn trình tích hợp AI (RAG - Retrieval-Augmented Generation), trợ lý đàm thoại giọng nói hai chiều thời gian thực (LiveKit WebRTC Voice Agent) và lập kế hoạch hành trình du lịch tự động.
 
-Dự án được cấu trúc dạng monorepo gồm 3 ứng dụng chính trong thư mục `apps`:
-- **API (Backend)**: FastAPI + SQLModel + SQL Server + Chroma Vector DB + Google Gemini.
-- **Web**: Next.js (TypeScript, Bun / Node.js).
+Dự án được cấu trúc dạng monorepo gồm 4 ứng dụng trong thư mục `apps`:
+- **API (Backend)**: FastAPI + SQLModel + SQL Server + Chroma Vector DB + Google Gemini + LiveKit Token Generator.
+- **Web (Frontend)**: Next.js 16 (React 19, TypeScript, Tailwind CSS, Living Voice Orb, Trip Canvas).
+- **Voice Agent**: LiveKit Voice Agent Worker độc lập (WebRTC song công, Blaze AI STT/TTS tiếng Việt, Gemini RAG, ngắt lời VAD).
 - **Mobile**: Flutter (Android, iOS, Web).
 
 ---
@@ -13,12 +14,14 @@ Dự án được cấu trúc dạng monorepo gồm 3 ứng dụng chính trong 
 
 | Thành phần | Công nghệ / Phiên bản | Ghi chú |
 |---|---|---|
-| **Python** | ≥ 3.14 | Dùng cho Backend FastAPI |
-| **Package Manager (Python)** | [uv](https://docs.astral.sh/uv/) (Mới nhất) | Quản lý virtualenv & dependencies |
+| **Python** | ≥ 3.11 (Khuyên dùng 3.12 - 3.14) | Dùng cho Backend FastAPI & Voice Agent |
+| **Package Manager (Python)** | [uv](https://docs.astral.sh/uv/) (Mới nhất) | Quản lý virtualenv & dependencies siêu tốc |
 | **Database** | Microsoft SQL Server | Local hoặc Remote |
-| **DB Driver** | ODBC Driver 17 for SQL Server | [Tải ODBC Driver 17](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) |
-| **Web Runtime** | [Bun](https://bun.sh/) (hoặc Node.js) | Chạy ứng dụng Next.js |
-| **Mobile SDK** | Flutter SDK | Xem yêu cầu chi tiết tại `apps/mobile/pubspec.yaml` |
+| **DB Driver** | ODBC Driver 17 hoặc 18 for SQL Server | [Tải ODBC Driver](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) |
+| **Web Runtime** | [Bun](https://bun.sh/) (hoặc Node.js ≥ 20) | Chạy ứng dụng Next.js |
+| **Voice Platform** | [LiveKit Cloud](https://cloud.livekit.io/) | Dự án WebRTC Realtime (gói miễn phí) |
+| **Voice AI (STT/TTS)** | [Blaze AI](https://blaze.vn/) (hoặc OpenAI/Deepgram) | Nhận diện & tổng hợp tiếng Việt độ trễ siêu thấp |
+| **Mobile SDK** | Flutter SDK | Xem chi tiết tại `apps/mobile/pubspec.yaml` |
 
 ---
 
@@ -27,9 +30,11 @@ Dự án được cấu trúc dạng monorepo gồm 3 ứng dụng chính trong 
 ```text
 TravelWise/
 ├── apps/
-│   ├── api/          # Backend REST API (FastAPI, SQLModel, RAG AI, Alembic)
-│   ├── web/          # Web Frontend (Next.js)
+│   ├── api/          # Backend REST API (FastAPI, SQLModel, RAG AI, LiveKit Token)
+│   ├── web/          # Web Frontend (Next.js, LiveKit Voice, Chat Box, Canvas)
+│   ├── voice-agent/  # Realtime Voice Agent Worker (LiveKit WebRTC, Blaze AI, RAG)
 │   └── mobile/       # Mobile App (Flutter)
+├── docker-compose.yml# Cấu hình khởi chạy đồng bộ các service
 └── README.md
 ```
 
@@ -62,7 +67,7 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-Mở file `.env` và cập nhật thông số kết nối Database, Secret Key & AI Provider:
+Mở file `.env` và cập nhật thông số kết nối Database, Secret Key, AI Provider & LiveKit:
 
 ```env
 # SQL Server Database Configuration
@@ -86,11 +91,17 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 # RAG Embedding Configuration (local = miễn phí 100%, không tốn quota)
 EMBEDDING_PROVIDER=local
+
+# LiveKit WebRTC Configuration (để cấp Token phòng thoại)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+LIVEKIT_AGENT_NAME=travelwise-voice-assistant
 ```
 
 > ⚠️ **Lưu ý:** 
 > - Lấy `GEMINI_API_KEY` miễn phí tại [Google AI Studio](https://aistudio.google.com/apikey).
-> - Đổi `JWT_SECRET` thành chuỗi bí mật an toàn khi đưa lên sản phẩm thật.
+> - Lấy `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` miễn phí tại [LiveKit Cloud](https://cloud.livekit.io/).
 
 ### Bước 3 — Tạo Database trên SQL Server
 
@@ -152,19 +163,60 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 | **Swagger UI** | `http://localhost:8000/docs` | Tài liệu API tương tác |
 | **ReDoc** | `http://localhost:8000/redoc` | Tài liệu API chuẩn hóa |
 
-#### 🤖 Các tính năng Backend nổi bật
+---
 
-- **Authentication & Authorization**: Đăng ký, đăng nhập JWT (`/api/v1/auth/register`, `/login`, `/me`).
-- **RAG & AI Assistant**:
-  - `POST /rag/ask`: Trả lời câu hỏi du lịch thông minh bằng Gemini + Chroma DB context.
-  - `POST /rag/search`: Tìm kiếm địa điểm/tri thức theo độ tương đồng ngữ nghĩa (Semantic Search).
-  - `POST /rag/test-llm`: Kiểm tra kết nối LLM.
+## 🎙️ 2. Chạy Realtime Voice Agent (`apps/voice-agent`)
 
-*Xem chi tiết tài liệu backend tại [`apps/api/README.md`](apps/api/README.md).*
+Voice Agent chạy như một Worker độc lập, kết nối tới LiveKit Cloud qua WebRTC để tiếp nhận giọng nói người dùng và đàm thoại hai chiều.
+
+Mở terminal mới:
+
+```bash
+cd apps/voice-agent
+```
+
+### Bước 1 — Cài đặt dependencies
+
+```bash
+uv sync
+```
+
+### Bước 2 — Cấu hình biến môi trường
+
+Sao chép file cấu hình mẫu:
+
+```bash
+copy .env.example .env
+```
+
+Cập nhật thông tin LiveKit Cloud và Blaze AI trong `apps/voice-agent/.env`:
+
+```env
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+LIVEKIT_AGENT_NAME=travelwise-voice-assistant
+
+BLAZE_API_KEY=your-blaze-api-key
+BACKEND_API_URL=http://127.0.0.1:8000
+JWT_SECRET=your-super-secret-key-change-this-in-production
+```
+
+### Bước 3 — Khởi chạy Agent Worker
+
+```bash
+# Môi trường phát triển (Development / Auto-reload):
+uv run python main.py dev
+
+# Môi trường sản xuất (Production Worker Daemon):
+uv run python main.py start
+```
+
+*Xem chi tiết kiến trúc và benchmark âm thanh tại [`apps/voice-agent/README.md`](apps/voice-agent/README.md).*
 
 ---
 
-## 🌐 2. Chạy Next.js Web (`apps/web`)
+## 🌐 3. Chạy Next.js Web (`apps/web`)
 
 Mở terminal mới:
 
@@ -179,10 +231,13 @@ bun run dev
 ```
 
 Truy cập giao diện Web tại: `http://localhost:3000`
+- **Trò chuyện giọng nói LiveKit**: `http://localhost:3000/voice-guide`
+- **Trang kiểm tra WebRTC độc lập**: `http://localhost:3000/livekit-test`
+- **Chat văn bản thông minh & Lịch trình**: `http://localhost:3000/chat`
 
 ---
 
-## 📱 3. Chạy Flutter Mobile (`apps/mobile`)
+## 📱 4. Chạy Flutter Mobile (`apps/mobile`)
 
 Mở terminal mới:
 
@@ -201,31 +256,28 @@ flutter run
 
 ---
 
-## 🐳 4. Chạy bằng Docker Compose (Backend + Web)
+## 🐳 5. Chạy bằng Docker Compose (API + Web + Voice Agent)
 
-Docker Compose cho phép khởi chạy đồng thời **API Backend** và **Web Frontend** chỉ với một lệnh duy nhất, không cần cài đặt Python, uv hay Bun trên máy host.
-
-### Yêu cầu
-
-| Thành phần | Ghi chú |
-|---|---|
-| **Docker Desktop** | [Tải Docker Desktop](https://www.docker.com/products/docker-desktop/) |
-| **SQL Server** | Đang chạy trên máy host (local) hoặc remote server |
-| **File `.env`** | Đã cấu hình đầy đủ tại `apps/api/.env` (xem [Bước 2 ở mục 1](#bước-2--cấu-hình-biến-môi-trường)) |
+Docker Compose cho phép khởi chạy đồng thời **API Backend**, **Web Frontend** và **LiveKit Voice Agent Worker** chỉ với một lệnh duy nhất.
 
 ### Kiến trúc Services
 
 ```text
-┌─────────────────────────────────────────────────┐
-│                Docker Compose                   │
-│                                                 │
-│  ┌──────────────────┐   ┌────────────────────┐  │
-│  │  travelwise-api  │   │  travelwise-web    │  │
-│  │  (FastAPI)       │   │  (Next.js)         │  │
-│  │  Port: 8000      │◄──│  Port: 3000        │  │
-│  └────────┬─────────┘   └────────────────────┘  │
-│           │                                     │
-└───────────┼─────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       Docker Compose                         │
+│                                                              │
+│  ┌──────────────────┐   ┌─────────────────────────────────┐  │
+│  │  travelwise-api  │   │  travelwise-voice-agent         │  │
+│  │  (FastAPI)       │   │  (LiveKit Worker)               │  │
+│  │  Port: 8000      │   │  Outbound WebSocket             │  │
+│  └────────┬─────────┘   └────────────────┬────────────────┘  │
+│           │                              │                   │
+│           │        ┌─────────────────────┼────────────────┐  │
+│           │        │  travelwise-web     │                │  │
+│           │        │  (Next.js)          ▼                │  │
+│           │        │  Port: 3000    LiveKit Cloud         │  │
+│           │        └──────────────── (wss://...)          │  │
+└───────────┼──────────────────────────────────────────────────┘
             │ host.docker.internal
             ▼
    ┌─────────────────┐
@@ -235,11 +287,11 @@ Docker Compose cho phép khởi chạy đồng thời **API Backend** và **Web 
    └─────────────────┘
 ```
 
-> **Lưu ý:** SQL Server chạy trên máy host, API container kết nối tới SQL Server thông qua `host.docker.internal`.
-
 ### Bước 1 — Cấu hình file `.env`
 
-Đảm bảo file `apps/api/.env` đã được cấu hình đúng (xem [hướng dẫn ở mục 1](#bước-2--cấu-hình-biến-môi-trường)). Docker Compose sẽ tự động load file này và ghi đè `SQLSERVER_SERVER=host.docker.internal` để container có thể kết nối tới SQL Server trên máy host.
+Đảm bảo đã cấu hình file `.env` tại cả 2 thư mục:
+- `apps/api/.env`
+- `apps/voice-agent/.env`
 
 ### Bước 2 — Build và khởi chạy
 
@@ -248,34 +300,21 @@ Docker Compose cho phép khởi chạy đồng thời **API Backend** và **Web 
 docker compose up --build
 ```
 
-Lần đầu build sẽ mất vài phút để tải image và cài dependencies. Các lần sau sẽ nhanh hơn nhờ Docker cache.
-
-### Bước 3 — Truy cập ứng dụng
-
-| Service | URL | Mô tả |
-|---|---|---|
-| **Web App** | `http://localhost:3000` | Giao diện người dùng |
-| **API** | `http://localhost:8000` | REST API endpoint |
-| **Swagger UI** | `http://localhost:8000/docs` | Tài liệu API tương tác |
-| **ReDoc** | `http://localhost:8000/redoc` | Tài liệu API chuẩn hóa |
-
-### Các lệnh Docker Compose thường dùng
-
+Để chạy ngầm trong nền (detached mode):
 ```bash
-docker compose up --build         # Build và chạy (foreground, xem log trực tiếp)
-docker compose up --build -d      # Build và chạy (background/detached)
-docker compose logs -f            # Xem log realtime của tất cả services
-docker compose logs -f api        # Xem log riêng API service
-docker compose down               # Dừng và xóa containers
-docker compose restart api        # Restart riêng API service
-docker compose ps                 # Xem trạng thái các containers
+docker compose up --build -d
 ```
 
-> [!TIP]
-> Nếu chỉ thay đổi code mà không đổi dependencies, bạn có thể chạy `docker compose up --build` — Docker sẽ sử dụng cache cho các layer không thay đổi nên build rất nhanh.
+### Bước 3 — Các lệnh Docker Compose thường dùng
 
-> [!WARNING]
-> **SQL Server trên Windows:** Đảm bảo SQL Server cho phép kết nối TCP/IP và firewall không chặn port `1433`. Kiểm tra trong **SQL Server Configuration Manager** → **SQL Server Network Configuration** → **Protocols** → Enable **TCP/IP**.
+```bash
+docker compose logs -f voice-agent  # Xem log riêng của LiveKit Voice Agent
+docker compose logs -f api          # Xem log riêng API Backend
+docker compose logs -f web          # Xem log riêng Web Frontend
+docker compose restart voice-agent  # Khởi động lại riêng Voice Agent
+docker compose down                 # Dừng và xóa containers
+docker compose ps                   # Xem trạng thái các containers
+```
 
 ---
 
@@ -290,9 +329,16 @@ uv run python scripts/ingest_rag.py          # Ingest RAG sang Chroma DB
 uv run python scripts/test_llm.py            # Test kết nối LLM
 uv run uvicorn app.main:app --reload         # Chạy Dev API Server
 
+# --- Voice Agent (apps/voice-agent) ---
+uv sync                                      # Cài dependencies
+uv run python main.py dev                    # Chạy Dev Voice Agent
+uv run python main.py start                  # Chạy Production Voice Agent Worker
+uv run python -m unittest discover tests     # Chạy bộ Unit Tests kiểm thử
+
 # --- Web (apps/web) ---
 bun install                                  # Cài dependencies
 bun run dev                                  # Chạy Dev Web Server
+bun run build                                # Kiểm tra typecheck và build production
 
 # --- Mobile (apps/mobile) ---
 flutter pub get                              # Tải dependencies Flutter

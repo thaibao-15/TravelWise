@@ -91,6 +91,7 @@ class PlaceService:
                 | (Place.address.ilike(f"%{query}%"))
                 | (Place.description.ilike(f"%{query}%"))
             )
+            .order_by(Place.id)
             .offset(skip)
             .limit(limit)
         )

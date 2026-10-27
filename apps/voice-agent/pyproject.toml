@@ -1,0 +1,18 @@
+[project]
+name = "travelwise-voice-agent"
+version = "0.1.0"
+description = "TravelWise Realtime Voice Agent worker using LiveKit Agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28.1",
+    "livekit-agents>=1.8.9",
+    "livekit-api>=1.2.2",
+    "livekit-plugins-silero>=1.8.9",
+    "pyjwt>=2.15.1",
+    "python-dotenv>=1.0.1",
+    "websockets>=16.1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

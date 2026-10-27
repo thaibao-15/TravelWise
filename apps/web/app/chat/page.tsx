@@ -165,6 +165,7 @@ function ChatContent() {
           onStopListening={stopListening}
           onStopSpeaking={stopAudio}
           statusMessage={statusMessage}
+          onOpenLiveKitModal={() => setIsVoiceModalOpen(true)}
         />
 
         {/* Khu vực danh sách tin nhắn hội thoại */}
@@ -263,6 +264,11 @@ function ChatContent() {
         onClose={() => setIsVoiceModalOpen(false)}
         onSendMessage={handleSendMessage}
         isLoadingChat={isLoading || isPlanning}
+        conversationId={
+          searchParams.get("conversation_id")
+            ? parseInt(searchParams.get("conversation_id")!, 10)
+            : null
+        }
       />
     </div>
   );

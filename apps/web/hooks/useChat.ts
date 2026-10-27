@@ -921,6 +921,15 @@ export function useChat() {
           status: "success",
         }));
         setMessages(formatted);
+      } else if (msgs.status === "rejected" && ((msgs.reason as any)?.status === 403 || (msgs.reason as any)?.statusCode === 403)) {
+        console.warn(`Conversation ${id} is forbidden (403). Clearing stale conversation ID.`);
+        setConversationId(null);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("travelwise_conversation_id");
+          const url = new URL(window.location.href);
+          url.searchParams.delete("conversation_id");
+          window.history.replaceState(null, "", url.toString());
+        }
       }
 
       if (ctx.status === "fulfilled" && ctx.value) {

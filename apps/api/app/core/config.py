@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     BLAZE_TTS_NORMALIZATION: str = "basic"
 
     # -------------------------------------------------------------------------
+    # LiveKit Realtime Voice Configuration
+    # -------------------------------------------------------------------------
+    LIVEKIT_URL: Optional[str] = None
+    LIVEKIT_API_KEY: Optional[str] = None
+    LIVEKIT_API_SECRET: Optional[str] = None
+    LIVEKIT_AGENT_NAME: str = "travelwise-voice-assistant"
+    LIVEKIT_TOKEN_TTL_MINUTES: int = 60
+
+    # -------------------------------------------------------------------------
     # Weather Configuration
     # -------------------------------------------------------------------------
     OPEN_METEO_FORECAST_URL: str = "https://api.open-meteo.com/v1/forecast"
