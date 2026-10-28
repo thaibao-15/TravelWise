@@ -176,33 +176,82 @@ async def stream_and_speak_rag_response(
     buffer = ""
     full_answer_parts: List[str] = []
     first_chunk_recorded = False
-    speech_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    sentence_queue: asyncio.Queue[Optional[asyncio.Queue[Optional[rtc.AudioFrame]]]] = asyncio.Queue()
+    sentence_idx = 0
 
-    # Background worker that plays sentences sequentially from queue without blocking token streaming
+    def enqueue_sentence(s_text: str) -> None:
+        nonlocal sentence_idx
+        clean_s = s_text.strip()
+        if not clean_s or not coordinator.is_turn_valid(turn_id):
+            return
+
+        sentence_idx += 1
+        curr_idx = sentence_idx
+        s_audio_q: asyncio.Queue[Optional[rtc.AudioFrame]] = asyncio.Queue()
+        sentence_queue.put_nowait(s_audio_q)
+
+        async def synthesize_worker():
+            try:
+                if not coordinator.is_turn_valid(turn_id):
+                    await s_audio_q.put(None)
+                    return
+                logger.debug("🔊 [Blaze TTS Pipelined] Pre-synthesizing sentence #%d: '%s'", curr_idx, clean_s[:40])
+                chunked_stream = blaze_tts.synthesize(clean_s)
+                async for audio_event in chunked_stream:
+                    if not coordinator.is_turn_valid(turn_id):
+                        break
+                    await s_audio_q.put(audio_event.frame)
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.error("❌ Lỗi pre-synthesis câu #%d: %s", curr_idx, exc)
+            finally:
+                await s_audio_q.put(None)
+
+        producer_task = asyncio.create_task(synthesize_worker(), name=f"TTS.Producer.Turn-{turn_id}.S-{curr_idx}")
+        coordinator.register_task(producer_task)
+
+    # Background worker that plays synthesized audio frames sequentially with ZERO inter-sentence gap
     async def tts_playback_worker() -> None:
+        first_audio_frame = True
         while True:
-            sentence = await speech_queue.get()
-            if sentence is None:
-                speech_queue.task_done()
+            s_audio_q = await sentence_queue.get()
+            if s_audio_q is None:
+                sentence_queue.task_done()
                 break
 
             if not coordinator.is_turn_valid(turn_id):
-                speech_queue.task_done()
+                sentence_queue.task_done()
                 break
 
-            success = await speak_sentence(
-                sentence=sentence,
-                blaze_tts=blaze_tts,
-                audio_source=audio_source,
-                coordinator=coordinator,
-                turn_id=turn_id,
-                room=room,
-            )
-            speech_queue.task_done()
-            if not success or not coordinator.is_turn_valid(turn_id):
+            while True:
+                frame = await s_audio_q.get()
+                if frame is None:
+                    s_audio_q.task_done()
+                    break
+
+                if not coordinator.is_turn_valid(turn_id):
+                    s_audio_q.task_done()
+                    break
+
+                if first_audio_frame:
+                    first_audio_frame = False
+                    coordinator.record_tts_first_audio(turn_id)
+                    if room:
+                        await send_room_data(room, {
+                            "type": "state",
+                            "state": "speaking",
+                            "text": "Đang trả lời...",
+                        })
+
+                await audio_source.capture_frame(frame)
+                s_audio_q.task_done()
+
+            sentence_queue.task_done()
+            if not coordinator.is_turn_valid(turn_id):
                 break
 
-    tts_task = asyncio.create_task(tts_playback_worker(), name=f"TTS.Worker.Turn-{turn_id}")
+    tts_task = asyncio.create_task(tts_playback_worker(), name=f"TTS.Playback.Turn-{turn_id}")
     coordinator.register_task(tts_task)
 
     try:
@@ -247,7 +296,7 @@ async def stream_and_speak_rag_response(
                                 "is_final": False,
                             })
                         # Push to queue for playback worker
-                        await speech_queue.put(sentence)
+                        enqueue_sentence(sentence)
 
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
@@ -268,7 +317,7 @@ async def stream_and_speak_rag_response(
                     "text": " ".join(full_answer_parts),
                     "is_final": False,
                 })
-            await speech_queue.put(remaining)
+            enqueue_sentence(remaining)
 
     except asyncio.CancelledError:
         logger.debug("Luồng stream RAG lượt %d bị hủy.", turn_id)
@@ -287,12 +336,12 @@ async def stream_and_speak_rag_response(
                 coordinator.update_conversation_id(rag_result.get("conversation_id"))
                 if answer_text:
                     full_answer_parts.append(answer_text)
-                    await speech_queue.put(answer_text)
+                    enqueue_sentence(answer_text)
             except Exception as fb_err:
                 logger.error("❌ Lỗi cả fallback RAG: %s", fb_err)
     finally:
         # Signal queue termination and wait for audio completion
-        await speech_queue.put(None)
+        await sentence_queue.put(None)
         await tts_task
 
         if coordinator.is_turn_valid(turn_id):
