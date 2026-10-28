@@ -729,6 +729,42 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       );
     }
 
+    // 1b. Nếu đang chỉnh sửa lịch trình (Revising)
+    if (state.planningState == TripPlanningState.revising) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: const [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation(Color(0xFFD97706)),
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Đang phân tích yêu cầu và chỉnh sửa lịch trình của bạn...',
+                  style: TextStyle(
+                    color: Color(0xFFB45309),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     // 2. Nếu đã có chuyến đi xem trước (tripPreview != null)
     if (state.tripPreview != null) {
       final trip = state.tripPreview!;
@@ -842,6 +878,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
     // 3. Nếu sẵn sàng tạo (Ready to generate)
     if (state.planningState == TripPlanningState.readyToGenerate) {
+      final summaryText = state.planningContextSummary != null && state.planningContextSummary!.isNotEmpty
+          ? state.planningContextSummary!
+          : 'Đã đủ thông tin du lịch!';
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -854,12 +893,25 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           children: [
             const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
             const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Đã đủ thông tin du lịch! Nhấn để tạo lịch trình xem trước.',
-                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    summaryText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                  const Text(
+                    'Nhấn để tạo lịch trình chi tiết từ địa điểm thực.',
+                    style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(width: 8),
             ElevatedButton(
               onPressed: () => notifier.generateItinerary(),
               style: ElevatedButton.styleFrom(

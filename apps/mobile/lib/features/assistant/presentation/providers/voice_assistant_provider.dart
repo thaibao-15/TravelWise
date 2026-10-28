@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 
@@ -142,7 +143,7 @@ class VoiceListeningConfig {
   final int maxAutoRestarts;
 
   const VoiceListeningConfig({
-    this.pauseFor = const Duration(milliseconds: 3500),
+    this.pauseFor = const Duration(milliseconds: 2200),
     this.listenFor = const Duration(seconds: 120),
     this.noSpeechTimeout = const Duration(seconds: 10),
     this.maxAutoRestarts = 2,
@@ -491,7 +492,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       _abortListening();
       state = state.copyWith(
         isRecording: false,
-        voiceState: VoiceState.idle,
+        voiceState: VoiceState.error,
+        error: 'Không nhận diện được giọng nói.',
       );
     });
   }
@@ -622,74 +624,163 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     );
 
     try {
-      final response = await _dio.post(
-        '/api/v1/rag/ask',
-        data: {
-          'message': trimmed,
-          if (state.conversationId != null)
-            'conversation_id': state.conversationId,
-          'mode': isVoiceMode ? 'voice' : 'chat',
-        },
-      );
+      String content = '';
+      int? convId = state.conversationId;
+      String? planningStatus;
+      bool isReady = false;
+      String? planningAction;
+      Map<String, dynamic>? planningContext;
+
+      bool streamSucceeded = false;
+
+      // ── 1. Thử SSE Streaming qua /api/v1/rag/ask-stream để phản hồi thời gian thực từng token ──
+      try {
+        final streamResponse = await _dio.post<ResponseBody>(
+          '/api/v1/rag/ask-stream',
+          data: {
+            'message': trimmed,
+            if (state.conversationId != null)
+              'conversation_id': state.conversationId,
+            'mode': isVoiceMode ? 'voice' : 'chat',
+          },
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: {'Accept': 'text/event-stream'},
+          ),
+        );
+
+        if (streamResponse.statusCode == 200 && streamResponse.data != null) {
+          final lines = streamResponse.data!.stream
+              .cast<List<int>>()
+              .transform(utf8.decoder)
+              .transform(const LineSplitter());
+
+          await for (final line in lines) {
+            if (!mounted) return;
+            if (line.startsWith('data: ')) {
+              final jsonStr = line.substring(6).trim();
+              if (jsonStr.isEmpty) continue;
+              try {
+                final chunk = jsonDecode(jsonStr) as Map<String, dynamic>;
+                final type = chunk['type'];
+                if (type == 'token') {
+                  final token = chunk['token']?.toString() ?? '';
+                  content += token;
+                  // Stream token trực tiếp lên giao diện người dùng
+                  state = state.copyWith(currentTranscript: content);
+                } else if (type == 'done') {
+                  convId = chunk['conversation_id'] as int? ?? convId;
+                  content = chunk['content']?.toString() ?? content;
+                  planningContext = chunk['planning_context'] as Map<String, dynamic>?;
+                  planningStatus = chunk['planning_status']?.toString();
+                  isReady = chunk['is_ready_to_generate'] == true;
+                  planningAction = chunk['planning_action']?.toString();
+                }
+              } catch (_) {}
+            }
+          }
+          if (content.isNotEmpty) {
+            streamSucceeded = true;
+            log('sse_stream_success', {
+              'contentLength': content.length,
+              'conversationId': convId,
+            });
+          }
+        }
+      } catch (streamErr) {
+        log('sse_stream_fallback', {'error': streamErr.toString()});
+      }
+
+      // ── 2. Nếu SSE không khả dụng thì fallback sang /api/v1/rag/ask thông thường ──
+      if (!streamSucceeded) {
+        final response = await _dio.post(
+          '/api/v1/rag/ask',
+          data: {
+            'message': trimmed,
+            if (state.conversationId != null)
+              'conversation_id': state.conversationId,
+            'mode': isVoiceMode ? 'voice' : 'chat',
+          },
+        );
+
+        if (!mounted) return;
+        log('rag_response', {'statusCode': response.statusCode});
+
+        if (response.statusCode == 200) {
+          final data = response.data as Map<String, dynamic>;
+          content =
+              (data['message'] as Map<String, dynamic>)['content'] as String;
+          convId = data['conversation_id'] as int?;
+          planningStatus = data['planning_status']?.toString();
+          isReady = data['is_ready_to_generate'] == true;
+          planningAction = data['planning_action']?.toString();
+          planningContext = data['planning_context'] as Map<String, dynamic>?;
+        } else {
+          state = state.copyWith(
+            voiceState: VoiceState.error,
+            error: 'Lỗi từ máy chủ AI (${response.statusCode})',
+          );
+          return;
+        }
+      }
 
       if (!mounted) return;
 
-      log('rag_response', {'statusCode': response.statusCode});
+      final isContextReady = planningContext?['planning_state']?['is_ready_to_generate'] == true;
+      final effectiveIsReady = isReady || isContextReady;
 
-      if (response.statusCode == 200) {
-        final data = response.data as Map<String, dynamic>;
-        final content =
-            (data['message'] as Map<String, dynamic>)['content'] as String;
-        final convId = data['conversation_id'] as int?;
-        final planningStatus = data['planning_status']?.toString();
-        final isReady = data['is_ready_to_generate'] == true;
-        final planningAction = data['planning_action']?.toString();
+      log('rag_success', {
+        'contentLength': content.length,
+        'conversationId': convId,
+        'planningStatus': planningStatus,
+        'isReady': effectiveIsReady,
+        'planningAction': planningAction,
+        'hasPlanningContext': planningContext != null,
+      });
 
-        log('rag_success', {
-          'contentLength': content.length,
-          'conversationId': convId,
-          'planningStatus': planningStatus,
-          'isReady': isReady,
-          'planningAction': planningAction,
-        });
+      final aiMsg = ChatMessage(
+        text: content,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
 
-        final aiMsg = ChatMessage(
-          text: content,
-          isUser: false,
-          timestamp: DateTime.now(),
-        );
+      TripPlanningState derivedPlanning = state.planningState;
+      if (planningStatus == 'collecting_requirements' ||
+          (planningContext != null && !effectiveIsReady && state.tripPreview == null)) {
+        derivedPlanning = TripPlanningState.collectingRequirements;
+      } else if (planningStatus == 'ready_to_generate' || effectiveIsReady) {
+        derivedPlanning = TripPlanningState.readyToGenerate;
+      }
 
-        TripPlanningState derivedPlanning = state.planningState;
-        if (planningStatus == 'collecting_requirements') {
-          derivedPlanning = TripPlanningState.collectingRequirements;
-        } else if (planningStatus == 'ready_to_generate' || isReady) {
-          derivedPlanning = TripPlanningState.readyToGenerate;
-        }
+      final summary = _formatPlanningContextSummary(planningContext) ?? state.planningContextSummary;
 
-        state = state.copyWith(
-          messages: [...state.messages, aiMsg],
-          conversationId: convId,
-          currentTranscript: content,
-          planningState: derivedPlanning,
-        );
+      state = state.copyWith(
+        messages: [...state.messages, aiMsg],
+        conversationId: convId,
+        currentTranscript: content,
+        planningState: derivedPlanning,
+        planningContextSummary: summary,
+      );
 
-        if (isVoiceMode || state.isTtsEnabled) {
-          await _playTts(content);
-        } else {
-          state = state.copyWith(voiceState: VoiceState.idle);
-        }
-
-        // Orchestrate automatic generation or saving based on structured backend planning_action
-        if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
-          await generateItinerary(convId: convId);
-        } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
-          await saveCurrentTrip(convId: convId);
-        }
+      if (isVoiceMode || state.isTtsEnabled) {
+        await _playTts(content);
       } else {
-        state = state.copyWith(
-          voiceState: VoiceState.error,
-          error: 'Lỗi từ máy chủ AI (${response.statusCode})',
-        );
+        state = state.copyWith(voiceState: VoiceState.idle);
+      }
+
+      // Orchestrate automatic generation, saving, or editing based on structured backend planning_action
+      if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
+        await generateItinerary(convId: convId);
+      } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
+        await saveCurrentTrip(convId: convId);
+      } else if (planningAction == 'TRIGGER_EDIT') {
+        final targetTripId = state.savedTripId ??
+            (state.tripPreview?.id != null && state.tripPreview!.id != 0
+                ? state.tripPreview!.id.toString()
+                : null);
+        if (targetTripId != null && targetTripId.isNotEmpty) {
+          await editSavedTrip(tripId: targetTripId, instruction: trimmed);
+        }
       }
     } on DioException catch (e) {
       if (!mounted) return;
@@ -808,25 +899,55 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     required String tripId,
     required String instruction,
   }) async {
-    log('editing_trip', {'tripId': tripId, 'instruction': instruction});
+    final cleanTripId = tripId.trim();
+    final cleanInstruction = instruction.trim();
+
+    // 1. Kiểm tra tính hợp lệ của tham số
+    if (cleanTripId.isEmpty) {
+      log('edit_trip_skipped_empty_id');
+      state = state.copyWith(
+        error: 'Chưa xác định được chuyến đi để chỉnh sửa.',
+      );
+      return;
+    }
+    if (cleanInstruction.isEmpty) {
+      log('edit_trip_skipped_empty_instruction');
+      return;
+    }
+
+    // 2. Bổ sung kiểm tra trạng thái: Không thực hiện nếu đang bận xử lý tác vụ khác
+    if (state.planningState == TripPlanningState.revising ||
+        state.planningState == TripPlanningState.generating ||
+        state.planningState == TripPlanningState.saving) {
+      log('edit_trip_skipped_busy', {'currentState': state.planningState.name});
+      return;
+    }
+
+    // Ghi nhớ trạng thái trước để hoàn nguyên an toàn nếu gặp sự cố
+    final previousPlanningState = state.planningState;
+    final previousPreview = state.tripPreview;
+
+    log('editing_trip', {'tripId': cleanTripId, 'instruction': cleanInstruction});
     state = state.copyWith(planningState: TripPlanningState.revising, error: null);
 
     try {
       final updatedTrip = await _tripRepo.editItinerary(
-        tripId: tripId,
-        instruction: instruction,
+        tripId: cleanTripId,
+        instruction: cleanInstruction,
       );
 
       if (updatedTrip != null) {
         _ref.invalidate(tripsListProvider);
-        _ref.invalidate(tripDetailProvider(tripId));
+        _ref.invalidate(tripDetailProvider(cleanTripId));
 
         state = state.copyWith(
           planningState: TripPlanningState.saved,
           tripPreview: updatedTrip,
+          savedTripId: cleanTripId,
+          error: null,
         );
 
-        final editMsg = 'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
+        final editMsg = 'Đã cập nhật lịch trình theo yêu cầu của bạn: "$cleanInstruction".';
         final aiMsg = ChatMessage(
           text: editMsg,
           isUser: false,
@@ -840,14 +961,57 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         if (state.isTtsEnabled) {
           await _playTts(editMsg);
         }
+      } else {
+        log('edit_trip_returned_null', {'tripId': cleanTripId});
+        state = state.copyWith(
+          planningState: previousPlanningState,
+          tripPreview: previousPreview,
+          error: 'Không thể cập nhật lịch trình. Lịch trình hiện tại được giữ nguyên.',
+        );
       }
     } catch (e) {
       log('edit_trip_error', {'error': e.toString()});
       state = state.copyWith(
-        planningState: TripPlanningState.error,
+        planningState: previousPlanningState,
+        tripPreview: previousPreview,
         error: 'Không thể chỉnh sửa lịch trình: $e',
       );
     }
+  }
+
+  /// Trích xuất tóm tắt thông tin hành trình từ planning_context
+  String? _formatPlanningContextSummary(Map<String, dynamic>? ctx) {
+    if (ctx == null) return null;
+    final trip = ctx['trip'] as Map<String, dynamic>?;
+    if (trip == null) return null;
+
+    final parts = <String>[];
+    final destination = trip['destination'] as Map<String, dynamic>?;
+    final city = destination?['city']?.toString();
+    if (city != null && city.isNotEmpty) {
+      parts.add('Điểm đến: $city');
+    }
+
+    final dates = trip['dates'] as Map<String, dynamic>?;
+    final days = dates?['duration_days'];
+    if (days != null && days is int && days > 0) {
+      parts.add('$days ngày');
+    }
+
+    final travelers = trip['travelers'] as Map<String, dynamic>?;
+    final adults = travelers?['adults'];
+    if (adults != null && adults is int && adults > 0) {
+      parts.add('$adults người lớn');
+    }
+
+    final budget = ctx['budget'] as Map<String, dynamic>?;
+    final total = budget?['total'];
+    if (total != null) {
+      final currency = budget?['currency']?.toString() ?? 'VND';
+      parts.add('Ngân sách: $total $currency');
+    }
+
+    return parts.isNotEmpty ? parts.join(' • ') : null;
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────
