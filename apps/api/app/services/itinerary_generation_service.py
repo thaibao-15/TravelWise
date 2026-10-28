@@ -761,6 +761,7 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
                         description=getattr(cand, "description", None),
                         latitude=cand.latitude,
                         longitude=cand.longitude,
+                        image_url=getattr(cand, "image_url", None),
                     )
 
                 item = ItineraryActivityItem(

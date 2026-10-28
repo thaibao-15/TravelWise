@@ -198,6 +198,7 @@ def ask_knowledge(
             mode=request.mode or "chat",
             location_context=location_context,
             weather_context=weather_context,
+            image_urls=request.image_urls,
         )
         answer = result["answer"]
     except RAGChainError as e:
@@ -235,8 +236,14 @@ def ask_knowledge(
             conversation.id,
         )
 
-    # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
+
+    suggested_media = None
+    try:
+        from app.services.media_service import MediaService
+        suggested_media = MediaService.suggest_media_for_query(session, user_question)
+    except Exception as e:
+        logger.debug("Media suggestion sync error: %s", e)
 
     return RAGAskResponse(
         conversation_id=conversation.id,
@@ -248,6 +255,7 @@ def ask_knowledge(
             audio_url=ai_msg.audio_url,
         ),
         planning_context=planning_context,
+        media=suggested_media if suggested_media else None,
     )
 
 
@@ -372,6 +380,7 @@ async def ask_rag_stream(
                 mode=request.mode or "chat",
                 location_context=location_context,
                 weather_context=weather_context,
+                image_urls=request.image_urls,
             ):
                 full_answer_parts.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
@@ -423,7 +432,18 @@ async def ask_rag_stream(
                 conversation.id,
             )
 
-        ConversationService.update_conversation_timestamp(session, conversation)
+        suggested_media = []
+        try:
+            from app.services.media_service import MediaService
+            suggested_media = MediaService.suggest_media_for_query(session, user_question)
+            if suggested_media:
+                media_payload = {
+                    "type": "media",
+                    "media": [m.model_dump() for m in suggested_media],
+                }
+                yield f"data: {json.dumps(media_payload)}\n\n"
+        except Exception as e:
+            logger.debug("Media suggestion stream error: %s", e)
 
         done_payload = {
             "type": "done",
@@ -433,6 +453,8 @@ async def ask_rag_stream(
         }
         if planning_context_data:
             done_payload["planning_context"] = planning_context_data
+        if suggested_media:
+            done_payload["media"] = [m.model_dump() for m in suggested_media]
 
         yield f"data: {json.dumps(done_payload)}\n\n"
 

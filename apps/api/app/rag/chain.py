@@ -7,10 +7,14 @@ Reuses existing retriever, prompt template, and LLM factories.
 Ensures no API keys, credentials, or internal secrets are leaked in logs or exceptions.
 """
 
+import base64
 import logging
+import mimetypes
+import os
 from typing import Any, Dict, List, Optional, Sequence
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.rag.config import RAG_TOP_K
@@ -26,6 +30,88 @@ from app.rag.prompt import (
 from app.rag.retriever import RAGRetriever
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_image_to_data_uri(img_path_or_url: str) -> str:
+    """Convert a local file path, static upload URL, or public URL to base64 Data URI for LLM vision processing."""
+    if not img_path_or_url:
+        return ""
+    if img_path_or_url.startswith("data:"):
+        return img_path_or_url
+
+    clean_path = img_path_or_url.split("?")[0]
+    filename = os.path.basename(clean_path)
+
+    # 1. Search candidate upload directories across possible workspace locations
+    candidate_dirs = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "uploads"),
+        r"D:\TravelWise\TravelWise\apps\api\app\static\uploads",
+        r"D:\TravelWise 1\TravelWise\apps\api\app\static\uploads",
+        r"D:\TravelWise2\TravelWise\apps\api\app\static\uploads",
+    ]
+    for c_dir in candidate_dirs:
+        candidate_file = os.path.join(c_dir, filename)
+        if os.path.isfile(candidate_file):
+            try:
+                mime_type, _ = mimetypes.guess_type(candidate_file)
+                mime_type = mime_type or "image/jpeg"
+                with open(candidate_file, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                return f"data:{mime_type};base64,{b64}"
+            except Exception as e:
+                logger.warning("Failed to encode local image to base64: %s", e)
+
+    # 2. If it's a local HTTP URL or relative static path, fetch bytes from local server
+    if "127.0.0.1" in img_path_or_url or "localhost" in img_path_or_url or img_path_or_url.startswith("/"):
+        try:
+            import requests
+
+            target_url = img_path_or_url
+            if target_url.startswith("/"):
+                target_url = f"http://127.0.0.1:8000{target_url}"
+            resp = requests.get(target_url, timeout=5)
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return f"data:{content_type};base64,{b64}"
+        except Exception as e:
+            logger.warning("Failed to fetch local image via HTTP: %s", e)
+
+    return img_path_or_url
+
+
+def attach_images_to_messages(messages: Sequence[Any], image_urls: Optional[Sequence[str]]) -> List[Any]:
+    """Wraps user message with Multimodal image blocks for Gemini/GPT vision processing."""
+    if not image_urls:
+        return list(messages)
+
+    resolved_uris = [resolve_image_to_data_uri(u) for u in image_urls if u]
+    if not resolved_uris:
+        return list(messages)
+
+    messages_copy = list(messages)
+    last_msg = messages_copy[-1]
+    existing_text = extract_response_text(getattr(last_msg, "content", last_msg))
+
+    guidance = (
+        "\n\n[HƯỚNG DẪN NHẬN DIỆN THỊ GIÁC]: "
+        "Người dùng đã đính kèm hình ảnh địa điểm du lịch. Hãy quan sát thật kỹ các đặc điểm kiến trúc, "
+        "danh lam thắng cảnh, màu sắc, phong cảnh thiên nhiên hoặc chi tiết nổi bật trong ảnh để xác định chính xác "
+        "đây là địa điểm nào (nêu rõ tên địa danh, thành phố/tỉnh thành). Sau đó hãy giới thiệu ngắn gọn, cung cấp các thông tin "
+        "hữu ích như vị trí, điểm nổi bật, trải nghiệm du lịch tại nơi này."
+    )
+
+    content_parts: List[Dict[str, Any]] = [
+        {"type": "text", "text": f"{existing_text}{guidance}"}
+    ]
+    for uri in resolved_uris:
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": uri}
+        })
+
+    messages_copy[-1] = HumanMessage(content=content_parts)
+    return messages_copy
 
 
 class RAGChainError(Exception):
@@ -120,6 +206,7 @@ class RAGChain:
         mode: str = "chat",
         location_context: Optional[str] = None,
         weather_context: Optional[str] = None,
+        image_urls: Optional[Sequence[str]] = None,
     ) -> Dict[str, Any]:
         """Execute the RAG pipeline for a given question and optional conversation context.
 
@@ -154,17 +241,22 @@ class RAGChain:
 
         # 3. Handle documents found or fallback
         if not retrieved_docs:
-            if not chat_history and not planning_summary:
+            if not chat_history and not planning_summary and not image_urls:
                 return {
                     "question": clean_question,
                     "standalone_question": search_query,
                     "answer": "Xin lỗi, hiện tại tôi không tìm thấy đủ thông tin về vấn đề này trong cơ sở dữ liệu để giải đáp cho bạn.",
                     "sources": [],
                 }
-            context_text = (
-                "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
-                "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
-            )
+            if image_urls:
+                context_text = (
+                    "Người dùng đã đính kèm hình ảnh. Hãy quan sát hình ảnh và phân tích đặc điểm kiến trúc, danh lam thắng cảnh để giải đáp chính xác."
+                )
+            else:
+                context_text = (
+                    "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
+                    "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
+                )
         else:
             context_text = format_docs(retrieved_docs)
 
@@ -204,6 +296,8 @@ class RAGChain:
 
         # 6. Invoke LLM
         try:
+            if image_urls:
+                formatted_messages = attach_images_to_messages(formatted_messages, image_urls)
             llm_response = self.llm.invoke(formatted_messages)
             answer = extract_response_text(getattr(llm_response, "content", llm_response)).strip()
         except Exception as e:
@@ -227,6 +321,7 @@ class RAGChain:
         mode: str = "chat",
         location_context: Optional[str] = None,
         weather_context: Optional[str] = None,
+        image_urls: Optional[Sequence[str]] = None,
     ):
         """Stream response tokens generator for real-time low-latency response."""
         clean_question = (question or "").strip()
@@ -244,10 +339,15 @@ class RAGChain:
             retrieved_docs = []
 
         if not retrieved_docs:
-            context_text = (
-                "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
-                "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
-            )
+            if image_urls:
+                context_text = (
+                    "Người dùng đã đính kèm hình ảnh. Hãy quan sát hình ảnh và phân tích đặc điểm kiến trúc, danh lam thắng cảnh để giải đáp chính xác."
+                )
+            else:
+                context_text = (
+                    "Không có tài liệu địa danh cụ thể nào cho câu hỏi này. "
+                    "Hãy đóng vai trò Trợ lý Lập kế hoạch Du lịch TravelWise để tư vấn và phỏng vấn các thông tin chuyến đi còn thiếu trong Checklist."
+                )
         else:
             context_text = format_docs(retrieved_docs)
 
@@ -285,6 +385,8 @@ class RAGChain:
             raise RAGChainError("Lỗi định dạng câu hỏi và ngữ cảnh.") from None
 
         try:
+            if image_urls:
+                formatted_messages = attach_images_to_messages(formatted_messages, image_urls)
             for chunk in self.llm.stream(formatted_messages):
                 token = extract_response_text(getattr(chunk, "content", chunk))
                 if token:
