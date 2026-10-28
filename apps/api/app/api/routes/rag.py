@@ -238,6 +238,28 @@ def ask_knowledge(
     # 7. Update conversation updated_at
     ConversationService.update_conversation_timestamp(session, conversation)
 
+    # 8. Extract planning status & action signals from planning context
+    planning_status = None
+    is_ready_to_generate = None
+    planning_action = None
+
+    if planning_context:
+        is_ready = bool(
+            planning_context.planning_state
+            and planning_context.planning_state.is_ready_to_generate
+        )
+        is_ready_to_generate = is_ready
+        planning_status = "ready_to_generate" if is_ready else "collecting_requirements"
+
+        user_lower = user_question.lower()
+        if any(kw in user_lower for kw in ["tạo lịch trình", "lên lịch trình", "tạo ngay", "tạo cho tôi", "generate itinerary"]):
+            if is_ready:
+                planning_action = "TRIGGER_GENERATION"
+        elif any(kw in user_lower for kw in ["lưu lịch trình", "lưu chuyến đi", "save trip", "lưu ngay"]):
+            planning_action = "TRIGGER_SAVE"
+        elif any(kw in user_lower for kw in ["chỉnh sửa lịch trình", "sửa lịch trình", "đổi điểm", "thay đổi lịch trình", "thêm vào lịch trình", "xóa khỏi lịch trình", "đổi khách sạn"]):
+            planning_action = "TRIGGER_EDIT"
+
     return RAGAskResponse(
         conversation_id=conversation.id,
         message=MessageResponse(
@@ -248,6 +270,9 @@ def ask_knowledge(
             audio_url=ai_msg.audio_url,
         ),
         planning_context=planning_context,
+        planning_status=planning_status,
+        is_ready_to_generate=is_ready_to_generate,
+        planning_action=planning_action,
     )
 
 
@@ -433,6 +458,20 @@ async def ask_rag_stream(
         }
         if planning_context_data:
             done_payload["planning_context"] = planning_context_data
+            is_ready = bool(
+                planning_context_data.get("planning_state", {}).get("is_ready_to_generate")
+            )
+            done_payload["is_ready_to_generate"] = is_ready
+            done_payload["planning_status"] = "ready_to_generate" if is_ready else "collecting_requirements"
+
+            user_lower = (request.message or request.query or "").lower()
+            if any(kw in user_lower for kw in ["tạo lịch trình", "lên lịch trình", "tạo ngay", "tạo cho tôi", "generate itinerary"]):
+                if is_ready:
+                    done_payload["planning_action"] = "TRIGGER_GENERATION"
+            elif any(kw in user_lower for kw in ["lưu lịch trình", "lưu chuyến đi", "save trip", "lưu ngay"]):
+                done_payload["planning_action"] = "TRIGGER_SAVE"
+            elif any(kw in user_lower for kw in ["chỉnh sửa lịch trình", "sửa lịch trình", "đổi điểm", "thay đổi lịch trình", "thêm vào lịch trình", "xóa khỏi lịch trình", "đổi khách sạn"]):
+                done_payload["planning_action"] = "TRIGGER_EDIT"
 
         yield f"data: {json.dumps(done_payload)}\n\n"
 

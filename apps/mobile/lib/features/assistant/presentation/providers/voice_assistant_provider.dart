@@ -151,7 +151,7 @@ class VoiceListeningConfig {
   final int maxAutoRestarts;
 
   const VoiceListeningConfig({
-    this.pauseFor = const Duration(milliseconds: 1100),
+    this.pauseFor = const Duration(milliseconds: 2200),
     this.listenFor = const Duration(seconds: 120),
     this.noSpeechTimeout = const Duration(seconds: 10),
     this.maxAutoRestarts = 2,
@@ -182,6 +182,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   /// Finalised transcript segments of the current turn + the live partial.
   final List<String> _finalSegments = [];
   String _partialSegment = '';
+  bool _hasGreeted = false;
 
   /// Flag indicating if TTS playback has been stopped/cancelled by the user.
   bool _ttsCancelled = false;
@@ -311,6 +312,45 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       voiceState: VoiceState.idle,
       isRecording: false,
     );
+  }
+
+  /// AI tự động chào và giới thiệu với người dùng khi mở màn hình Trợ lý du lịch.
+  Future<void> greetUser({String? userName}) async {
+    if (_hasGreeted || state.messages.isNotEmpty) return;
+    _hasGreeted = true;
+
+    final displayName = (userName != null && userName.trim().isNotEmpty)
+        ? userName.trim()
+        : 'bạn';
+
+    final greetingText =
+        'Xin chào $displayName! Mình là Linh AI - trợ lý du lịch đồng hành cùng bạn tại TravelWise. Hôm nay bạn muốn lên lịch trình hay khám phá điểm đến nào?';
+
+    log('ai_greeting_user', {'displayName': displayName});
+
+    final greetingMsg = ChatMessage(
+      text: greetingText,
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      messages: [greetingMsg],
+      currentTranscript: greetingText,
+    );
+
+    if (state.isTtsEnabled) {
+      await _playTts(greetingText);
+    }
+  }
+
+  /// Khởi tạo lại cuộc trò chuyện và chào lại nếu cần.
+  void resetConversation({String? userName}) {
+    _abortListening();
+    stopAudio();
+    _hasGreeted = false;
+    state = const VoiceAssistantState();
+    greetUser(userName: userName);
   }
 
   /// Cancels an active listening turn without submitting (e.g. user left the
@@ -487,8 +527,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       state = state.copyWith(
         isRecording: false,
         voiceState: VoiceState.error,
-        error:
-            'Không nhận được giọng nói. Hãy nói rõ hơn hoặc kiểm tra microphone / kết nối STT.',
+        error: 'Không nhận diện được giọng nói.',
       );
     });
   }
@@ -1028,7 +1067,83 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             hasDestAfterAsk) {
           derivedPlanning = TripPlanningState.readyToGenerate;
         }
+      } catch (streamErr) {
+        log('sse_stream_fallback', {'error': streamErr.toString()});
+      }
 
+      // ── 2. Nếu SSE không khả dụng thì fallback sang /api/v1/rag/ask thông thường ──
+      if (!streamSucceeded) {
+        final response = await _dio.post(
+          '/api/v1/rag/ask',
+          data: {
+            'message': trimmed,
+            if (state.conversationId != null)
+              'conversation_id': state.conversationId,
+            'mode': isVoiceMode ? 'voice' : 'chat',
+          },
+        );
+
+        if (!mounted) return;
+        log('rag_response', {'statusCode': response.statusCode});
+
+        if (response.statusCode == 200) {
+          final data = response.data as Map<String, dynamic>;
+          content =
+              (data['message'] as Map<String, dynamic>)['content'] as String;
+          convId = data['conversation_id'] as int?;
+          planningStatus = data['planning_status']?.toString();
+          isReady = data['is_ready_to_generate'] == true;
+          planningAction = data['planning_action']?.toString();
+          planningContext = data['planning_context'] as Map<String, dynamic>?;
+        } else {
+          state = state.copyWith(
+            voiceState: VoiceState.error,
+            error: 'Lỗi từ máy chủ AI (${response.statusCode})',
+          );
+          return;
+        }
+      }
+
+      if (!mounted) return;
+
+      final isContextReady = planningContext?['planning_state']?['is_ready_to_generate'] == true;
+      final effectiveIsReady = isReady || isContextReady;
+
+      log('rag_success', {
+        'contentLength': content.length,
+        'conversationId': convId,
+        'planningStatus': planningStatus,
+        'isReady': effectiveIsReady,
+        'planningAction': planningAction,
+        'hasPlanningContext': planningContext != null,
+      });
+
+      final aiMsg = ChatMessage(
+        text: content,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
+      TripPlanningState derivedPlanning = state.planningState;
+      if (planningStatus == 'collecting_requirements' ||
+          (planningContext != null && !effectiveIsReady && state.tripPreview == null)) {
+        derivedPlanning = TripPlanningState.collectingRequirements;
+      } else if (planningStatus == 'ready_to_generate' || effectiveIsReady) {
+        derivedPlanning = TripPlanningState.readyToGenerate;
+      }
+
+      final summary = _formatPlanningContextSummary(planningContext) ?? state.planningContextSummary;
+
+      state = state.copyWith(
+        messages: [...state.messages, aiMsg],
+        conversationId: convId,
+        currentTranscript: content,
+        planningState: derivedPlanning,
+        planningContextSummary: summary,
+      );
+
+      if (isVoiceMode || state.isTtsEnabled) {
+        await _playTts(content);
         state = state.copyWith(
           messages: [...state.messages, aiMsg],
           conversationId: convId,
@@ -1065,10 +1180,22 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           }
         }
       } else {
-        state = state.copyWith(
-          voiceState: VoiceState.error,
-          error: 'Lỗi từ máy chủ AI (${response.statusCode})',
-        );
+        state = state.copyWith(voiceState: VoiceState.idle);
+      }
+
+      // Orchestrate automatic generation, saving, or editing based on structured backend planning_action
+      if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
+        await generateItinerary(convId: convId);
+      } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
+        await saveCurrentTrip(convId: convId);
+      } else if (planningAction == 'TRIGGER_EDIT') {
+        final targetTripId = state.savedTripId ??
+            (state.tripPreview?.id != null && state.tripPreview!.id != 0
+                ? state.tripPreview!.id.toString()
+                : null);
+        if (targetTripId != null && targetTripId.isNotEmpty) {
+          await editSavedTrip(tripId: targetTripId, instruction: trimmed);
+        }
       }
     } on DioException catch (e) {
       if (!mounted) return;
@@ -1625,6 +1752,41 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         error: 'Không thể chỉnh sửa lịch trình: $e',
       );
     }
+  }
+
+  /// Trích xuất tóm tắt thông tin hành trình từ planning_context
+  String? _formatPlanningContextSummary(Map<String, dynamic>? ctx) {
+    if (ctx == null) return null;
+    final trip = ctx['trip'] as Map<String, dynamic>?;
+    if (trip == null) return null;
+
+    final parts = <String>[];
+    final destination = trip['destination'] as Map<String, dynamic>?;
+    final city = destination?['city']?.toString();
+    if (city != null && city.isNotEmpty) {
+      parts.add('Điểm đến: $city');
+    }
+
+    final dates = trip['dates'] as Map<String, dynamic>?;
+    final days = dates?['duration_days'];
+    if (days != null && days is int && days > 0) {
+      parts.add('$days ngày');
+    }
+
+    final travelers = trip['travelers'] as Map<String, dynamic>?;
+    final adults = travelers?['adults'];
+    if (adults != null && adults is int && adults > 0) {
+      parts.add('$adults người lớn');
+    }
+
+    final budget = ctx['budget'] as Map<String, dynamic>?;
+    final total = budget?['total'];
+    if (total != null) {
+      final currency = budget?['currency']?.toString() ?? 'VND';
+      parts.add('Ngân sách: $total $currency');
+    }
+
+    return parts.isNotEmpty ? parts.join(' • ') : null;
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────
