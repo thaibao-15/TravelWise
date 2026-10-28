@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../reviews/screens/place_reviews_bottom_sheet.dart';
 import '../models/place_model.dart';
 
 class PlaceCard extends StatelessWidget {
@@ -41,7 +42,7 @@ class PlaceCard extends StatelessWidget {
                   height: 140,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (context, error, stackTrace) => Container(
                     height: 140,
                     width: double.infinity,
                     color: AppColors.surfaceContainerHigh,
@@ -59,12 +60,48 @@ class PlaceCard extends StatelessWidget {
               Positioned(
                 top: AppSpacing.md,
                 left: AppSpacing.md,
-                right: 76,
+                right: 70, // Keep space for the favorite button on the right
                 child: Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
+                    // Open/Closed Status Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: place.isOpen
+                            ? AppColors.tertiary.withOpacity(0.9)
+                            : AppColors.error.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            place.isOpen ? 'Mở cửa' : 'Đóng cửa',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // First Tag Badge
                     if (place.tags.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -72,39 +109,15 @@ class PlaceCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.95),
-                          borderRadius: BorderRadius.circular(
-                            AppSpacing.radiusLg,
-                          ),
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                         ),
                         child: Text(
                           place.tags.first,
                           style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    if (place.isOpen)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.success,
-                          borderRadius: BorderRadius.circular(
-                            AppSpacing.radiusLg,
-                          ),
-                        ),
-                        child: const Text(
-                          '• Đang mở cửa',
-                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -112,39 +125,34 @@ class PlaceCard extends StatelessWidget {
                 ),
               ),
 
-              // Actions on Top-Right
+              // Favorite Heart Button on Top-Right
               Positioned(
                 top: AppSpacing.md,
                 right: AppSpacing.md,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: Colors.white.withOpacity(0.95),
-                      radius: 14,
-                      child: const Icon(
-                        Icons.bookmark_border,
-                        size: 16,
-                        color: AppColors.textPrimary,
-                      ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.favorite_border,
+                      size: 18,
+                      color: AppColors.textPrimary,
                     ),
-                    const SizedBox(width: AppSpacing.xs),
-                    CircleAvatar(
-                      backgroundColor: Colors.white.withOpacity(0.95),
-                      radius: 14,
-                      child: const Icon(
-                        Icons.share_outlined,
-                        size: 16,
-                        color: AppColors.textPrimary,
-                      ),
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
                     ),
-                  ],
+                    padding: EdgeInsets.zero,
+                    onPressed: () {},
+                  ),
                 ),
               ),
             ],
           ),
 
-          // Details Section
+          // Content
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Column(
@@ -157,8 +165,9 @@ class PlaceCard extends StatelessWidget {
                       child: Text(
                         place.name,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -167,16 +176,15 @@ class PlaceCard extends StatelessWidget {
                     const SizedBox(width: AppSpacing.sm),
                     Text(
                       place.price,
-                      style: TextStyle(
-                        color: place.price == 'Miễn phí'
-                            ? AppColors.success
-                            : AppColors.primary,
-                        fontWeight: FontWeight.bold,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.xs),
+                const SizedBox(height: 4),
                 Text(
                   place.description,
                   style: const TextStyle(
@@ -186,54 +194,135 @@ class PlaceCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+
+                // Review Snippet Box (if available)
+                if (place.topReviewSnippet != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  InkWell(
+                    onTap: () {
+                      PlaceReviewsBottomSheet.show(
+                        context: context,
+                        placeId: int.tryParse(place.id) ?? 1,
+                        placeName: place.name,
+                        ratingAvg: place.rating,
+                        totalReviews: place.reviews,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.format_quote_rounded,
+                            size: 14,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: RichText(
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                children: [
+                                  TextSpan(text: '"${place.topReviewSnippet}"'),
+                                  if (place.topReviewAuthor != null)
+                                    TextSpan(
+                                      text: ' — ${place.topReviewAuthor}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontStyle: FontStyle.normal,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: AppSpacing.md),
 
-                // Responsive Bottom Stats and Action (Wrap prevents ANY RenderFlex overflow)
+                // Responsive Bottom Stats and Action
                 Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: AppSpacing.sm,
                   runSpacing: 6,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          color: AppColors.primary,
-                          size: 14,
+                    InkWell(
+                      onTap: () {
+                        PlaceReviewsBottomSheet.show(
+                          context: context,
+                          placeId: int.tryParse(place.id) ?? 1,
+                          placeName: place.name,
+                          ratingAvg: place.rating,
+                          totalReviews: place.reviews,
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              color: AppColors.warning,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${place.rating}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '(${place.reviews > 1000 ? '${(place.reviews / 1000).toStringAsFixed(1)}K' : place.reviews})',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            const Icon(
+                              Icons.location_on_outlined,
+                              color: AppColors.textSecondary,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              '${place.distance} km',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '${place.rating}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '(${place.reviews > 1000 ? '${(place.reviews / 1000).toStringAsFixed(1)}K' : place.reviews})',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        const Icon(
-                          Icons.location_on_outlined,
-                          color: AppColors.textSecondary,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${place.distance} km',
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                     InkWell(
                       onTap: () {},

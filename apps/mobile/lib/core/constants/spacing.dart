@@ -8,6 +8,7 @@ class AppSpacing {
 
   // Radius shortcuts (used by explore/shared widgets)
   static const double radiusSm = 12.0;
+  static const double radiusMd = 16.0;
   static const double radiusLg = 20.0;
 }
 
