@@ -482,3 +482,4 @@ def test_llm_connection(request: LLMTestRequest) -> LLMTestResponse:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to communicate with LLM service.",
         )
+        
