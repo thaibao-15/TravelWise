@@ -6,8 +6,8 @@ import '../storage/secure_storage_service.dart';
 class ApiConfig {
   // For Android emulator use 10.0.2.2, for real device use your machine IP
   static const String baseUrl = 'http://127.0.0.1:8000';
-  static const Duration connectTimeout = Duration(seconds: 15);
-  static const Duration receiveTimeout = Duration(seconds: 15);
+  static const Duration connectTimeout = Duration(seconds: 60);
+  static const Duration receiveTimeout = Duration(seconds: 120);
 }
 
 /// Factory that creates a configured Dio instance with auth interceptor.

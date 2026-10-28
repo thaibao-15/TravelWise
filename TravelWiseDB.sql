@@ -1,3 +1,4 @@
+use master
 IF DB_ID('TravelWiseDB') IS NOT NULL
 BEGIN
     ALTER DATABASE TravelWiseDB
@@ -91,6 +92,8 @@ CREATE TABLE places (
     location GEOGRAPHY,
 
     category_id BIGINT,
+    rating_avg DECIMAL(3, 2) DEFAULT 0.0,
+    review_count INT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
     is_deleted BIT DEFAULT 0,
@@ -117,6 +120,11 @@ CREATE TABLE hotel_details (
     star_rating INT,
     price_per_night DECIMAL(10,2),
     amenities NVARCHAR(MAX),
+    phone NVARCHAR(50),
+    website NVARCHAR(500),
+    email NVARCHAR(255),
+    rooms INT,
+    beds INT,
     FOREIGN KEY (place_id) REFERENCES places(id) ON DELETE CASCADE
 );
 
@@ -143,6 +151,113 @@ CREATE TABLE opening_hours (
     close_time TIME,
     FOREIGN KEY (place_id) REFERENCES places(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE place_reviews (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    user_id BIGINT NOT NULL,
+    place_id BIGINT NOT NULL,
+
+    -- Điểm đánh giá từ 1 đến 5 sao
+    rating TINYINT NOT NULL,
+
+    -- Tiêu đề ngắn gọn & nội dung nhận xét
+    title NVARCHAR(255) NULL,
+    comment NVARCHAR(MAX) NULL,
+
+    -- Ngữ cảnh chuyến đi phục vụ AI/RAG Recommendation
+    -- ('solo', 'couple', 'family', 'friends', 'business')
+    trip_type VARCHAR(20) NULL,
+    visited_at DATE NULL,
+
+    -- Lượt tương tác & Phản hồi từ chủ điểm/admin
+    helpful_count INT NOT NULL DEFAULT 0,
+    owner_reply NVARCHAR(MAX) NULL,
+    owner_replied_at DATETIME2 NULL,
+
+    -- Trạng thái kiểm duyệt & xóa mềm
+    is_visible BIT NOT NULL DEFAULT 1,
+    is_deleted BIT NOT NULL DEFAULT 0,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_place_reviews_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT FK_place_reviews_places
+        FOREIGN KEY (place_id)
+        REFERENCES places(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT CK_place_reviews_rating
+        CHECK (rating BETWEEN 1 AND 5),
+
+    -- Mỗi người chỉ đánh giá 1 lần cho 1 địa điểm
+    CONSTRAINT UQ_place_reviews_user_place
+        UNIQUE (user_id, place_id)
+);
+
+-- Index tối ưu hóa truy vấn lọc trang chi tiết địa điểm
+CREATE INDEX IX_place_reviews_place_lookup
+    ON place_reviews(place_id, is_visible, is_deleted, created_at DESC)
+    INCLUDE (rating, user_id, trip_type);
+
+CREATE INDEX IX_place_reviews_user_id
+    ON place_reviews(user_id);
+
+
+CREATE TABLE review_images (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    review_id BIGINT NOT NULL,
+    image_url NVARCHAR(2048) NOT NULL,
+    caption NVARCHAR(255) NULL,
+    display_order INT NOT NULL DEFAULT 0,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_review_images_place_reviews
+        FOREIGN KEY (review_id)
+        REFERENCES place_reviews(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IX_review_images_review_id
+    ON review_images(review_id, display_order);
+
+
+CREATE TABLE review_helpful_votes (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    review_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+
+    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+    CONSTRAINT FK_review_helpful_votes_reviews
+        FOREIGN KEY (review_id)
+        REFERENCES place_reviews(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT FK_review_helpful_votes_users
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE NO ACTION,
+
+    CONSTRAINT UQ_review_helpful_votes_user_review
+        UNIQUE (user_id, review_id)
+);
+
+CREATE INDEX IX_review_helpful_votes_review_id
+    ON review_helpful_votes(review_id);
+
+CREATE INDEX IX_review_helpful_votes_user_id
+    ON review_helpful_votes(user_id);
+
 
 -- =========================================
 -- KNOWLEDGE (RAG)
@@ -353,9 +468,20 @@ ON itinerary_activities(itinerary_day_id, order_index);
 CREATE INDEX idx_trip_user ON trips(user_id);
 
 -- CATEGORIES
-INSERT INTO categories (name) VALUES
-('Restaurant'),('Cafe'),('Hotel'),('Beach'),('Museum'),
-('Park'),('Bar'),('Mall'),('Temple'),('Street Food');
+INSERT INTO categories (name, description) VALUES
+(N'Thiên nhiên và cảnh quan', N'Bãi biển, núi, bán đảo, hồ, thác nước và các điểm ngắm cảnh.'),
+(N'Văn hóa và lịch sử', N'Chùa, đền, bảo tàng, di tích lịch sử và làng nghề truyền thống.'),
+(N'Ẩm thực', N'Nhà hàng, quán ăn, quán ăn đường phố và địa điểm thưởng thức đặc sản.'),
+(N'Quán cà phê', N'Quán cà phê, trà và các địa điểm thưởng thức đồ uống.'),
+(N'Vui chơi và giải trí', N'Công viên giải trí, khu vui chơi, phố đi bộ và địa điểm giải trí.'),
+(N'Mua sắm và chợ', N'Chợ truyền thống, chợ đêm, trung tâm thương mại và cửa hàng đặc sản.'),
+(N'Lưu trú và nghỉ dưỡng', N'Khách sạn, resort, homestay và căn hộ du lịch.'),
+(N'Trải nghiệm và hoạt động', N'Leo núi, lặn biển, chèo kayak, cắm trại và các hoạt động du lịch.'),
+(N'Thư giãn và chăm sóc sức khỏe', N'Spa, massage, suối khoáng nóng và khu nghỉ dưỡng sức khỏe.'),
+(N'Giao thông', N'Sân bay, ga tàu, bến xe và bến tàu du lịch.'),
+(N'Dịch vụ du lịch', N'Điểm thuê xe, bán vé, đặt tour và trung tâm thông tin du lịch.'),
+(N'Tiện ích công cộng', N'Bãi đỗ xe, nhà vệ sinh công cộng, ATM và các tiện ích thiết yếu.'),
+(N'Y tế', N'Bệnh viện, phòng khám và nhà thuốc phục vụ khách du lịch.');
 
 
 
@@ -391,7 +517,7 @@ VALUES
     16.0998,
     108.2770,
     geography::Point(16.0998, 108.2770, 4326),
-    1,
+    2,
     0
 ),
 
@@ -402,7 +528,7 @@ VALUES
     15.9959,
     107.9967,
     geography::Point(15.9959, 107.9967, 4326),
-    2,
+    5,
     0
 ),
 
@@ -413,7 +539,7 @@ VALUES
     16.0039,
     108.2635,
     geography::Point(16.0039, 108.2635, 4326),
-    3,
+    1,
     0
 ),
 
@@ -424,7 +550,7 @@ VALUES
     16.0614,
     108.2272,
     geography::Point(16.0614, 108.2272, 4326),
-    4,
+    1,
     0
 ),
 
@@ -435,7 +561,7 @@ VALUES
     16.0599,
     108.2456,
     geography::Point(16.0599, 108.2456, 4326),
-    5,
+    1,
     0
 ),
 
@@ -457,7 +583,7 @@ VALUES
     16.0620,
     108.2232,
     geography::Point(16.0620, 108.2232, 4326),
-    7,
+    2,
     0
 ),
 
@@ -468,7 +594,7 @@ VALUES
     16.1167,
     108.2833,
     geography::Point(16.1167, 108.2833, 4326),
-    8,
+    1,
     0
 ),
 
@@ -479,7 +605,7 @@ VALUES
     16.0628,
     108.2295,
     geography::Point(16.0628, 108.2295, 4326),
-    9,
+    1,
     0
 ),
 
@@ -490,7 +616,7 @@ VALUES
     16.2017,
     108.1272,
     geography::Point(16.2017, 108.1272, 4326),
-    10,
+    1,
     0
 ),
 
@@ -501,7 +627,7 @@ VALUES
     16.0722,
     108.2275,
     geography::Point(16.0722, 108.2275, 4326),
-    6,
+    1,
     0
 ),
 
@@ -512,7 +638,7 @@ VALUES
     16.0967,
     108.2228,
     geography::Point(16.0967, 108.2228, 4326),
-    6,
+    1,
     0
 ),
 
@@ -523,7 +649,7 @@ VALUES
     16.0503,
     108.2278,
     geography::Point(16.0503, 108.2278, 4326),
-    6,
+    1,
     0
 ),
 
@@ -534,7 +660,7 @@ VALUES
     16.0028,
     108.2678,
     geography::Point(16.0028, 108.2678, 4326),
-    4,
+    1,
     0
 ),
 
@@ -545,7 +671,7 @@ VALUES
     16.1264,
     108.1258,
     geography::Point(16.1264, 108.1258, 4326),
-    4,
+    1,
     0
 ),
 
@@ -556,7 +682,7 @@ VALUES
     16.1255,
     108.3188,
     geography::Point(16.1255, 108.3188, 4326),
-    6,
+    1,
     0
 ),
 
@@ -567,7 +693,7 @@ VALUES
     16.1219,
     108.2819,
     geography::Point(16.1219, 108.2819, 4326),
-    6,
+    1,
     0
 ),
 
@@ -578,7 +704,7 @@ VALUES
     15.9961,
     108.2528,
     geography::Point(15.9961, 108.2528, 4326),
-    9,
+    2,
     0
 ),
 
@@ -589,7 +715,7 @@ VALUES
     16.0667,
     108.2239,
     geography::Point(16.0667, 108.2239, 4326),
-    9,
+    2,
     0
 ),
 
@@ -600,7 +726,7 @@ VALUES
     16.0044,
     108.2631,
     geography::Point(16.0044, 108.2631, 4326),
-    9,
+    2,
     0
 ),
 
@@ -611,7 +737,7 @@ VALUES
     16.0756,
     108.2231,
     geography::Point(16.0756, 108.2231, 4326),
-    5,
+    2,
     0
 ),
 
@@ -622,7 +748,7 @@ VALUES
     16.0728,
     108.2197,
     geography::Point(16.0728, 108.2197, 4326),
-    5,
+    2,
     0
 ),
 
@@ -644,7 +770,7 @@ VALUES
     16.0683,
     108.2153,
     geography::Point(16.0683, 108.2153, 4326),
-    10,
+    6,
     0
 ),
 
@@ -655,7 +781,7 @@ VALUES
     16.0617,
     108.2308,
     geography::Point(16.0617, 108.2308, 4326),
-    10,
+    6,
     0
 ),
 
@@ -666,7 +792,7 @@ VALUES
     16.0378,
     108.2236,
     geography::Point(16.0378, 108.2236, 4326),
-    10,
+    6,
     0
 ),
 
@@ -677,7 +803,7 @@ VALUES
     16.0389,
     108.2272,
     geography::Point(16.0389, 108.2272, 4326),
-    6,
+    5,
     0
 ),
 
@@ -688,7 +814,7 @@ VALUES
     15.9733,
     108.0167,
     geography::Point(15.9733, 108.0167, 4326),
-    6,
+    9,
     0
 ),
 
@@ -699,7 +825,7 @@ VALUES
     16.0053,
     108.2619,
     geography::Point(16.0053, 108.2619, 4326),
-    8,
+    2,
     0
 ),
 
@@ -710,7 +836,7 @@ VALUES
     16.1083,
     108.2736,
     geography::Point(16.1083, 108.2736, 4326),
-    6,
+    1,
     0
 ),
 
@@ -721,7 +847,7 @@ VALUES
     16.1268,
     108.3182,
     geography::Point(16.1268, 108.3182, 4326),
-    6,
+    1,
     0
 ),
 
@@ -732,7 +858,7 @@ VALUES
     16.1102,
     108.3283,
     geography::Point(16.1102, 108.3283, 4326),
-    6,
+    1,
     0
 ),
 
@@ -743,7 +869,7 @@ VALUES
     16.1042,
     108.2865,
     geography::Point(16.1042, 108.2865, 4326),
-    4,
+    1,
     0
 ),
 
@@ -754,7 +880,7 @@ VALUES
     16.1015,
     108.2758,
     geography::Point(16.1015, 108.2758, 4326),
-    4,
+    1,
     0
 ),
 
@@ -765,7 +891,7 @@ VALUES
     16.1235,
     108.2322,
     geography::Point(16.1235, 108.2322, 4326),
-    4,
+    1,
     0
 ),
 
@@ -776,7 +902,7 @@ VALUES
     16.1389,
     108.3142,
     geography::Point(16.1389, 108.3142, 4326),
-    6,
+    2,
     0
 ),
 
@@ -787,7 +913,7 @@ VALUES
     16.0042,
     108.2628,
     geography::Point(16.0042, 108.2628, 4326),
-    9,
+    2,
     0
 ),
 
@@ -798,7 +924,7 @@ VALUES
     16.0025,
     108.2615,
     geography::Point(16.0025, 108.2615, 4326),
-    9,
+    2,
     0
 ),
 
@@ -809,7 +935,7 @@ VALUES
     16.0645,
     108.2162,
     geography::Point(16.0645, 108.2162, 4326),
-    9,
+    2,
     0
 ),
 
@@ -820,7 +946,7 @@ VALUES
     15.9868,
     108.2045,
     geography::Point(15.9868, 108.2045, 4326),
-    9,
+    2,
     0
 ),
 
@@ -831,7 +957,7 @@ VALUES
     16.1072,
     108.2785,
     geography::Point(16.1072, 108.2785, 4326),
-    5,
+    2,
     0
 ),
 
@@ -842,7 +968,7 @@ VALUES
     16.0945,
     108.2422,
     geography::Point(16.0945, 108.2422, 4326),
-    5,
+    2,
     0
 ),
 
@@ -853,7 +979,7 @@ VALUES
     16.1969,
     108.1311,
     geography::Point(16.1969, 108.1311, 4326),
-    5,
+    2,
     0
 ),
 
@@ -864,7 +990,7 @@ VALUES
     15.9928,
     108.1925,
     geography::Point(15.9928, 108.1925, 4326),
-    6,
+    2,
     0
 ),
 
@@ -875,7 +1001,7 @@ VALUES
     15.9685,
     108.2018,
     geography::Point(15.9685, 108.2018, 4326),
-    8,
+    2,
     0
 ),
 
@@ -886,7 +1012,7 @@ VALUES
     16.0583,
     108.0815,
     geography::Point(16.0583, 108.0815, 4326),
-    6,
+    1,
     0
 ),
 
@@ -897,7 +1023,7 @@ VALUES
     16.0275,
     108.0642,
     geography::Point(16.0275, 108.0642, 4326),
-    6,
+    1,
     0
 ),
 
@@ -908,7 +1034,7 @@ VALUES
     16.1285,
     108.0532,
     geography::Point(16.1285, 108.0532, 4326),
-    6,
+    8,
     0
 ),
 
@@ -919,7 +1045,7 @@ VALUES
     15.9882,
     108.1482,
     geography::Point(15.9882, 108.1482, 4326),
-    6,
+    2,
     0
 ),
 
@@ -930,7 +1056,7 @@ VALUES
     16.0712,
     108.2475,
     geography::Point(16.0712, 108.2475, 4326),
-    4,
+    1,
     0
 ),
 
@@ -941,7 +1067,7 @@ VALUES
     16.0388,
     108.2492,
     geography::Point(16.0388, 108.2492, 4326),
-    4,
+    1,
     0
 ),
 
@@ -952,7 +1078,7 @@ VALUES
     16.0988,
     108.1565,
     geography::Point(16.0988, 108.1565, 4326),
-    4,
+    1,
     0
 ),
 
@@ -963,7 +1089,7 @@ VALUES
     16.0602,
     108.2248,
     geography::Point(16.0602, 108.2248, 4326),
-    6,
+    1,
     0
 ),
 
@@ -974,7 +1100,7 @@ VALUES
     16.0705,
     108.2468,
     geography::Point(16.0705, 108.2468, 4326),
-    6,
+    1,
     0
 ),
 
@@ -985,7 +1111,7 @@ VALUES
     16.0512,
     108.2281,
     geography::Point(16.0512, 108.2281, 4326),
-    6,
+    1,
     0
 ),
 
@@ -996,7 +1122,7 @@ VALUES
     16.0592,
     108.2195,
     geography::Point(16.0592, 108.2195, 4326),
-    10,
+    3,
     0
 ),
 
@@ -1007,7 +1133,7 @@ VALUES
     16.0355,
     108.2145,
     geography::Point(16.0355, 108.2145, 4326),
-    10,
+    6,
     0
 ),
 
@@ -1018,7 +1144,7 @@ VALUES
     16.0675,
     108.2215,
     geography::Point(16.0675, 108.2215, 4326),
-    1,
+    3,
     0
 ),
 
@@ -1029,7 +1155,7 @@ VALUES
     16.0588,
     108.2212,
     geography::Point(16.0588, 108.2212, 4326),
-    1,
+    3,
     0
 ),
 
@@ -1040,7 +1166,7 @@ VALUES
     16.0682,
     108.2242,
     geography::Point(16.0682, 108.2242, 4326),
-    2,
+    4,
     0
 ),
 
@@ -1051,7 +1177,7 @@ VALUES
     16.1215,
     108.3125,
     geography::Point(16.1215, 108.3125, 4326),
-    4,
+    1,
     0
 ),
 
@@ -1062,7 +1188,7 @@ VALUES
     16.1238,
     108.2715,
     geography::Point(16.1238, 108.2715, 4326),
-    6,
+    1,
     0
 ),
 
@@ -1073,7 +1199,7 @@ VALUES
     16.0125,
     107.9812,
     geography::Point(16.0125, 107.9812, 4326),
-    6,
+    1,
     0
 ),
 
@@ -1084,7 +1210,7 @@ VALUES
     15.9815,
     108.0315,
     geography::Point(15.9815, 108.0315, 4326),
-    6,
+    1,
     0
 ),
 
@@ -1095,7 +1221,7 @@ VALUES
     16.0618,
     108.2045,
     geography::Point(16.0618, 108.2045, 4326),
-    6,
+    1,
     0
 ),
 
@@ -1106,7 +1232,7 @@ VALUES
     16.0585,
     108.2178,
     geography::Point(16.0585, 108.2178, 4326),
-    9,
+    2,
     0
 ),
 
@@ -1117,7 +1243,7 @@ VALUES
     16.0375,
     108.2255,
     geography::Point(16.0375, 108.2255, 4326),
-    6,
+    5,
     0
 ),
 
@@ -1128,7 +1254,7 @@ VALUES
     16.0688,
     108.2142,
     geography::Point(16.0688, 108.2142, 4326),
-    1,
+    3,
     0
 ),
 
@@ -1139,7 +1265,7 @@ VALUES
     16.0598,
     108.2185,
     geography::Point(16.0598, 108.2185, 4326),
-    10,
+    3,
     0
 ),
 
@@ -1150,7 +1276,7 @@ VALUES
     16.0685,
     108.2245,
     geography::Point(16.0685, 108.2245, 4326),
-    2,
+    4,
     0
 );
 
@@ -4444,6 +4570,10 @@ GO
 
 select * from users 
 select * from places 
+select * from places  where category_id = 3
+select * from places  where category_id = 7
+select * from  hotel_details
+
 select * from place_images
 select * from knowledge
 select * from conversations where id =15

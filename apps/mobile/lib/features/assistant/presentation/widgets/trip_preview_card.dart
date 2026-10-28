@@ -7,6 +7,7 @@ import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
 import '../../../map/presentation/screens/map_screen.dart';
 import '../../../trips/models/trip_model.dart';
+import '../../../trips/screens/trip_detail_screen.dart';
 import '../providers/voice_assistant_provider.dart';
 
 class TripPreviewCard extends ConsumerStatefulWidget {
@@ -20,6 +21,162 @@ class TripPreviewCard extends ConsumerStatefulWidget {
 
 class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
   int _selectedDayIndex = 1;
+
+  void _showAiEditSheet(BuildContext context, VoiceAssistantNotifier notifier) {
+    final editCtrl = TextEditingController();
+    final effectiveTripId = widget.trip.id.isNotEmpty
+        ? widget.trip.id
+        : ref.read(voiceAssistantProvider).savedTripId;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉnh sửa lịch trình với AI',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Bạn cũng có thể bấm nút Mic ở màn hình chính để nói yêu cầu sửa!',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildQuickEditChip(editCtrl, 'Thêm địa điểm ăn hải sản ngon vào tối ngày 1'),
+                  _buildQuickEditChip(editCtrl, 'Đổi hoạt động ngày 2 sang đi biển thư giãn'),
+                  _buildQuickEditChip(editCtrl, 'Thêm quán cà phê đẹp check-in buổi sáng'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: editCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Nhập yêu cầu chỉnh sửa (VD: Đổi ngày 2 sang đi Hội An)...',
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final text = editCtrl.text.trim();
+                    if (text.isEmpty) return;
+                    Navigator.pop(ctx);
+                    if (effectiveTripId != null && effectiveTripId.isNotEmpty) {
+                      notifier.editSavedTrip(
+                        tripId: effectiveTripId,
+                        instruction: text,
+                      );
+                    } else {
+                      notifier.sendMessage(text);
+                    }
+                  },
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  label: const Text('Cập nhật lịch trình với AI'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickEditChip(TextEditingController ctrl, String text) {
+    return ActionChip(
+      label: Text(
+        text,
+        style: const TextStyle(fontSize: 11.5, color: AppColors.primary),
+      ),
+      backgroundColor: AppColors.primary.withOpacity(0.08),
+      side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onPressed: () => ctrl.text = text,
+    );
+  }
 
   TripDay get _currentDay {
     if (widget.trip.days.isEmpty) {
@@ -476,46 +633,114 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
     bool isSaving,
     bool isSaved,
   ) {
+    final effectiveTripId = widget.trip.id.isNotEmpty
+        ? widget.trip.id
+        : ref.watch(voiceAssistantProvider).savedTripId;
+
     return Column(
       children: [
+        // ── Primary Action: "Xem lịch trình" (Requirement 7) ───────────────
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TripDetailScreen(
+                    tripId: effectiveTripId,
+                    initialTrip: widget.trip,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(LucideIcons.calendarCheck, size: 17),
+            label: const Text(
+              'Xem lịch trình chi tiết',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Secondary Actions: Save / AI Edit / Map ─────────────────────────
         Row(
           children: [
             Expanded(
               flex: 3,
-              child: ElevatedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: isSaving || isSaved
                     ? null
                     : () => notifier.saveCurrentTrip(),
                 icon: isSaving
                     ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.white),
-                        ),
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Icon(
                         isSaved ? Icons.check : LucideIcons.bookmark,
-                        size: 16,
+                        size: 15,
+                        color: isSaved ? AppColors.success : AppColors.primary,
                       ),
                 label: Text(
                   isSaving
                       ? 'Đang lưu...'
-                      : (isSaved ? 'Đã lưu thành công' : 'Lưu chuyến đi'),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                      : (isSaved ? 'Đã lưu' : 'Lưu chuyến đi'),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: isSaved ? AppColors.success : AppColors.textPrimary,
+                  ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isSaved ? AppColors.success : AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: isSaved ? AppColors.success : AppColors.border,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 3,
+              child: OutlinedButton.icon(
+                onPressed: () => _showAiEditSheet(context, notifier),
+                icon: const Icon(
+                  Icons.auto_fix_high_rounded,
+                  size: 15,
+                  color: AppColors.primary,
+                ),
+                label: const Text(
+                  'Sửa với AI',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
             Expanded(
               flex: 2,
               child: OutlinedButton.icon(
@@ -530,10 +755,14 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                   );
                 },
                 icon: const Icon(LucideIcons.map, size: 15),
-                label: const Text('Bản đồ'),
+                label: const Text(
+                  'Bản đồ',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.textPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  side: const BorderSide(color: AppColors.border),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),

@@ -639,9 +639,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         'Quần đảo Hoàng Sa (Việt Nam)',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.red,
+                          color: Colors.black,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
+                          shadows: [
+                            Shadow(
+                              color: Colors.white,
+                              blurRadius: 4,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -653,9 +659,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         'Quần đảo Trường Sa (Việt Nam)',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.red,
+                          color: Colors.black,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
+                          shadows: [
+                            Shadow(
+                              color: Colors.white,
+                              blurRadius: 4,
+                            ),
+                          ],
                         ),
                       ),
                     ),

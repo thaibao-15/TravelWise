@@ -109,6 +109,18 @@ class Settings(BaseSettings):
     RAG_TOP_K: int = 6
 
     # -------------------------------------------------------------------------
+    # OpenStreetMap / Overpass Configuration
+    # -------------------------------------------------------------------------
+    OVERPASS_API_URL: str = "https://overpass-api.de/api/interpreter"
+    OVERPASS_TIMEOUT_SECONDS: float = 30.0
+    OVERPASS_MAX_RETRIES: int = 3
+    OVERPASS_RETRY_BACKOFF_SECONDS: float = 2.0
+    DANANG_BBOX_SOUTH: float = 15.90
+    DANANG_BBOX_WEST: float = 107.90
+    DANANG_BBOX_NORTH: float = 16.25
+    DANANG_BBOX_EAST: float = 108.35
+
+    # -------------------------------------------------------------------------
     # CORS Configuration
     # -------------------------------------------------------------------------
     CORS_ORIGINS: list[str] = [

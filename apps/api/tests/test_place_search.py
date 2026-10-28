@@ -209,7 +209,11 @@ class TestPlaceSearchService(unittest.TestCase):
             self.assertGreater(res.total, 0)
             self.assertEqual(res.destination, "Đà Nẵng")
             for p in res.places:
-                self.assertIn("đà nẵng", (p.address or "").lower() + p.name.lower())
+                full_text = ((p.address or "") + " " + p.name).lower()
+                self.assertTrue(
+                    "đà nẵng" in full_text or "da nang" in full_text,
+                    f"Expected 'đà nẵng' or 'da nang' in '{full_text}'"
+                )
 
     # -------------------------------------------------------------------------
     # Scenario 2: Lọc theo category (include & avoid)

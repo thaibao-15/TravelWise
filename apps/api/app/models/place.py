@@ -19,7 +19,7 @@ PostgreSQL migration note for `location`:
 
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Column, Float, LargeBinary, Text
+from sqlalchemy import BigInteger, Column, Float, LargeBinary, Text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.db.base import TimestampMixin
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from app.models.knowledge import Knowledge
     from app.models.opening_hours import OpeningHours
     from app.models.place_image import PlaceImage
+    from app.models.place_review import PlaceReview
     from app.models.restaurant_detail import RestaurantDetail
 
 
@@ -107,9 +108,37 @@ class Place(TimestampMixin, SQLModel, table=True):
         foreign_key="categories.id",
     )
 
+    # Source tracking & OSM Identifiers
+    source: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        # 'osm', 'manual', etc.
+    )
+
+    osm_type: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        # 'node', 'way', 'relation'
+    )
+
+    osm_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True),
+    )
+
     is_deleted: bool = Field(
         default=False,
         # BIT DEFAULT 0 → bool (False)
+    )
+
+    rating_avg: Optional[float] = Field(
+        default=0.0,
+        description="Điểm đánh giá trung bình từ người dùng",
+    )
+
+    review_count: Optional[int] = Field(
+        default=0,
+        description="Tổng số lượng đánh giá của địa điểm",
     )
 
     # created_at / updated_at inherited from TimestampMixin
@@ -117,6 +146,7 @@ class Place(TimestampMixin, SQLModel, table=True):
     # Relationships
     category: Optional["Category"] = Relationship(back_populates="places")
     images: List["PlaceImage"] = Relationship(back_populates="place")
+    reviews: List["PlaceReview"] = Relationship(back_populates="place")
     opening_hours: List["OpeningHours"] = Relationship(back_populates="place")
     restaurant_detail: Optional["RestaurantDetail"] = Relationship(back_populates="place")
     hotel_detail: Optional["HotelDetail"] = Relationship(back_populates="place")

@@ -44,5 +44,33 @@ class HotelDetail(SQLModel, table=True):
         # NVARCHAR(MAX) → Text
     )
 
+    phone: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        # NVARCHAR(50)
+    )
+
+    website: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        # NVARCHAR(500)
+    )
+
+    email: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        # NVARCHAR(255)
+    )
+
+    rooms: Optional[int] = Field(
+        default=None,
+        # INT
+    )
+
+    beds: Optional[int] = Field(
+        default=None,
+        # INT
+    )
+
     # Relationship
     place: Optional["Place"] = Relationship(back_populates="hotel_detail")

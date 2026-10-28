@@ -16,18 +16,35 @@ export interface PlaceItem {
   latitude?: number | null;
   longitude?: number | null;
   category_id?: number | null;
+  rating_avg?: number | null;
+  review_count?: number | null;
   images?: PlaceImageItem[];
   restaurant_detail?: any;
   hotel_detail?: any;
 }
 
+export interface CategoryItem {
+  id: number;
+  name: string;
+  description?: string | null;
+}
+
 export const placeService = {
+  /**
+   * Lấy danh sách tất cả các danh mục địa điểm
+   */
+  async listCategories(): Promise<CategoryItem[]> {
+    return await apiFetch<CategoryItem[]>("/api/v1/categories/");
+  },
+
   /**
    * Lấy danh sách địa điểm theo danh mục hoặc phân trang
    */
-  async listPlaces(categoryId?: number, skip = 0, limit = 50): Promise<PlaceItem[]> {
+  async listPlaces(categoryId?: number | null, skip = 0, limit = 100): Promise<PlaceItem[]> {
     const params = new URLSearchParams();
-    if (categoryId) params.append("category_id", String(categoryId));
+    if (categoryId != null && categoryId > 0) {
+      params.append("category_id", String(categoryId));
+    }
     params.append("skip", String(skip));
     params.append("limit", String(limit));
 

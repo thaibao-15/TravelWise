@@ -10,11 +10,14 @@ class SecureStorageService {
   static const String _tokenTypeKey = 'token_type';
 
   SecureStorageService({FlutterSecureStorage? storage})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            iOptions: IOSOptions(
+              accessibility: KeychainAccessibility.first_unlock,
+            ),
+          );
 
   /// Saves the access token securely.
   Future<void> saveToken(String token) async {
@@ -30,7 +33,9 @@ class SecureStorageService {
     try {
       await _storage.write(key: _tokenTypeKey, value: tokenType);
     } catch (e) {
-      throw CacheException(message: 'Không thể lưu token type: ${e.toString()}');
+      throw CacheException(
+        message: 'Không thể lưu token type: ${e.toString()}',
+      );
     }
   }
 
@@ -48,7 +53,9 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _tokenTypeKey);
     } catch (e) {
-      throw CacheException(message: 'Không thể đọc token type: ${e.toString()}');
+      throw CacheException(
+        message: 'Không thể đọc token type: ${e.toString()}',
+      );
     }
   }
 
@@ -59,6 +66,24 @@ class SecureStorageService {
       await _storage.delete(key: _tokenTypeKey);
     } catch (e) {
       throw CacheException(message: 'Không thể xoá dữ liệu: ${e.toString()}');
+    }
+  }
+
+  /// Writes arbitrary key-value data to secure storage.
+  Future<void> write(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (e) {
+      throw CacheException(message: 'Không thể lưu dữ liệu: ${e.toString()}');
+    }
+  }
+
+  /// Reads arbitrary key-value data from secure storage.
+  Future<String?> read(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (e) {
+      throw CacheException(message: 'Không thể đọc dữ liệu: ${e.toString()}');
     }
   }
 

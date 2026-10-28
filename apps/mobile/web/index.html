@@ -48,13 +48,173 @@
     window.TravelWiseAudio = {
       _currentAudio: null,
       _currentUrl: null,
+      _audioCache: {},
+      _inFlightPrefetch: {},
+      _queue: [],
+      _isPlayingQueue: false,
+      _isStopped: false,
+      _isStreamDone: false,
+      _hasStartedQueue: false,
+      _onQueuePlay: null,
+      _onQueueEnded: null,
+      _onQueueError: null,
+
+      _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
+        var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+        var spd = speed || '1.25';
+        var spk = speakerId || 'HN-Nam-1-BL';
+        return cleanBase + '/api/v1/tts/stream?text=' + encodeURIComponent(text) +
+               '&speed=' + encodeURIComponent(spd) +
+               '&speaker_id=' + encodeURIComponent(spk);
+      },
+
+      prefetchSingle: function(baseUrl, sentence, speed, speakerId) {
+        var self = this;
+        var clean = (sentence || '').trim();
+        if (!clean) return Promise.resolve('');
+        var cacheKey = clean + '|' + (speed || '1.25') + '|' + (speakerId || 'HN-Nam-1-BL');
+
+        if (self._audioCache[cacheKey]) {
+          return Promise.resolve(self._audioCache[cacheKey]);
+        }
+        if (self._inFlightPrefetch[cacheKey]) {
+          return self._inFlightPrefetch[cacheKey];
+        }
+
+        var streamUrl = self._buildStreamUrl(baseUrl, clean, speed, speakerId);
+        var p = fetch(streamUrl)
+          .then(function(res) {
+            if (!res.ok) throw new Error('TTS Stream HTTP ' + res.status);
+            return res.blob();
+          })
+          .then(function(blob) {
+            var blobUrl = URL.createObjectURL(blob);
+            self._audioCache[cacheKey] = blobUrl;
+            delete self._inFlightPrefetch[cacheKey];
+            return blobUrl;
+          })
+          .catch(function(err) {
+            delete self._inFlightPrefetch[cacheKey];
+            throw err;
+          });
+
+        self._inFlightPrefetch[cacheKey] = p;
+        return p;
+      },
+
+      initStreamingQueue: function(onPlayCallback, onEndedCallback, onErrorCallback) {
+        this.stop();
+        this._isStopped = false;
+        this._isStreamDone = false;
+        this._isPlayingQueue = false;
+        this._hasStartedQueue = false;
+        this._queue = [];
+        this._onQueuePlay = onPlayCallback || null;
+        this._onQueueEnded = onEndedCallback || null;
+        this._onQueueError = onErrorCallback || null;
+      },
+
+      enqueueSentence: function(baseUrl, sentence, speed, speakerId) {
+        if (this._isStopped) return;
+        var clean = (sentence || '').trim();
+        if (!clean) return;
+
+        this._queue.push({
+          baseUrl: baseUrl,
+          text: clean,
+          speed: speed || '1.25',
+          speakerId: speakerId || 'HN-Nam-1-BL'
+        });
+
+        this.prefetchSingle(baseUrl, clean, speed, speakerId).catch(function() {});
+
+        if (!this._isPlayingQueue) {
+          this._playNextInQueue();
+        }
+      },
+
+      markStreamDone: function() {
+        this._isStreamDone = true;
+        if (!this._isPlayingQueue && this._queue.length === 0) {
+          if (this._onQueueEnded) this._onQueueEnded();
+        }
+      },
+
+      _playNextInQueue: function() {
+        var self = this;
+        if (self._isStopped) return;
+
+        if (self._queue.length === 0) {
+          self._isPlayingQueue = false;
+          if (self._isStreamDone) {
+            if (self._onQueueEnded) self._onQueueEnded();
+          }
+          return;
+        }
+
+        self._isPlayingQueue = true;
+        var item = self._queue.shift();
+        var cacheKey = item.text + '|' + item.speed + '|' + item.speakerId;
+        var cachedUrl = self._audioCache[cacheKey];
+        var audioUrl = cachedUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
+
+        if (!cachedUrl) {
+          self.prefetchSingle(item.baseUrl, item.text, item.speed, item.speakerId).catch(function() {});
+        }
+
+        try {
+          var audio = new Audio(audioUrl);
+          audio.preload = 'auto';
+          audio.playbackRate = 1.08;
+          self._currentAudio = audio;
+
+          audio.onplay = function() {
+            if (!self._hasStartedQueue) {
+              self._hasStartedQueue = true;
+              if (self._onQueuePlay) self._onQueuePlay();
+            }
+          };
+
+          audio.onended = function() {
+            if (!self._isStopped) {
+              self._playNextInQueue();
+            }
+          };
+
+          audio.onerror = function(e) {
+            console.warn('[TravelWise Audio] Sentence chunk error, skipping:', e);
+            if (!self._isStopped) {
+              self._playNextInQueue();
+            }
+          };
+
+          var playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(function(error) {
+              console.warn('[TravelWise Audio] Stream play error:', error);
+              if (!self._isStopped) {
+                if (self._queue.length === 0 && self._isStreamDone && self._onQueueError) {
+                  self._onQueueError(error.toString());
+                } else {
+                  self._playNextInQueue();
+                }
+              }
+            });
+          }
+        } catch (err) {
+          if (!self._isStopped) {
+            self._playNextInQueue();
+          }
+        }
+      },
 
       playWavBytes: function(byteArray, onPlayCallback, onEndedCallback, onErrorCallback) {
         this.stop();
         try {
-          var blob = new Blob([new Uint8Array(byteArray)], { type: 'audio/wav' });
+          var blob = new Blob([new Uint8Array(byteArray)], { type: 'audio/mpeg' });
           this._currentUrl = URL.createObjectURL(blob);
           var audio = new Audio(this._currentUrl);
+          audio.playbackRate = 1.1;
           this._currentAudio = audio;
 
           audio.onplay = function() {
@@ -86,6 +246,9 @@
       },
 
       stop: function() {
+        this._isStopped = true;
+        this._isPlayingQueue = false;
+        this._queue = [];
         if (this._currentAudio) {
           try {
             this._currentAudio.pause();
