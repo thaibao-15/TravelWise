@@ -14,30 +14,31 @@ from app.api.routes.users import router as users_router
 from app.api.routes.user_profile import router as user_profile_router
 from app.api.routes.weather import router as weather_router
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="TravelWise API",
     description="TravelWise — Du lịch thông minh",
     version="0.1.0",
 )
 
-# CORS configuration for local development
-app.add_middleware(
-    CORSMiddleware,
+# Keep CORS outside FastAPI's error middleware so unhandled 500 responses
+# still include CORS headers and browsers can display the actual API error.
+app = CORSMiddleware(
+    app=fastapi_app,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(user_profile_router)
-app.include_router(categories_router)
-app.include_router(places_router)
-app.include_router(reviews_router)
-app.include_router(conversations_router)
-app.include_router(rag_router)
-app.include_router(trips_router)
-app.include_router(stt_router)
-app.include_router(tts_router)
-app.include_router(weather_router)
+fastapi_app.include_router(auth_router)
+fastapi_app.include_router(users_router)
+fastapi_app.include_router(user_profile_router)
+fastapi_app.include_router(categories_router)
+fastapi_app.include_router(places_router)
+fastapi_app.include_router(reviews_router)
+fastapi_app.include_router(conversations_router)
+fastapi_app.include_router(rag_router)
+fastapi_app.include_router(trips_router)
+fastapi_app.include_router(stt_router)
+fastapi_app.include_router(tts_router)
+fastapi_app.include_router(weather_router)

@@ -22,7 +22,11 @@ class TripRepository {
     String? status,
   }) async {
     try {
-      _log('getTrips_request', {'skip': skip, 'limit': limit, 'status': status});
+      _log('getTrips_request', {
+        'skip': skip,
+        'limit': limit,
+        'status': status,
+      });
       final queryParams = <String, dynamic>{
         'skip': skip,
         'limit': limit,
@@ -95,24 +99,38 @@ class TripRepository {
     try {
       _log('getTripItinerary_request', {'tripId': tripId});
       final results = await Future.wait([
-        _dio.get('/api/v1/trips/$tripId/itinerary').catchError((_) => Response(
-              requestOptions: RequestOptions(path: '/api/v1/trips/$tripId/itinerary'),
-              statusCode: 404,
-            )),
-        _dio.get('/api/v1/trips/$tripId').catchError((_) => Response(
-              requestOptions: RequestOptions(path: '/api/v1/trips/$tripId'),
-              statusCode: 404,
-            )),
+        _dio
+            .get('/api/v1/trips/$tripId/itinerary')
+            .catchError(
+              (_) => Response(
+                requestOptions: RequestOptions(
+                  path: '/api/v1/trips/$tripId/itinerary',
+                ),
+                statusCode: 404,
+              ),
+            ),
+        _dio
+            .get('/api/v1/trips/$tripId')
+            .catchError(
+              (_) => Response(
+                requestOptions: RequestOptions(path: '/api/v1/trips/$tripId'),
+                statusCode: 404,
+              ),
+            ),
       ]);
 
       final itineraryRes = results[0];
       final summaryRes = results[1];
 
       Map<String, dynamic>? mergedJson;
-      if (summaryRes.statusCode == 200 && summaryRes.data is Map<String, dynamic>) {
-        mergedJson = Map<String, dynamic>.from(summaryRes.data as Map<String, dynamic>);
+      if (summaryRes.statusCode == 200 &&
+          summaryRes.data is Map<String, dynamic>) {
+        mergedJson = Map<String, dynamic>.from(
+          summaryRes.data as Map<String, dynamic>,
+        );
       }
-      if (itineraryRes.statusCode == 200 && itineraryRes.data is Map<String, dynamic>) {
+      if (itineraryRes.statusCode == 200 &&
+          itineraryRes.data is Map<String, dynamic>) {
         final itinMap = itineraryRes.data as Map<String, dynamic>;
         if (mergedJson != null) {
           mergedJson.addAll(itinMap);
@@ -150,7 +168,10 @@ class TripRepository {
     int durationDays = 3,
   }) async {
     try {
-      _log('createTrip_request', {'destinationCity': destinationCity, 'name': name});
+      _log('createTrip_request', {
+        'destinationCity': destinationCity,
+        'name': name,
+      });
       final response = await _dio.post(
         '/api/v1/trips',
         data: <String, dynamic>{
@@ -190,16 +211,23 @@ class TripRepository {
   Future<Map<String, dynamic>?> getPlanningContext(int conversationId) async {
     _log('getPlanningContext_request', {'conversationId': conversationId});
     try {
-      final response = await _dio.get('/api/v1/trips/conversations/$conversationId/planning-context');
+      final response = await _dio.get(
+        '/api/v1/trips/conversations/$conversationId/planning-context',
+      );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         return response.data as Map<String, dynamic>;
       }
       return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        _log('getPlanningContext_not_found', {'conversationId': conversationId});
+        _log('getPlanningContext_not_found', {
+          'conversationId': conversationId,
+        });
       } else {
-        _log('getPlanningContext_error', {'conversationId': conversationId, 'error': e.message});
+        _log('getPlanningContext_error', {
+          'conversationId': conversationId,
+          'error': e.message,
+        });
       }
       return null;
     } catch (e) {
@@ -264,7 +292,9 @@ class TripRepository {
         'save_to_db': saveToDb,
         ...?conversationId != null ? {'conversation_id': conversationId} : null,
         ...?context != null ? {'context': context} : null,
-        ...?(userPrompt != null && userPrompt.isNotEmpty) ? {'user_prompt': userPrompt} : null,
+        ...?(userPrompt != null && userPrompt.isNotEmpty)
+            ? {'user_prompt': userPrompt}
+            : null,
       };
 
       final response = await _dio.post('/api/v1/trips/generate', data: payload);
@@ -278,7 +308,9 @@ class TripRepository {
         });
         return trip;
       }
-      throw Exception('Lỗi từ máy chủ khi tạo lịch trình (${response.statusCode})');
+      throw Exception(
+        'Lỗi từ máy chủ khi tạo lịch trình (${response.statusCode})',
+      );
     } on DioException catch (e) {
       final detail = e.response?.data?['detail'] ?? e.message;
       _log('generateItineraryDirect_dio_error', {'detail': detail});
@@ -291,6 +323,7 @@ class TripRepository {
     String tripId, {
     String? userPrompt,
     bool saveToDb = true,
+    Map<String, dynamic>? context,
   }) async {
     try {
       _log('generateItineraryForTrip_request', {'tripId': tripId});
@@ -298,16 +331,48 @@ class TripRepository {
         '/api/v1/trips/$tripId/itinerary/generate',
         data: {
           'save_to_db': saveToDb,
-          if (userPrompt != null && userPrompt.isNotEmpty) 'user_prompt': userPrompt,
+          if (userPrompt != null && userPrompt.isNotEmpty)
+            'user_prompt': userPrompt,
+          if (context != null) 'context': context,
         },
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
-        return await getTripItinerary(tripId) ??
-            Trip.fromJson(response.data as Map<String, dynamic>);
+        final generated = response.data as Map<String, dynamic>;
+        final status = generated['status']?.toString();
+        if (status != null && status != 'GENERATED') {
+          final details = [
+            if (generated['warnings'] is List)
+              ...(generated['warnings'] as List).map(
+                (value) => value.toString(),
+              ),
+            if (generated['missing_information'] is List)
+              ...(generated['missing_information'] as List).map(
+                (value) => value.toString(),
+              ),
+          ];
+          throw Exception(
+            details.isEmpty
+                ? 'Máy chủ chưa tạo được lịch trình (trạng thái: $status).'
+                : details.join('\n'),
+          );
+        }
+
+        final trip = await getTripItinerary(tripId);
+        if (trip == null || trip.days.isEmpty) {
+          throw Exception(
+            'Máy chủ chưa lưu được lịch trình. Vui lòng thử tạo lại.',
+          );
+        }
+        return trip;
       }
-      return null;
+      throw Exception(
+        'Máy chủ trả về phản hồi không hợp lệ khi tạo lịch trình.',
+      );
     } on DioException catch (e) {
-      final detail = e.response?.data?['detail'] ?? e.message;
+      final responseData = e.response?.data;
+      final detail = responseData is Map<String, dynamic>
+          ? responseData['detail'] ?? e.message
+          : e.message;
       _log('generateItineraryForTrip_error', {'detail': detail});
       throw Exception('Không thể tạo lịch trình cho chuyến đi: $detail');
     }
@@ -324,7 +389,8 @@ class TripRepository {
       'tripTitle': trip.title,
     });
     try {
-      final key = idempotencyKey ??
+      final key =
+          idempotencyKey ??
           'save_${conversationId}_${trip.title.hashCode}_${DateTime.now().millisecondsSinceEpoch ~/ 60000}';
 
       final payload = {
@@ -335,7 +401,10 @@ class TripRepository {
         'idempotency_key': key,
       };
 
-      final response = await _dio.post('/api/v1/trips/save-preview', data: payload);
+      final response = await _dio.post(
+        '/api/v1/trips/save-preview',
+        data: payload,
+      );
       if ((response.statusCode == 200 || response.statusCode == 201) &&
           response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
@@ -358,7 +427,10 @@ class TripRepository {
     required String instruction,
     int? targetDay,
   }) async {
-    _log('editItinerary_request', {'tripId': tripId, 'instruction': instruction});
+    _log('editItinerary_request', {
+      'tripId': tripId,
+      'instruction': instruction,
+    });
     try {
       final response = await _dio.post(
         '/api/v1/trips/$tripId/itinerary/edit',
