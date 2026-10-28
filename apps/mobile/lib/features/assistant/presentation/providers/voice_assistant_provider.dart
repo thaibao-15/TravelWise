@@ -12,6 +12,7 @@ import '../../../auth/auth_di.dart';
 import '../../../trips/data/repositories/trip_repository.dart';
 import '../../../trips/models/trip_model.dart';
 import '../../../trips/providers/trip_provider.dart';
+import '../models/chat_media.dart';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ class ChatMessage {
   final DateTime timestamp;
   final Uint8List? audioBytes;
   final Trip? tripItinerary;
+  final List<ChatMedia> media;
 
   const ChatMessage({
     required this.text,
@@ -45,6 +47,7 @@ class ChatMessage {
     required this.timestamp,
     this.audioBytes,
     this.tripItinerary,
+    this.media = const [],
   });
 }
 
@@ -517,10 +520,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     // shorter than [pauseFor] keep the turn open.
     // When STT sends a final segment (isFinal == true), use a faster 800ms window.
     _silenceTimer?.cancel();
-    final waitDuration = isFinal
-        ? const Duration(milliseconds: 800)
-        : _config.pauseFor;
+    final waitDuration = _config.pauseFor;
     _silenceTimer = Timer(waitDuration, () {
+
       if (!mounted || !_listeningTurnActive) return;
       log('silence_threshold_reached', {
         'textLength': _accumulatedTranscript.length,
@@ -785,9 +787,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   // ── Send message (RAG ask + Web useChat.ts Itinerary Flow) ───────────────
 
-  Future<void> sendMessage(String text, {bool isVoiceMode = false}) async {
+  Future<void> sendMessage(
+    String text, {
+    bool isVoiceMode = false,
+    List<ChatMedia> media = const [],
+  }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty && media.isEmpty) return;
     if (_isCommitting ||
         state.voiceState == VoiceState.thinking ||
         state.voiceState == VoiceState.processing ||
@@ -810,14 +816,22 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     log('rag_submit', {
       'textLength': trimmed.length,
+      'mediaCount': media.length,
       'conversationId': state.conversationId,
       'isVoiceMode': isVoiceMode,
     });
 
+    final effectiveText = trimmed.isNotEmpty
+        ? trimmed
+        : (media.isNotEmpty
+            ? (media.first.isVideo ? 'Đã gửi 1 video' : 'Đã gửi ${media.length} hình ảnh')
+            : '');
+
     final userMsg = ChatMessage(
-      text: trimmed,
+      text: effectiveText,
       isUser: true,
       timestamp: DateTime.now(),
+      media: media,
     );
 
     state = state.copyWith(
@@ -959,6 +973,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       // 5. Hỏi đáp AI siêu tốc qua SSE Streaming (/api/v1/rag/ask-stream) kết hợp phát giọng nói từng câu tức thì
       final shouldSpeak = isVoiceMode || state.isTtsEnabled;
+      final imageUrls = media.where((m) => m.isImage).map((m) => m.url).toList();
       final streamHandled = await _askRagStream(
         trimmed,
         isVoiceMode: isVoiceMode,
@@ -966,6 +981,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         isCreateCmd: isCreateCmd,
         isAffirmative: isAffirmative,
         isRegenerateIntent: isRegenerateIntent,
+        media: media,
       );
       if (streamHandled) {
         return;
@@ -978,6 +994,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           'message': trimmed,
           if (state.conversationId != null)
             'conversation_id': state.conversationId,
+          if (imageUrls.isNotEmpty)
+            'image_urls': imageUrls,
           'mode': isVoiceMode ? 'voice' : 'chat',
         },
       );
@@ -1013,10 +1031,19 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           'planningAction': planningAction,
         });
 
+        final rawMedia = data['media'] as List<dynamic>?;
+        final aiMedia = rawMedia != null
+            ? rawMedia
+                .whereType<Map<String, dynamic>>()
+                .map((m) => ChatMedia.fromJson(m))
+                .toList()
+            : const <ChatMedia>[];
+
         final aiMsg = ChatMessage(
           text: content,
           isUser: false,
           timestamp: DateTime.now(),
+          media: aiMedia,
         );
 
         TripPlanningState derivedPlanning = state.planningState;
@@ -1109,16 +1136,20 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     required bool isCreateCmd,
     required bool isAffirmative,
     required bool isRegenerateIntent,
+    List<ChatMedia> media = const [],
   }) async {
     try {
+      final imageUrls = media.where((m) => m.isImage).map((m) => m.url).toList();
       final response = await _dio.post<ResponseBody>(
         '/api/v1/rag/ask-stream',
         data: {
           'message': trimmed,
           if (state.conversationId != null)
             'conversation_id': state.conversationId,
-          // Luôn gửi mode 'voice' trên luồng stream để backend bỏ qua bước contextualize LLM (tiết kiệm 2s)
-          'mode': 'voice',
+          if (imageUrls.isNotEmpty)
+            'image_urls': imageUrls,
+          // When image is attached, mode 'chat' ensures detailed vision explanation!
+          'mode': imageUrls.isNotEmpty ? 'chat' : 'voice',
         },
         options: Options(
           responseType: ResponseType.stream,
@@ -1171,6 +1202,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       int? convId = state.conversationId;
       Map<String, dynamic>? planningCtx = state.planningContext;
       bool enqueuedAnySentence = false;
+      List<ChatMedia> streamMedia = const [];
 
       final stream = response.data!.stream;
       await for (final chunk in stream) {
@@ -1200,6 +1232,25 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
               convId = initConvId;
               state = state.copyWith(conversationId: convId);
             }
+          } else if (type == 'media') {
+            final rawMediaList = eventData['media'] as List<dynamic>?;
+            if (rawMediaList != null) {
+              streamMedia = rawMediaList
+                  .whereType<Map<String, dynamic>>()
+                  .map((m) => ChatMedia.fromJson(m))
+                  .toList();
+              if (accumulatedText.isNotEmpty) {
+                final streamingMsg = ChatMessage(
+                  text: accumulatedText,
+                  isUser: false,
+                  timestamp: DateTime.now(),
+                  media: streamMedia,
+                );
+                state = state.copyWith(
+                  messages: [...baseMessages, streamingMsg],
+                );
+              }
+            }
           } else if (type == 'token') {
             final token = eventData['token']?.toString() ?? '';
             if (token.isEmpty) continue;
@@ -1209,6 +1260,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
               text: accumulatedText,
               isUser: false,
               timestamp: DateTime.now(),
+              media: streamMedia,
             );
             state = state.copyWith(
               messages: [...baseMessages, streamingMsg],
@@ -1248,6 +1300,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
               planningCtx =
                   eventData['planning_context'] as Map<String, dynamic>;
             }
+            if (eventData['media'] is List) {
+              final rawMediaList = eventData['media'] as List<dynamic>;
+              streamMedia = rawMediaList
+                  .whereType<Map<String, dynamic>>()
+                  .map((m) => ChatMedia.fromJson(m))
+                  .toList();
+            }
           } else if (type == 'error') {
             throw Exception(
                 eventData['message']?.toString() ?? 'Lỗi tạo câu trả lời');
@@ -1276,6 +1335,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         text: accumulatedText,
         isUser: false,
         timestamp: DateTime.now(),
+        media: streamMedia,
       );
 
       final isReadyFromCtx = _isReadyInContext(planningCtx);
