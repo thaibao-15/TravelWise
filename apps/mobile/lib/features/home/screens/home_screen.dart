@@ -73,9 +73,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                   custom_search.SearchBar(
+                    showBackButton: _isSearchFocused,
                     onFocus: () {
                       setState(() {
                         _isSearchFocused = true;
+                      });
+                    },
+                    onBack: () {
+                      setState(() {
+                        _isSearchFocused = false;
+                        _searchQuery = '';
                       });
                     },
                     onChanged: (query) {

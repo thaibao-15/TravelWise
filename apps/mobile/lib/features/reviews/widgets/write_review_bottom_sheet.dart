@@ -8,12 +8,14 @@ class WriteReviewBottomSheet extends StatefulWidget {
   final int placeId;
   final String placeName;
   final ValueChanged<PlaceReview> onReviewSubmitted;
+  final PlaceReview? reviewToEdit;
 
   const WriteReviewBottomSheet({
     super.key,
     required this.placeId,
     required this.placeName,
     required this.onReviewSubmitted,
+    this.reviewToEdit,
   });
 
   static Future<void> show({
@@ -21,6 +23,7 @@ class WriteReviewBottomSheet extends StatefulWidget {
     required int placeId,
     required String placeName,
     required ValueChanged<PlaceReview> onReviewSubmitted,
+    PlaceReview? reviewToEdit,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -30,6 +33,7 @@ class WriteReviewBottomSheet extends StatefulWidget {
         placeId: placeId,
         placeName: placeName,
         onReviewSubmitted: onReviewSubmitted,
+        reviewToEdit: reviewToEdit,
       ),
     );
   }
@@ -39,9 +43,9 @@ class WriteReviewBottomSheet extends StatefulWidget {
 }
 
 class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
-  int _rating = 5;
+  late int _rating;
   String? _selectedTripType = 'couple';
-  final DateTime _visitedAt = DateTime.now();
+  late DateTime _visitedAt;
   final _titleController = TextEditingController();
   final _commentController = TextEditingController();
   final _imageUrlController = TextEditingController();
@@ -65,6 +69,17 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    final review = widget.reviewToEdit;
+    _rating = review?.rating ?? 5;
+    _selectedTripType = review?.tripType ?? 'couple';
+    _visitedAt = review?.visitedAt ?? DateTime.now();
+    _titleController.text = review?.title ?? '';
+    _commentController.text = review?.comment ?? '';
+  }
+
   Future<void> _submit() async {
     if (_commentController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -77,17 +92,28 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
 
     try {
       final service = ReviewService();
-      final newReview = await service.createReview(
-        placeId: widget.placeId,
-        rating: _rating,
-        title: _titleController.text.trim().isNotEmpty
-            ? _titleController.text.trim()
-            : null,
-        comment: _commentController.text.trim(),
-        tripType: _selectedTripType,
-        visitedAt: _visitedAt,
-        imageUrls: _attachedImages,
-      );
+      final title = _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : null;
+      final comment = _commentController.text.trim();
+      final newReview = widget.reviewToEdit == null
+          ? await service.createReview(
+              placeId: widget.placeId,
+              rating: _rating,
+              title: title,
+              comment: comment,
+              tripType: _selectedTripType,
+              visitedAt: _visitedAt,
+              imageUrls: _attachedImages,
+            )
+          : await service.updateReview(
+              reviewId: widget.reviewToEdit!.id,
+              rating: _rating,
+              title: title,
+              comment: comment,
+              tripType: _selectedTripType,
+              visitedAt: _visitedAt,
+            );
 
       if (!mounted) return;
       widget.onReviewSubmitted(newReview);
@@ -155,8 +181,10 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Viết đánh giá trải nghiệm',
+                      Text(
+                        widget.reviewToEdit == null
+                            ? 'Viết đánh giá trải nghiệm'
+                            : 'Sửa đánh giá của bạn',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -394,4 +422,3 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     );
   }
 }
-

@@ -194,26 +194,29 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Trải nghiệm cộng đồng',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Trải nghiệm cộng đồng',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                ),
                               ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Đánh giá thực tế từ du khách TravelWise',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
+                              SizedBox(height: 2),
+                              Text(
+                                'Đánh giá thực tế từ du khách TravelWise',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
-                            ),
                           ],
+                          ),
                         ),
                         const Icon(
                           Icons.verified_user_outlined,
@@ -264,9 +267,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                 ),
                               ],
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                            child: SizedBox(
+                              width: 256,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Image.network(
@@ -309,9 +314,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                               color: AppColors.warning,
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 3),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
                                       Text(
                                         item['placeName'] as String,
                                         style: const TextStyle(
@@ -341,7 +346,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                               ],
                             ),
                           ),
-                        );
+                        ),
+                      );
                       },
                     ),
                   ),

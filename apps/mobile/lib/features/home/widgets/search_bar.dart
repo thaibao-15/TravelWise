@@ -8,20 +8,40 @@ import '../../../core/constants/text_styles.dart';
 class SearchBar extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final VoidCallback? onFocus;
+  final VoidCallback? onBack;
+  final bool showBackButton;
 
-  const SearchBar({Key? key, this.onChanged, this.onFocus}) : super(key: key);
+  const SearchBar({
+    Key? key,
+    this.onChanged,
+    this.onFocus,
+    this.onBack,
+    this.showBackButton = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return _SearchField(onChanged: onChanged, onFocus: onFocus);
+    return _SearchField(
+      onChanged: onChanged,
+      onFocus: onFocus,
+      onBack: onBack,
+      showBackButton: showBackButton,
+    );
   }
 }
 
 class _SearchField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final VoidCallback? onFocus;
+  final VoidCallback? onBack;
+  final bool showBackButton;
 
-  const _SearchField({this.onChanged, this.onFocus});
+  const _SearchField({
+    this.onChanged,
+    this.onFocus,
+    this.onBack,
+    this.showBackButton = false,
+  });
 
   @override
   State<_SearchField> createState() => _SearchFieldState();
@@ -78,10 +98,23 @@ class _SearchFieldState extends State<_SearchField> {
             hintStyle: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
-            prefixIcon: const Icon(
-              LucideIcons.search,
-              color: AppColors.textSecondary,
-            ),
+            prefixIcon: widget.showBackButton
+                ? IconButton(
+                    tooltip: 'Trở về',
+                    icon: const Icon(Icons.arrow_back),
+                    color: AppColors.textSecondary,
+                    onPressed: () {
+                      _controller.clear();
+                      widget.onChanged?.call('');
+                      FocusScope.of(context).unfocus();
+                      widget.onBack?.call();
+                      setState(() {});
+                    },
+                  )
+                : const Icon(
+                    LucideIcons.search,
+                    color: AppColors.textSecondary,
+                  ),
             suffixIcon: _controller.text.isEmpty
                 ? Container(
                     margin: const EdgeInsets.all(AppSpacing.sm),

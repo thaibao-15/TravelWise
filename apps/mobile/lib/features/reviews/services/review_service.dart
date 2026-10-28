@@ -81,6 +81,30 @@ class ReviewService {
     return PlaceReview.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Cập nhật bài đánh giá của người dùng hiện tại
+  /// PUT /api/v1/reviews/{review_id}
+  Future<PlaceReview> updateReview({
+    required int reviewId,
+    required int rating,
+    String? title,
+    String? comment,
+    String? tripType,
+    DateTime? visitedAt,
+  }) async {
+    final response = await _dio.put(
+      '/api/v1/reviews/$reviewId',
+      data: {
+        'rating': rating,
+        'title': title,
+        'comment': comment,
+        'trip_type': tripType,
+        'visited_at': visitedAt?.toIso8601String().split('T').first,
+      },
+    );
+
+    return PlaceReview.fromJson(response.data as Map<String, dynamic>);
+  }
+
   /// Bấm thích hoặc bỏ thích đánh giá
   /// POST /api/v1/reviews/{review_id}/helpful
   Future<Map<String, dynamic>> toggleHelpfulVote({
@@ -98,4 +122,3 @@ class ReviewService {
     await _dio.delete('/api/v1/reviews/$reviewId');
   }
 }
-

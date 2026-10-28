@@ -6,11 +6,13 @@ import '../models/review_model.dart';
 class ReviewItemCard extends StatefulWidget {
   final PlaceReview review;
   final ValueChanged<PlaceReview>? onHelpfulToggled;
+  final VoidCallback? onEdit;
 
   const ReviewItemCard({
     super.key,
     required this.review,
     this.onHelpfulToggled,
+    this.onEdit,
   });
 
   @override
@@ -375,7 +377,19 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                   ),
                 ),
               ),
-              IconButton(
+              if (widget.onEdit != null)
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: widget.onEdit,
+                )
+              else
+                IconButton(
                 icon: const Icon(
                   Icons.more_horiz,
                   size: 18,
@@ -399,4 +413,3 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
     );
   }
 }
-

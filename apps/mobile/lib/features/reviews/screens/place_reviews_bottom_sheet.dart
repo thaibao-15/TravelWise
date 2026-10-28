@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../auth/presentation/providers/auth_notifier.dart';
+import '../../auth/presentation/providers/auth_state.dart';
 import '../models/review_model.dart';
 import '../services/review_service.dart';
 import '../widgets/review_filter_chips.dart';
@@ -8,7 +11,7 @@ import '../widgets/review_item_card.dart';
 import '../widgets/review_summary_card.dart';
 import '../widgets/write_review_bottom_sheet.dart';
 
-class PlaceReviewsBottomSheet extends StatefulWidget {
+class PlaceReviewsBottomSheet extends ConsumerStatefulWidget {
   final int placeId;
   final String placeName;
   final double ratingAvg;
@@ -43,11 +46,12 @@ class PlaceReviewsBottomSheet extends StatefulWidget {
   }
 
   @override
-  State<PlaceReviewsBottomSheet> createState() =>
+  ConsumerState<PlaceReviewsBottomSheet> createState() =>
       _PlaceReviewsBottomSheetState();
 }
 
-class _PlaceReviewsBottomSheetState extends State<PlaceReviewsBottomSheet> {
+class _PlaceReviewsBottomSheetState
+    extends ConsumerState<PlaceReviewsBottomSheet> {
   final ReviewService _reviewService = ReviewService();
 
   int? _selectedRating;
@@ -145,6 +149,24 @@ class _PlaceReviewsBottomSheetState extends State<PlaceReviewsBottomSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('🎉 Đăng đánh giá thành công! Cảm ơn bạn.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      },
+    );
+  }
+
+  void _onEditReviewTap(PlaceReview review) {
+    WriteReviewBottomSheet.show(
+      context: context,
+      placeId: widget.placeId,
+      placeName: widget.placeName,
+      reviewToEdit: review,
+      onReviewSubmitted: (_) {
+        _fetchReviews();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã cập nhật đánh giá của bạn.'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -360,10 +382,18 @@ class _PlaceReviewsBottomSheetState extends State<PlaceReviewsBottomSheet> {
                     )
                   else
                     ..._reviews.map(
-                      (review) => ReviewItemCard(
-                        review: review,
-                        onHelpfulToggled: _onHelpfulToggled,
-                      ),
+                      (review) {
+                        final authState = ref.watch(authProvider);
+                        final isOwner = authState is AuthAuthenticated &&
+                            authState.user.id == review.userId;
+                        return ReviewItemCard(
+                          review: review,
+                          onHelpfulToggled: _onHelpfulToggled,
+                          onEdit: isOwner
+                              ? () => _onEditReviewTap(review)
+                              : null,
+                        );
+                      },
                     ),
                 ],
               ),
@@ -374,4 +404,3 @@ class _PlaceReviewsBottomSheetState extends State<PlaceReviewsBottomSheet> {
     );
   }
 }
-
