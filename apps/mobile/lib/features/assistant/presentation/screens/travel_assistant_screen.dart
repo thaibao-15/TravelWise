@@ -1,3 +1,5 @@
+import '../../../map/presentation/screens/map_screen.dart';
+import 'assistant_chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
@@ -6,10 +8,7 @@ import '../../../auth/presentation/providers/auth_state.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
 import '../providers/voice_assistant_provider.dart';
-import '../widgets/assistant_input_bar.dart';
-import '../widgets/conversation_drawer.dart';
 import '../widgets/location_suggestions.dart';
-import '../widgets/map_gps_card.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
 
@@ -301,7 +300,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       if (state.currentTranscript.isNotEmpty) {
         latestAiSpeech = state.currentTranscript;
       } else {
-        latestAiSpeech = 'Xin chào bạn! Mình là Linh AI - trợ lý và hướng dẫn viên du lịch đồng hành cùng bạn tại TravelWise.';
+        latestAiSpeech = 'Xin chào bạn! Mình là Linh AI - trợ lý du lịch TravelWise với giọng Nữ Đà Nẵng ngọt ngào. Hôm nay bạn muốn lên lịch trình khám phá điểm đến nào?';
       }
     }
 
@@ -387,7 +386,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                             ),
                             const SizedBox(width: 6),
                             const Text(
-                              'Linh AI • Hướng dẫn viên',
+                              'Linh AI • Giọng Nữ Đà Nẵng',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
@@ -403,58 +402,89 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               ),
             ),
 
-            // Bong bóng lời thoại nổi của Linh AI (Speech Bubble)
+            // Bong bóng lời thoại nổi (Hiển thị văn bản khi User nói hoặc khi AI trả lời)
             Positioned(
               bottom: 0,
               left: 4,
               right: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.96),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.08),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Icon sóng âm âm thanh
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+              child: Builder(
+                builder: (context) {
+                  final isUserSpeaking = (state.voiceState == VoiceState.listening || state.isRecording) &&
+                      state.currentTranscript.trim().isNotEmpty;
+                  final displayText = isUserSpeaking ? state.currentTranscript : latestAiSpeech;
+
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isUserSpeaking ? const Color(0xFFEFF6FF) : Colors.white.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isUserSpeaking ? const Color(0xFF93C5FD) : Colors.white,
+                        width: 1.5,
                       ),
-                      child: const Icon(
-                        Icons.graphic_eq_rounded,
-                        color: Color(0xFF0284C7),
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Văn bản thoại
-                    Expanded(
-                      child: Text(
-                        latestAiSpeech,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1E293B),
-                          height: 1.4,
+                      boxShadow: [
+                        BoxShadow(
+                          color: isUserSpeaking
+                              ? const Color(0xFF0284C7).withValues(alpha: 0.14)
+                              : const Color(0xFF0F172A).withValues(alpha: 0.08),
+                          blurRadius: 20,
+                          offset: const Offset(0, 6),
                         ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Icon microphone hoặc sóng âm âm thanh
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0284C7).withValues(alpha: isUserSpeaking ? 0.2 : 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            isUserSpeaking ? Icons.mic : Icons.graphic_eq_rounded,
+                            color: const Color(0xFF0284C7),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Văn bản thoại (User nói hoặc AI nói)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isUserSpeaking) ...[
+                                const Text(
+                                  'Bạn đang nói...',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0284C7),
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                displayText,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isUserSpeaking ? FontWeight.w700 : FontWeight.w600,
+                                  color: isUserSpeaking ? const Color(0xFF1E3A8A) : const Color(0xFF1E293B),
+                                  height: 1.4,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -492,9 +522,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
               const SizedBox(width: 24),
 
-              // Nút giữa: Voice Orb Mic lớn với hiệu ứng sóng âm tỏa ra
+              // Nút giữa: Voice Orb Mic lớn (Nhấn để nói / Dừng nghe / Dừng AI nói)
               GestureDetector(
-                onTap: notifier.toggleRecording,
+                onTap: isSpeaking ? notifier.stopSpeaking : notifier.toggleRecording,
                 child: SizedBox(
                   width: 96,
                   height: 96,
@@ -558,21 +588,23 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                         ),
                       ),
 
-                      // Nút chính giữa màu xanh nước biển
+                      // Nút chính giữa (Đỏ khi đang nói/dừng, Xanh khi bình thường)
                       Container(
                         width: 64,
                         height: 64,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
-                            colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
+                            colors: isSpeaking
+                                ? const [Color(0xFFEF4444), Color(0xFFDC2626)]
+                                : const [Color(0xFF0284C7), Color(0xFF0369A1)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                         ),
                         child: Center(
                           child: Icon(
-                            isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                            (isSpeaking || isListening) ? Icons.stop_rounded : Icons.mic_rounded,
                             color: Colors.white,
                             size: 32,
                           ),
@@ -594,17 +626,59 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             ],
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
 
-          // Dòng text trạng thái trợ lý
-          Text(
-            _resolveVoiceStateStatus(state),
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+          // Hiển thị trực tiếp chữ khi người dùng nói hoặc dòng trạng thái
+          if ((state.voiceState == VoiceState.listening || state.isRecording) &&
+              state.currentTranscript.trim().isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF93C5FD), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.record_voice_over_rounded, size: 16, color: Color(0xFF0284C7)),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      state.currentTranscript,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E40AF),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ] else if (isSpeaking) ...[
+            const SizedBox(height: 2),
+            _StopSpeakingButton(onPressed: notifier.stopSpeaking),
+          ] else ...[
+            Text(
+              _resolveVoiceStateStatus(state),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isListening ? const Color(0xFF0284C7) : const Color(0xFF64748B),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -774,12 +848,16 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           // Tiêu đề chuyến đi + badge Nháp
           Row(
             children: [
-              Text(
-                '${trip.destination} • ${trip.daysCount} ngày ${trip.daysCount > 1 ? trip.daysCount - 1 : 1} đêm',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1E293B),
+              Expanded(
+                child: Text(
+                  '${trip.destination} • ${trip.daysCount} ngày ${trip.daysCount > 1 ? trip.daysCount - 1 : 1} đêm',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -927,50 +1005,73 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       );
     }
 
-    // 4. Mặc định: Gợi ý các lệnh hỏi nhanh (Quick Prompts carousel)
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Đà Nẵng • Khám phá biển, núi và phố cổ',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF64748B),
+    // 4. Mặc định: Gợi ý tạo lịch trình du lịch nhanh (gọn gàng, loại bỏ các mục thời tiết thừa)
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => notifier.sendMessage('Tạo lịch trình du lịch Đà Nẵng 3 ngày 2 đêm'),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: Text('🏖️', style: TextStyle(fontSize: 18)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'Lên lịch trình Đà Nẵng 3 ngày 2 đêm',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Chạm để Linh AI lên kế hoạch chi tiết',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: Color(0xFF94A3B8),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _buildPromptChip(
-                icon: '🏖️',
-                text: 'Tạo lịch trình Đà Nẵng 3 ngày',
-                onTap: () => notifier.sendMessage('Tạo lịch trình du lịch Đà Nẵng 3 ngày 2 đêm'),
-              ),
-              const SizedBox(width: 8),
-              _buildPromptChip(
-                icon: '🍲',
-                text: 'Các món ăn ngon ở Đà Nẵng',
-                onTap: () => notifier.sendMessage('Gợi ý cho mình các món ăn ngon đặc sản Đà Nẵng'),
-              ),
-              const SizedBox(width: 8),
-              _buildPromptChip(
-                icon: '🌤️',
-                text: 'Thời tiết hôm nay',
-                onTap: () => notifier.sendMessage('Thời tiết tại Đà Nẵng hôm nay thế nào?'),
-              ),
-              const SizedBox(width: 8),
-              _buildPromptChip(
-                icon: '📸',
-                text: 'Điểm check-in đẹp',
-                onTap: () => notifier.sendMessage('Những điểm check-in sống ảo đẹp nhất tại Đà Nẵng'),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -1019,35 +1120,6 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     );
   }
 
-  Widget _buildPromptChip({
-    required String icon,
-    required String text,
-    required VoidCallback onTap,
-  }) {
-    return ActionChip(
-      onPressed: onTap,
-      backgroundColor: const Color(0xFFF1F5F9),
-      side: BorderSide.none,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 13)),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _resolveVoiceStateStatus(VoiceAssistantState state) {
     switch (state.voiceState) {
       case VoiceState.listening:
@@ -1080,104 +1152,17 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   // ──────────────────────────────────────────────────────────────────────────
 
   void _openChatModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Handle pill
-                Container(
-                  width: 38,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Row(
-                    children: [
-                      Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF0284C7)),
-                      SizedBox(width: 8),
-                      Text(
-                        'Hội thoại cùng Linh AI',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                const Expanded(child: ConversationDrawer()),
-                const AssistantInputBar(),
-              ],
-            ),
-          ),
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AssistantChatScreen(),
       ),
     );
   }
 
   void _openMapModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Row(
-                  children: [
-                    Icon(Icons.map_outlined, color: Color(0xFF0284C7)),
-                    SizedBox(width: 8),
-                    Text(
-                      'Bản đồ & Định vị hành trình',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(),
-              const Expanded(
-                child: SingleChildScrollView(
-                  child: MapGpsCard(),
-                ),
-              ),
-            ],
-          ),
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const MapScreen(),
       ),
     );
   }
@@ -1248,6 +1233,44 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             const Text(
               'Cấu hình trợ lý giọng nói',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.record_voice_over_rounded, color: Color(0xFF16A34A), size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Giọng đọc: Nữ Đà Nẵng (DaNang-Nu-1-BL)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF14532D),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Mô hình: Blaze AI 2.0-realtime • Tốc độ: 1.5x',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             const VoiceProfileBar(),
@@ -1383,132 +1406,3 @@ class _StopSpeakingButton extends StatelessWidget {
     );
   }
 }
-
-class _ChatLauncherCard extends StatelessWidget {
-  final int messageCount;
-  final VoidCallback onTap;
-
-  const _ChatLauncherCard({
-    required this.messageCount,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.border, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.secondary],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.forum_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'Hội thoại Chat AI',
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          if (messageCount > 0) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                '$messageCount tin nhắn',
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        'Xem toàn bộ tin nhắn & chuyển sang giao diện chat',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
-                    color: AppColors.background,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-

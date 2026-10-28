@@ -281,6 +281,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
+  void stopSpeaking() => stopAudio();
+
   void stopAudio() {
     log('tts_stop');
     _ttsCancelled = true;
@@ -1067,93 +1069,25 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             hasDestAfterAsk) {
           derivedPlanning = TripPlanningState.readyToGenerate;
         }
-      } catch (streamErr) {
-        log('sse_stream_fallback', {'error': streamErr.toString()});
-      }
+        final summary = _formatPlanningContextSummary(planningCtx) ?? state.planningContextSummary;
 
-      // ── 2. Nếu SSE không khả dụng thì fallback sang /api/v1/rag/ask thông thường ──
-      if (!streamSucceeded) {
-        final response = await _dio.post(
-          '/api/v1/rag/ask',
-          data: {
-            'message': trimmed,
-            if (state.conversationId != null)
-              'conversation_id': state.conversationId,
-            'mode': isVoiceMode ? 'voice' : 'chat',
-          },
-        );
-
-        if (!mounted) return;
-        log('rag_response', {'statusCode': response.statusCode});
-
-        if (response.statusCode == 200) {
-          final data = response.data as Map<String, dynamic>;
-          content =
-              (data['message'] as Map<String, dynamic>)['content'] as String;
-          convId = data['conversation_id'] as int?;
-          planningStatus = data['planning_status']?.toString();
-          isReady = data['is_ready_to_generate'] == true;
-          planningAction = data['planning_action']?.toString();
-          planningContext = data['planning_context'] as Map<String, dynamic>?;
-        } else {
-          state = state.copyWith(
-            voiceState: VoiceState.error,
-            error: 'Lỗi từ máy chủ AI (${response.statusCode})',
-          );
-          return;
-        }
-      }
-
-      if (!mounted) return;
-
-      final isContextReady = planningContext?['planning_state']?['is_ready_to_generate'] == true;
-      final effectiveIsReady = isReady || isContextReady;
-
-      log('rag_success', {
-        'contentLength': content.length,
-        'conversationId': convId,
-        'planningStatus': planningStatus,
-        'isReady': effectiveIsReady,
-        'planningAction': planningAction,
-        'hasPlanningContext': planningContext != null,
-      });
-
-      final aiMsg = ChatMessage(
-        text: content,
-        isUser: false,
-        timestamp: DateTime.now(),
-      );
-
-      TripPlanningState derivedPlanning = state.planningState;
-      if (planningStatus == 'collecting_requirements' ||
-          (planningContext != null && !effectiveIsReady && state.tripPreview == null)) {
-        derivedPlanning = TripPlanningState.collectingRequirements;
-      } else if (planningStatus == 'ready_to_generate' || effectiveIsReady) {
-        derivedPlanning = TripPlanningState.readyToGenerate;
-      }
-
-      final summary = _formatPlanningContextSummary(planningContext) ?? state.planningContextSummary;
-
-      state = state.copyWith(
-        messages: [...state.messages, aiMsg],
-        conversationId: convId,
-        currentTranscript: content,
-        planningState: derivedPlanning,
-        planningContextSummary: summary,
-      );
-
-      if (isVoiceMode || state.isTtsEnabled) {
-        await _playTts(content);
         state = state.copyWith(
           messages: [...state.messages, aiMsg],
           conversationId: convId,
           currentTranscript: content,
           planningState: derivedPlanning,
+          planningContextSummary: summary,
           planningContext: planningCtx,
           savedTripId: (ctxTripId != null && ctxTripId.isNotEmpty)
               ? ctxTripId
               : state.savedTripId,
         );
+
+        if (isVoiceMode || state.isTtsEnabled) {
+          await _playTts(content);
+        } else {
+          state = state.copyWith(voiceState: VoiceState.idle);
+        }
 
         final shouldAutoGenerate = convId != null &&
             (planningAction == 'TRIGGER_GENERATION' ||
@@ -1162,7 +1096,6 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
                         hasDestAfterAsk)));
 
         if (shouldAutoGenerate) {
-          // Tự động sinh lịch trình ngay và phát giọng đọc thông báo kết quả lịch trình
           await generateItinerary(
             convId: convId,
             context: planningCtx,
@@ -1172,30 +1105,21 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             state.tripPreview != null &&
             convId != null) {
           await saveCurrentTrip(convId: convId);
-        } else {
-          if (isVoiceMode || state.isTtsEnabled) {
-            await _playTts(content);
-          } else {
-            state = state.copyWith(voiceState: VoiceState.idle);
+        } else if (planningAction == 'TRIGGER_EDIT') {
+          final targetTripId = state.savedTripId ??
+              (state.tripPreview?.id != null && state.tripPreview!.id.isNotEmpty && state.tripPreview!.id != '0'
+                  ? state.tripPreview!.id.toString()
+                  : null);
+          if (targetTripId != null && targetTripId.isNotEmpty) {
+            await editSavedTrip(tripId: targetTripId, instruction: trimmed);
           }
         }
       } else {
-        state = state.copyWith(voiceState: VoiceState.idle);
-      }
-
-      // Orchestrate automatic generation, saving, or editing based on structured backend planning_action
-      if (planningAction == 'TRIGGER_GENERATION' && convId != null) {
-        await generateItinerary(convId: convId);
-      } else if (planningAction == 'TRIGGER_SAVE' && state.tripPreview != null && convId != null) {
-        await saveCurrentTrip(convId: convId);
-      } else if (planningAction == 'TRIGGER_EDIT') {
-        final targetTripId = state.savedTripId ??
-            (state.tripPreview?.id != null && state.tripPreview!.id != 0
-                ? state.tripPreview!.id.toString()
-                : null);
-        if (targetTripId != null && targetTripId.isNotEmpty) {
-          await editSavedTrip(tripId: targetTripId, instruction: trimmed);
-        }
+        state = state.copyWith(
+          voiceState: VoiceState.error,
+          error: 'Lỗi từ máy chủ AI ()',
+        );
+        return;
       }
     } on DioException catch (e) {
       if (!mounted) return;
@@ -1355,7 +1279,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
                     _audioService.enqueueSentence(
                       baseUrl: ApiConfig.baseUrl,
                       sentence: cleanedSentence,
-                      speed: '1.25',
+                      speed: '1.5',
                     );
                   }
                   sentenceBuffer =
@@ -1393,7 +1317,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           _audioService.enqueueSentence(
             baseUrl: ApiConfig.baseUrl,
             sentence: cleanedTail,
-            speed: '1.25',
+            speed: '1.5',
           );
         }
         sentenceBuffer = '';
@@ -1864,8 +1788,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         _audioService.enqueueSentence(
           baseUrl: ApiConfig.baseUrl,
           sentence: sentence,
-          speed: '1.25',
-          speakerId: 'HN-Nam-1-BL',
+          speed: '1.5',
+          speakerId: 'DaNang-Nu-1-BL',
         );
       }
       if (!_ttsCancelled) {
