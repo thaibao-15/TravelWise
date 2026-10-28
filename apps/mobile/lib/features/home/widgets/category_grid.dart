@@ -19,7 +19,7 @@ class CategoryGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 52,
+      height: 44,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         scrollDirection: Axis.horizontal,
@@ -63,7 +63,7 @@ class CategoryGrid extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(26),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
@@ -85,7 +85,7 @@ class CategoryGrid extends StatelessWidget {
               Text(
                 icon,
                 style: TextStyle(
-                  fontSize: 17,
+                  fontSize: 15,
                   color: isSelected ? Colors.white : AppColors.textPrimary,
                 ),
               ),

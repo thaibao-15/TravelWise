@@ -2,6 +2,9 @@ class Place {
   final int id;
   final String name;
   final String description;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
   final double rating;
   final int reviewCount;
   final String imageUrl;
@@ -11,6 +14,9 @@ class Place {
     required this.id,
     required this.name,
     required this.description,
+    this.address,
+    this.latitude,
+    this.longitude,
     required this.rating,
     required this.reviewCount,
     required this.imageUrl,
@@ -41,6 +47,9 @@ class Place {
       id: (json['id'] as num).toInt(),
       name: (json['name'] as String?) ?? 'Địa điểm chưa đặt tên',
       description: (json['description'] as String?)?.trim() ?? '',
+      address: json['address'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       rating: (json['rating_avg'] as num?)?.toDouble() ?? 0,
       reviewCount: (json['review_count'] as num?)?.toInt() ?? 0,
       imageUrl: imageUrls.isEmpty ? '' : imageUrls.first,

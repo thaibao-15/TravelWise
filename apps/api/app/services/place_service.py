@@ -3,9 +3,11 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from sqlalchemy import case
 from sqlalchemy.orm import selectinload
 
 from app.db.base import _utcnow
+from app.models.category import Category
 from app.models.place import Place
 from app.models.place_image import PlaceImage
 from app.schemas.place import PlaceCreate, PlaceImageCreate
@@ -82,15 +84,29 @@ class PlaceService:
         skip: int = 0,
         limit: int = 20,
     ) -> List[Place]:
+        search_pattern = f"%{query}%"
+        relevance = case(
+            (Place.name.ilike(search_pattern), 0),
+            (
+                Place.description.ilike(search_pattern)
+                | Place.address.ilike(search_pattern),
+                1,
+            ),
+            (Category.name.ilike(search_pattern), 2),
+            else_=3,
+        )
         stmt = (
             select(Place)
             .where(Place.is_deleted == False)  # noqa: E712
+            .join(Category, isouter=True)
             .options(selectinload(Place.images))
             .where(
-                (Place.name.ilike(f"%{query}%"))
-                | (Place.address.ilike(f"%{query}%"))
-                | (Place.description.ilike(f"%{query}%"))
+                (Place.name.ilike(search_pattern))
+                | (Place.address.ilike(search_pattern))
+                | (Place.description.ilike(search_pattern))
+                | (Category.name.ilike(search_pattern))
             )
+            .order_by(relevance, Place.id)
             .offset(skip)
             .limit(limit)
         )

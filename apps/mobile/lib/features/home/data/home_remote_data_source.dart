@@ -35,6 +35,30 @@ class HomeRemoteDataSource {
         .toList(growable: false);
   }
 
+  Future<List<Place>> searchPlaces(String query) async {
+    final response = await _dio.get(
+      '/api/v1/places/search',
+      queryParameters: {'q': query, 'skip': 0, 'limit': 30},
+    );
+
+    return _parseList(response.data)
+        .map((json) => Place.fromJson(json, imageBaseUrl: _dio.options.baseUrl))
+        .toList(growable: false);
+  }
+
+  Future<Place> getPlaceById(int placeId) async {
+    final response = await _dio.get('/api/v1/places/$placeId');
+    final data = response.data;
+    if (data is! Map) {
+      throw const FormatException('API trả về dữ liệu địa điểm không hợp lệ');
+    }
+
+    return Place.fromJson(
+      Map<String, dynamic>.from(data),
+      imageBaseUrl: _dio.options.baseUrl,
+    );
+  }
+
   List<Map<String, dynamic>> _parseList(dynamic data) {
     if (data is! List) {
       throw const FormatException('API trả về dữ liệu không hợp lệ');

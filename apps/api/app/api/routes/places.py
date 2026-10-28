@@ -40,7 +40,7 @@ def search_places(
     limit: int = Query(default=20, ge=1, le=100),
     session: Session = Depends(get_session),
 ) -> List[PlaceResponse]:
-    """Tìm kiếm địa điểm du lịch theo từ khóa tên hoặc địa chỉ. Public."""
+    """Tìm kiếm theo tên, mô tả, địa chỉ hoặc tên category. Public."""
     return PlaceService.search_places_by_keyword(session, query=q, skip=skip, limit=limit)
 
 
@@ -152,4 +152,3 @@ def search_places_for_itinerary(
         skip=request.skip,
         limit=request.limit,
     )
-
