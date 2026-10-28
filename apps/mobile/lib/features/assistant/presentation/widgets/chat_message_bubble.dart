@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
+import '../models/chat_media.dart';
 import '../providers/voice_assistant_provider.dart';
-
+import 'chat_media_gallery.dart';
 import 'package:mobile/features/trips/widgets/trip_itinerary_card.dart';
 
 /// A single chat message bubble — user (right, blue) or AI (left, light grey).
-/// Can seamlessly embed a TripItineraryCard inside AI responses.
+/// Can seamlessly embed ChatMediaGallery for images/videos and TripItineraryCard inside AI responses.
 class ChatMessageBubble extends StatelessWidget {
   final ChatMessage message;
 
@@ -16,6 +17,8 @@ class ChatMessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final timeStr =
         '${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}';
+    final hasMedia = message.media.isNotEmpty;
+    final hasText = message.text.trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -57,41 +60,52 @@ class ChatMessageBubble extends StatelessWidget {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                Container(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.72,
+                // ── Media Gallery inside Bubble ───────────────────────────
+                if (hasMedia) ...[
+                  ChatMediaGallery(
+                    mediaList: message.media,
+                    isUser: isUser,
                   ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? AppColors.userBubble
-                        : AppColors.aiBubble,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(18),
-                      topRight: const Radius.circular(18),
-                      bottomLeft: Radius.circular(isUser ? 18 : 4),
-                      bottomRight: Radius.circular(isUser ? 4 : 18),
+                  if (hasText) const SizedBox(height: 4),
+                ],
+
+                // ── Text Content Bubble ───────────────────────────────────
+                if (hasText)
+                  Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.72,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? AppColors.userBubble
+                          : AppColors.aiBubble,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(18),
+                        topRight: const Radius.circular(18),
+                        bottomLeft: Radius.circular(isUser ? 18 : 4),
+                        bottomRight: Radius.circular(isUser ? 4 : 18),
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    message.text,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      color:
-                          isUser ? Colors.white : AppColors.textPrimary,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      message.text,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color:
+                            isUser ? Colors.white : AppColors.textPrimary,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
 
                 // ── Embedded Trip Itinerary Card (Requirement 6 & 7) ──────────
                 if (!isUser && message.tripItinerary != null) ...[

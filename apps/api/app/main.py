@@ -1,9 +1,12 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.categories import router as categories_router
 from app.api.routes.conversations import router as conversations_router
+from app.api.routes.media import router as media_router
 from app.api.routes.places import router as places_router
 from app.api.routes.reviews import router as reviews_router
 from app.api.routes.rag import router as rag_router
@@ -29,6 +32,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static directory for media uploads and assets
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(os.path.join(static_dir, "uploads"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(user_profile_router)
@@ -41,3 +49,4 @@ app.include_router(trips_router)
 app.include_router(stt_router)
 app.include_router(tts_router)
 app.include_router(weather_router)
+app.include_router(media_router)

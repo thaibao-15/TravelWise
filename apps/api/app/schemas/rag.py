@@ -130,6 +130,10 @@ class RAGAskRequest(BaseModel):
         default=None,
         description="Vị trí GPS hiện tại của người dùng nếu đã cấp quyền.",
     )
+    image_urls: Optional[List[str]] = Field(
+        default=None,
+        description="Danh sách đường dẫn (URL hoặc đường dẫn tương đối) của các hình ảnh đính kèm để AI quan sát và nhận diện địa điểm.",
+    )
 
     @field_validator("query", "message")
     @classmethod
@@ -143,12 +147,17 @@ class RAGAskRequest(BaseModel):
     def validate_content(self) -> "RAGAskRequest":
         q = (self.message or self.query or "").strip()
         if not q:
+            if self.image_urls and len(self.image_urls) > 0:
+                self.message = "Cho tôi biết đây là địa điểm nào và thông tin chi tiết về nơi này."
+                return self
             raise ValueError("Cần cung cấp nội dung câu hỏi ('message' hoặc 'query').")
         return self
 
     def get_question(self) -> str:
         q = (self.message or self.query or "").strip()
         if not q:
+            if self.image_urls and len(self.image_urls) > 0:
+                return "Cho tôi biết đây là địa điểm nào và thông tin chi tiết về nơi này."
             raise ValueError("Cần cung cấp nội dung câu hỏi ('message' hoặc 'query').")
         return q
 
@@ -162,6 +171,7 @@ class RAGAskRequest(BaseModel):
     )
 
 
+from app.schemas.media import ChatMediaResponse
 from app.schemas.trip_planning import CurrentLocation, TripPlanningContext
 
 
@@ -174,6 +184,7 @@ class RAGAskResponse(BaseModel):
     planning_status: Optional[str] = None
     is_ready_to_generate: Optional[bool] = None
     planning_action: Optional[str] = None
+    media: Optional[List[ChatMediaResponse]] = None
 
     model_config = ConfigDict(
         from_attributes=True,
