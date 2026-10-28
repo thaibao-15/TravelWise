@@ -3,11 +3,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:mobile/features/home/screens/home_screen.dart';
+import 'package:mobile/features/home/models/category_model.dart';
+import 'package:mobile/features/home/models/place_model.dart';
+import 'package:mobile/features/home/providers/home_provider.dart';
 import 'package:mobile/features/explore/screens/explore_screen.dart';
 import 'package:mobile/shared/widgets/custom_app_bar.dart';
 import 'package:mobile/shared/widgets/main_shell.dart';
 
 void main() {
+  Widget testHome() {
+    return ProviderScope(
+      overrides: [
+        homeCategoriesProvider.overrideWith((ref) async => <Category>[]),
+        homePlacesProvider.overrideWith((ref, categoryId) async => <Place>[]),
+      ],
+      child: const MaterialApp(home: HomeScreen()),
+    );
+  }
+
   group('Unified Top Header (CustomAppBar) Tests', () {
     testWidgets(
       'CustomAppBar displays location, weather, bell, and profile avatar',
@@ -41,7 +54,7 @@ void main() {
       addTearDown(tester.view.reset);
 
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: HomeScreen())),
+        testHome(),
       );
       await tester.pumpAndSettle();
 
@@ -81,7 +94,7 @@ void main() {
                 key: MainShell.shellKey,
                 initialIndex: 0,
                 pages: [
-                  const HomeScreen(),
+                  testHome(),
                   const ExploreScreen(),
                   const Scaffold(body: Center(child: Text('Assistant'))),
                   const Scaffold(body: Center(child: Text('Trips'))),
@@ -139,7 +152,7 @@ void main() {
           };
 
           await tester.pumpWidget(
-            const ProviderScope(child: MaterialApp(home: HomeScreen())),
+            testHome(),
           );
           await tester.pumpAndSettle();
 

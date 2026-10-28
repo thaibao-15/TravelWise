@@ -1,11 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../storage/secure_storage_service.dart';
 
 /// API configuration constants.
 /// Switch [baseUrl] based on runtime target (emulator vs real device).
 class ApiConfig {
-  // For Android emulator use 10.0.2.2, for real device use your machine IP
-  static const String baseUrl = 'http://127.0.0.1:8000';
+  // Android Emulator maps 10.0.2.2 to the host machine.
+  // For a physical device, replace this with the host machine's LAN IP.
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:8000';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://127.0.0.1:8000';
+  }
+
   static const Duration connectTimeout = Duration(seconds: 60);
   static const Duration receiveTimeout = Duration(seconds: 120);
 }
@@ -16,7 +27,7 @@ class DioClient {
   late final Dio _dio;
 
   DioClient({required SecureStorageService storageService})
-      : _storageService = storageService {
+    : _storageService = storageService {
     _dio = Dio(
       BaseOptions(
         baseUrl: ApiConfig.baseUrl,
