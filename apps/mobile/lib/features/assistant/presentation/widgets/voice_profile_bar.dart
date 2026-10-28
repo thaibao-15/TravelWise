@@ -42,7 +42,7 @@ class VoiceProfileBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             const Text(
-              'Giọng nói: Thân thiện • Tự nhiên',
+              'Giọng nói: Nữ Đà Nẵng (DaNang-Nu-1-BL) • 1.5x',
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
