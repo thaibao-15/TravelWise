@@ -10,8 +10,8 @@ class VoiceAudioService {
   void enqueueSentence({
     required String baseUrl,
     required String sentence,
-    String speed = '1.25',
-    String speakerId = 'HN-Nam-1-BL',
+    String speed = '1.5',
+    String speakerId = 'DaNang-Nu-1-BL',
   }) {}
 
   void markStreamDone() {}
