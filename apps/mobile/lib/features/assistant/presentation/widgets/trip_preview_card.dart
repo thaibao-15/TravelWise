@@ -24,9 +24,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
 
   void _showAiEditSheet(BuildContext context, VoiceAssistantNotifier notifier) {
     final editCtrl = TextEditingController();
-    final effectiveTripId = widget.trip.id.isNotEmpty
-        ? widget.trip.id
-        : ref.read(voiceAssistantProvider).savedTripId;
+    final targetDay = _selectedDayIndex;
 
     showModalBottomSheet(
       context: context,
@@ -137,14 +135,11 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                     final text = editCtrl.text.trim();
                     if (text.isEmpty) return;
                     Navigator.pop(ctx);
-                    if (effectiveTripId != null && effectiveTripId.isNotEmpty) {
-                      notifier.editSavedTrip(
-                        tripId: effectiveTripId,
-                        instruction: text,
-                      );
-                    } else {
-                      notifier.sendMessage(text);
-                    }
+                    notifier.editCurrentOrSavedTrip(
+                      instruction: text,
+                      targetDay: targetDay,
+                      fallbackTrip: widget.trip,
+                    );
                   },
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
                   label: const Text('Cập nhật lịch trình với AI'),
@@ -199,7 +194,9 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
     final isSaving = state.planningState == TripPlanningState.saving;
-    final isSaved = state.planningState == TripPlanningState.saved;
+    final isRevising = state.planningState == TripPlanningState.revising;
+    final isSaved = state.planningState == TripPlanningState.saved ||
+        widget.trip.status == 'CONFIRMED';
 
     final trip = widget.trip;
     final validActivities = trip.days
@@ -264,7 +261,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                 const SizedBox(height: 16),
 
                 // ── Actions: Save / View Map / Dismiss ────────────────────────
-                _buildActionButtons(context, notifier, isSaving, isSaved),
+                _buildActionButtons(context, notifier, isSaving, isSaved, isRevising),
               ],
             ),
           ),
@@ -632,6 +629,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
     VoiceAssistantNotifier notifier,
     bool isSaving,
     bool isSaved,
+    bool isRevising,
   ) {
     final effectiveTripId = widget.trip.id.isNotEmpty
         ? widget.trip.id
@@ -717,15 +715,21 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
             Expanded(
               flex: 3,
               child: OutlinedButton.icon(
-                onPressed: () => _showAiEditSheet(context, notifier),
-                icon: const Icon(
-                  Icons.auto_fix_high_rounded,
-                  size: 15,
-                  color: AppColors.primary,
-                ),
-                label: const Text(
-                  'Sửa với AI',
-                  style: TextStyle(
+                onPressed: isRevising ? null : () => _showAiEditSheet(context, notifier),
+                icon: isRevising
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.auto_fix_high_rounded,
+                        size: 15,
+                        color: AppColors.primary,
+                      ),
+                label: Text(
+                  isRevising ? 'Đang sửa...' : 'Sửa với AI',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primary,

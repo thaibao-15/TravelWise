@@ -96,8 +96,20 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
         if (_rippleController.isAnimating) _rippleController.stop();
       }
 
-      // Lịch trình xem trước đã được hiển thị trực quan ở Smart Panel phía dưới.
-      // Người dùng có thể chạm vào từng ngày hoặc bấm Xem tất cả để mở toàn bộ chi tiết bất cứ lúc nào.
+      if (next.error != null &&
+          next.error!.isNotEmpty &&
+          next.error != prev?.error &&
+          mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(next.error!),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
     });
 
     return Scaffold(
@@ -1073,11 +1085,37 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _openDirectAiEditSheet(context, notifier, trip),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.28)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.auto_fix_high_rounded, size: 11, color: AppColors.primary),
+                      SizedBox(width: 3),
+                      Text(
+                        'Sửa AI',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               Builder(
                 builder: (context) {
                   final isSaved = state.planningState == TripPlanningState.saved ||
-                      (state.savedTripId != null && state.savedTripId!.isNotEmpty && state.savedTripId != '0') ||
                       trip.status == 'CONFIRMED';
                   final isSaving = state.planningState == TripPlanningState.saving;
 
@@ -1414,40 +1452,232 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     );
   }
 
-  void _openFullItineraryModal(BuildContext context, Trip trip) {
+  void _openDirectAiEditSheet(
+    BuildContext context,
+    VoiceAssistantNotifier notifier,
+    Trip trip, {
+    int? targetDay,
+  }) {
+    final editCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
+      builder: (ctx) {
+        return Container(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 38,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.auto_fix_high_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉnh sửa lịch trình với Linh AI',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Nhập yêu cầu bên dưới hoặc chạm Mic trên màn hình để nói trực tiếp',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final suggestion in const [
+                    'Dời giờ bắt đầu ngày 1 sang 9:30 sáng',
+                    'Đổi ngày 2 sang đi biển và ăn hải sản',
+                    'Thêm quán cà phê đẹp buổi chiều',
+                  ])
+                    ActionChip(
+                      label: Text(
+                        suggestion,
+                        style: const TextStyle(fontSize: 11.5, color: AppColors.primary),
+                      ),
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      onPressed: () => editCtrl.text = suggestion,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: editCtrl,
+                maxLines: 3,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'VD: Ngày 2 đi nhẹ nhàng hơn, thêm ăn tối hải sản...',
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
                 ),
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: TripPreviewCard(trip: trip),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final text = editCtrl.text.trim();
+                    if (text.isEmpty) return;
+                    Navigator.pop(ctx);
+                    notifier.editCurrentOrSavedTrip(
+                      instruction: text,
+                      targetDay: targetDay,
+                      fallbackTrip: trip,
+                    );
+                  },
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  label: const Text('Cập nhật lịch trình ngay'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  void _openFullItineraryModal(BuildContext context, Trip trip) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Consumer(
+        builder: (ctx, modalRef, _) {
+          final liveState = modalRef.watch(voiceAssistantProvider);
+          final liveTrip = liveState.tripPreview ?? trip;
+          final isRevising = liveState.planningState == TripPlanningState.revising;
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.9,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (context, scrollController) => Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  if (isRevising)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: const [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Color(0xFFD97706)),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Linh AI đang cập nhật lịch trình theo yêu cầu của bạn...',
+                              style: TextStyle(
+                                color: Color(0xFFB45309),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      child: TripPreviewCard(trip: liveTrip),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

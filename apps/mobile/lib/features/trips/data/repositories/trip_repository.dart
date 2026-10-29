@@ -407,11 +407,17 @@ class TripRepository {
           idempotencyKey ??
           'save_${conversationId}_${trip.title.hashCode}_${DateTime.now().millisecondsSinceEpoch ~/ 60000}';
 
-      final payload = {
+      final parsedTripId = int.tryParse(trip.id);
+      final rawDays = trip.rawJson?['days'];
+      final hasValidRawDays = rawDays is List && rawDays.isNotEmpty;
+      final previewPayload = hasValidRawDays ? trip.rawJson! : trip.toJson();
+
+      final payload = <String, dynamic>{
         'conversation_id': conversationId,
+        if (parsedTripId != null && parsedTripId > 0) 'trip_id': parsedTripId,
         'name': trip.title,
         'destination_city': trip.destination.split(',').first.trim(),
-        'preview': trip.rawJson ?? trip.toJson(),
+        'preview': previewPayload,
         'idempotency_key': key,
       };
 
@@ -451,6 +457,7 @@ class TripRepository {
         data: {
           'change_prompt': instruction,
           'instruction': instruction,
+          'allow_overwrite': true,
           'target_day': ?targetDay,
         },
       );
@@ -476,6 +483,12 @@ class TripRepository {
       targetDay: targetDay,
     );
     if (map != null) {
+      final status = map['status']?.toString();
+      if (status == 'FAILED' || status == 'NEED_CLARIFICATION') {
+        throw Exception(
+          map['message']?.toString() ?? 'Không thể chỉnh sửa lịch trình theo yêu cầu.',
+        );
+      }
       final itineraryData = map['itinerary'] is Map<String, dynamic>
           ? map['itinerary'] as Map<String, dynamic>
           : map;

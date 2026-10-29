@@ -252,17 +252,11 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                   setState(() => _isEditing = true);
                                   try {
                                     final notifier = ref.read(voiceAssistantProvider.notifier);
-                                    final targetTripId = currentTrip.id.isNotEmpty
-                                        ? currentTrip.id
-                                        : ref.read(voiceAssistantProvider).savedTripId;
-                                    if (targetTripId != null && targetTripId.isNotEmpty) {
-                                      await notifier.editSavedTrip(
-                                        tripId: targetTripId,
-                                        instruction: text,
-                                      );
-                                    } else {
-                                      await notifier.sendMessage(text);
-                                    }
+                                    await notifier.editCurrentOrSavedTrip(
+                                      instruction: text,
+                                      fallbackTrip: currentTrip,
+                                      rethrowOnError: true,
+                                    );
                                     if (ctx.mounted) {
                                       Navigator.pop(ctx);
                                       ScaffoldMessenger.of(context).showSnackBar(

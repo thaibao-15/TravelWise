@@ -1305,11 +1305,32 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     final noAccent = _removeVietnameseAccents(clean);
 
+    // Nếu câu mang động từ chỉnh sửa / thay đổi rõ ràng (không phải tạo mới từ đầu), không coi là lệnh tạo mới
+    final hasExplicitEditVerb = RegExp(
+          r'(?:^|\b)(?:chỉnh\s*sửa|sửa|chỉnh|đổi|thay\s*đổi|thay|thêm|bớt|xóa|xoá|bỏ|dời|chuyển|cập\s*nhật|rút\s*gọn|kéo\s*dài|hoàn\s*tác|quay\s*lại\s*lịch)\b',
+          caseSensitive: false,
+        ).hasMatch(clean) ||
+        RegExp(
+          r'(?:^|\b)(?:chinh\s*sua|sua|chinh|doi|thay\s*doi|thay|them|bot|xoa|bo|chuyen|cap\s*nhat|rut\s*gon|keo\s*dai|hoan\s*tac|quay\s*lai\s*lich)\b',
+          caseSensitive: false,
+        ).hasMatch(noAccent);
 
+    final hasExplicitCreateNew = RegExp(
+          r'(?:tạo|lên|lập|thiết\s*kế)\s+(?:lại\s+)?(?:lịch\s*trình|kế\s*hoạch|chuyến\s*đi)\s+(?:mới|khác)',
+          caseSensitive: false,
+        ).hasMatch(clean) ||
+        RegExp(
+          r'(?:tao|len|lap|thiet\s*ke)\s+(?:lai\s+)?(?:lich\s*trinh|ke\s*hoach|chuyen\s*di)\s+(?:moi|khac)',
+          caseSensitive: false,
+        ).hasMatch(noAccent);
+
+    if (hasExplicitEditVerb && !hasExplicitCreateNew) {
+      return false;
+    }
 
     final hasActionVerb = RegExp(
 
-          r'(?:hãy\s+)?(?:tạo|lên|lập|thiết\s*kế|xây\s*dựng|gợi\s*ý|chuẩn\s*bị|làm|viết|sắp\s*xếp|cho\s*(?:mình|tôi|em|anh|chị))',
+          r'(?:hãy\s+)?(?:tạo|lên|lập|thiết\s*kế|xây\s*dựng|gợi\s*ý|chuẩn\s*bị|làm|viết)',
 
           caseSensitive: false,
 
@@ -1317,7 +1338,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
         RegExp(
 
-          r'(?:hay\s+)?(?:tao|len|lap|thiet\s*ke|xay\s*dung|goi\s*y|chuan\s*bi|lam|viet|sap\s*xep|cho\s*(?:minh|toi|em|anh|chi))',
+          r'(?:hay\s+)?(?:tao|len|lap|thiet\s*ke|xay\s*dung|goi\s*y|chuan\s*bi|lam|viet)',
 
           caseSensitive: false,
 
@@ -1447,30 +1468,28 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
 
+  bool _isValidPersistedTripId(String? id) {
+    if (id == null) return false;
+    final clean = id.trim();
+    if (clean.isEmpty || clean == '0' || clean.toLowerCase() == 'null') {
+      return false;
+    }
+    final parsed = int.tryParse(clean);
+    return parsed != null && parsed > 0;
+  }
+
   String? _activeTripIdFromState([Map<String, dynamic>? ctx]) {
-
-    if (state.savedTripId != null && state.savedTripId!.isNotEmpty) {
-
-      return state.savedTripId;
-
+    if (_isValidPersistedTripId(state.savedTripId)) {
+      return state.savedTripId!.trim();
     }
-
-    if (state.tripPreview != null && state.tripPreview!.id.isNotEmpty) {
-
-      return state.tripPreview!.id;
-
+    if (state.tripPreview != null && _isValidPersistedTripId(state.tripPreview!.id)) {
+      return state.tripPreview!.id.trim();
     }
-
     final c = ctx ?? state.planningContext;
-
     final tripMap = c?['trip'] as Map<String, dynamic>?;
-
     final tid = tripMap?['trip_id']?.toString();
-
-    if (tid != null && tid.isNotEmpty) return tid;
-
+    if (_isValidPersistedTripId(tid)) return tid!.trim();
     return null;
-
   }
 
 
@@ -1634,29 +1653,17 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   /// (giúp câu hỏi thông thường bỏ qua lời gọi LLM `/detect-intent` tốn 2-3 giây).
 
   bool _looksLikePotentialEditRequest(String text) {
-
     final lower = text.toLowerCase();
-
     final noAccent = _removeVietnameseAccents(lower);
-
     final hasEditCue = RegExp(
-
-          r'(?:thêm|bớt|xóa|xoá|bỏ|đổi|thay|sửa|dời|chuyển|cập\s*nhật|chỉnh|sắp\s*xếp|rút\s*gọn|kéo\s*dài|bắt\s*đầu|kết\s*thúc|lúc\s*\d|ngày\s*\d|buổi\s*(?:sáng|trưa|chiều|tối)|chiều\s*nay|sáng\s*mai|tối\s*nay|nghỉ\s*ngơi|nghỉ\s*(?:ở\s*)?khách\s*sạn|mệt|ngủ\s*nướng|dậy\s*(?:muộn|trễ)|không\s*thích|chỗ\s*khác|gần\s*hơn|xa\s*quá|quay\s*lại|hoàn\s*tác|lịch\s*cũ|như\s*cũ|trước\s*khi\s*sửa|giữ\s*nguyên|nhẹ\s*nhàng|thay\s*vì|không\s*muốn\s*đi|ghé\s*thêm|cho\s*thêm|mưa)',
-
+          r'(?:thêm|bớt|xóa|xoá|bỏ|đổi|thay|sửa|dời|chuyển|cập\s*nhật|chỉnh|sắp\s*xếp|rút\s*gọn|kéo\s*dài|bắt\s*đầu|kết\s*thúc|lúc\s*\d|ngày\s*(?:thứ\s*)?\d|buổi\s*(?:sáng|trưa|chiều|tối)|chiều\s*nay|sáng\s*mai|tối\s*nay|nghỉ\s*ngơi|nghỉ\s*(?:ở\s*)?khách\s*sạn|mệt|ngủ\s*nướng|dậy\s*(?:muộn|trễ)|sớm\s*hơn|muộn\s*hơn|trễ\s*hơn|không\s*thích|chỗ\s*khác|gần\s*hơn|xa\s*quá|quay\s*lại|hoàn\s*tác|lịch\s*cũ|như\s*cũ|trước\s*khi\s*sửa|giữ\s*nguyên|nhẹ\s*nhàng|thư\s*thả|thong\s*thả|thay\s*vì|không\s*muốn\s*đi|ghé\s*thêm|cho\s*thêm|cho\s*(?:mình|tôi|em)\s*đi|muốn\s*(?:đi\s*thêm|ghé|ăn|đổi|thêm)|xếp\s*thêm|đưa\s*thêm|mưa)',
           caseSensitive: false,
-
         ).hasMatch(lower) ||
-
         RegExp(
-
-          r'(?:them|bot|xoa|bo|doi|thay|sua|doi|chuyen|cap\s*nhat|chinh|sap\s*xep|rut\s*gon|keo\s*dai|bat\s*dau|ket\s*thuc|luc\s*\d|ngay\s*\d|buoi\s*(?:sang|trua|chieu|toi)|chieu\s*nay|sang\s*mai|nghi|met|ngu\s*nuong|day\s*(?:muon|tre)|khong\s*thich|cho\s*khac|gan\s*hon|xa\s*qua|quay\s*lai|hoan\s*tac|lich\s*cu|nhu\s*cu|giu\s*nguyen|mua)',
-
+          r'(?:them|bot|xoa|bo|doi|thay|sua|chuyen|cap\s*nhat|chinh|sap\s*xep|rut\s*gon|keo\s*dai|bat\s*dau|ket\s*thuc|luc\s*\d|ngay\s*(?:thu\s*)?\d|buoi\s*(?:sang|trua|chieu|toi)|chieu\s*nay|sang\s*mai|nghi|met|ngu\s*nuong|day\s*(?:muon|tre)|som\s*hon|muon\s*hon|tre\s*hon|khong\s*thich|cho\s*khac|gan\s*hon|xa\s*qua|quay\s*lai|hoan\s*tac|lich\s*cu|nhu\s*cu|giu\s*nguyen|nhe\s*nhang|thong\s*tha|muon\s*(?:di\s*them|ghe|an|doi|them)|mua)',
           caseSensitive: false,
-
         ).hasMatch(noAccent);
-
     return hasEditCue;
-
   }
 
 
@@ -2107,26 +2114,14 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       //    bỏ qua bước gọi trùng lặp /detect-intent vì /itinerary/edit đã tự kiểm tra intent và trả ANSWERED nếu là câu hỏi)
 
-      final activeTripId = _activeTripIdFromState();
-
-      if (activeTripId != null &&
-
-          state.tripPreview != null &&
-
+      if ((state.tripPreview != null || _activeTripIdFromState() != null) &&
           !isCreateCmd &&
-
+          !isRegenerateIntent &&
           _looksLikePotentialEditRequest(trimmed)) {
-
-        await editSavedTrip(
-
-          tripId: activeTripId,
-
+        await editCurrentOrSavedTrip(
           instruction: trimmed,
-
         );
-
         return;
-
       }
 
 
@@ -2596,6 +2591,12 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       Map<String, dynamic>? planningCtx = state.planningContext;
 
+      String? streamPlanningAction;
+
+      String? streamPlanningStatus;
+
+      bool streamIsReadyFlag = false;
+
       bool enqueuedAnySentence = false;
 
       List<ChatMedia> streamMedia = const [];
@@ -2794,6 +2795,24 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
             }
 
+            if (eventData['planning_action'] != null) {
+
+              streamPlanningAction = eventData['planning_action'].toString();
+
+            }
+
+            if (eventData['planning_status'] != null) {
+
+              streamPlanningStatus = eventData['planning_status'].toString();
+
+            }
+
+            if (eventData['is_ready_to_generate'] == true) {
+
+              streamIsReadyFlag = true;
+
+            }
+
             if (eventData['media'] is List) {
 
               final rawMediaList = eventData['media'] as List<dynamic>;
@@ -2888,9 +2907,23 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       TripPlanningState derivedPlanning = state.planningState;
 
-      if (isReadyFromCtx || hasDestAfterAsk) {
+      if (state.tripPreview == null) {
 
-        derivedPlanning = TripPlanningState.readyToGenerate;
+        if (streamPlanningStatus == 'collecting_requirements') {
+
+          derivedPlanning = TripPlanningState.collectingRequirements;
+
+        } else if (streamPlanningStatus == 'ready_to_generate' ||
+
+            streamIsReadyFlag ||
+
+            isReadyFromCtx ||
+
+            hasDestAfterAsk) {
+
+          derivedPlanning = TripPlanningState.readyToGenerate;
+
+        }
 
       }
 
@@ -2919,29 +2952,27 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
       final shouldAutoGenerate = convId != null &&
-
-          (isCreateCmd || isAffirmative || isRegenerateIntent) &&
-
-          (derivedPlanning == TripPlanningState.readyToGenerate ||
-
-              hasDestAfterAsk);
-
-
+          (streamPlanningAction == 'TRIGGER_GENERATION' ||
+              ((isCreateCmd || isAffirmative || isRegenerateIntent) &&
+                  (derivedPlanning == TripPlanningState.readyToGenerate ||
+                      hasDestAfterAsk)));
 
       if (shouldAutoGenerate) {
-
         _audioService.stopTts();
-
         await generateItinerary(
-
           convId: convId,
-
           context: planningCtx,
-
           userPrompt: trimmed,
-
         );
-
+      } else if (streamPlanningAction == 'TRIGGER_EDIT' &&
+          (state.tripPreview != null || _activeTripIdFromState(planningCtx) != null)) {
+        _audioService.stopTts();
+        await editCurrentOrSavedTrip(instruction: trimmed);
+      } else if (streamPlanningAction == 'TRIGGER_SAVE' &&
+          state.tripPreview != null &&
+          convId != null) {
+        _audioService.stopTts();
+        await saveCurrentTrip(convId: convId);
       } else if (shouldSpeak && !_ttsCancelled) {
 
         if (enqueuedAnySentence) {
@@ -3375,210 +3406,244 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
-  Future<void> editSavedTrip({
-
-    required String tripId,
-
+  /// Chỉnh sửa chuyến đi hiện tại (hỗ trợ cả chuyến đi đã lưu có ID lẫn bản xem trước chưa có ID trên DB).
+  Future<void> editCurrentOrSavedTrip({
     required String instruction,
-
     int? targetDay,
-
+    Trip? fallbackTrip,
+    bool rethrowOnError = false,
   }) async {
-
-    log('editing_trip', {'tripId': tripId, 'instruction': instruction});
-
-    state = state.copyWith(
-
-      planningState: TripPlanningState.revising,
-
-      voiceState: VoiceState.processing,
-
-      error: null,
-
-    );
-
-
-
-    try {
-
-      final serverRes = await _tripRepo.editItineraryRaw(
-
-        tripId: tripId,
-
-        instruction: instruction,
-
-        targetDay: targetDay,
-
-      );
-
-
-
-      if (serverRes != null) {
-
-        final statusStr = serverRes['status']?.toString();
-
-        final serverMsg = serverRes['message']?.toString();
-
-        final itineraryData = serverRes['itinerary'] is Map<String, dynamic>
-
-            ? serverRes['itinerary'] as Map<String, dynamic>
-
-            : serverRes;
-
-
-
-        if (statusStr == 'ANSWERED') {
-
-          // LLM & RAG nhận định đây là câu hỏi tham khảo và trả lời trực tiếp
-
-          final answerMsg =
-
-              serverMsg ?? 'Lịch trình hiện tại vẫn được giữ nguyên.';
-
-          final aiMsg = ChatMessage(
-
-            text: answerMsg,
-
-            isUser: false,
-
-            timestamp: DateTime.now(),
-
-            tripItinerary: state.tripPreview,
-
-          );
-
-          state = state.copyWith(
-
-            planningState: state.savedTripId != null
-
-                ? TripPlanningState.saved
-
-                : TripPlanningState.previewReady,
-
-            messages: [...state.messages, aiMsg],
-
-            currentTranscript: answerMsg,
-
-          );
-
-          if (state.isTtsEnabled) {
-
-            await _playTts(answerMsg);
-
-          } else {
-
-            state = state.copyWith(voiceState: VoiceState.idle);
-
-          }
-
-          return;
-
-        }
-
-
-
-        final updatedTrip = Trip.fromJson(itineraryData);
-
-        final resolvedTrip = updatedTrip.id.isNotEmpty
-
-            ? updatedTrip
-
-            : updatedTrip.copyWith(id: tripId);
-
-
-
-        _ref.invalidate(tripsListProvider);
-
-        _ref.invalidate(tripDetailProvider(tripId));
-
-        _ref.read(currentTripPreviewProvider.notifier).state = resolvedTrip;
-
-
-
-        state = state.copyWith(
-
-          planningState: TripPlanningState.previewReady,
-
-          tripPreview: resolvedTrip,
-
-          savedTripId: tripId,
-
-        );
-
-
-
-        final editMsg = serverMsg ??
-
-            'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
-
-        final aiMsg = ChatMessage(
-
-          text: editMsg,
-
-          isUser: false,
-
-          timestamp: DateTime.now(),
-
-          tripItinerary: resolvedTrip,
-
-        );
-
-        state = state.copyWith(
-
-          messages: [...state.messages, aiMsg],
-
-          currentTranscript: editMsg,
-
-        );
-
-
-
-        if (_isVoiceSession) {
-
-          _userKeepMicOn = true;
-
-        }
-
-        if (state.isTtsEnabled) {
-
-          _ttsCancelled = false;
-
-          await _playTts(editMsg);
-
-        } else {
-
-          _resumeListeningIfPersistent();
-
-        }
-
-      } else {
-
-        state = state.copyWith(
-
-          planningState: TripPlanningState.previewReady,
-
-          voiceState: VoiceState.idle,
-
-        );
-
-      }
-
-    } catch (e) {
-
-      log('edit_trip_error', {'error': e.toString()});
-
-      state = state.copyWith(
-
-        planningState: TripPlanningState.error,
-
-        voiceState: VoiceState.idle,
-
-        error: 'Không thể chỉnh sửa lịch trình: $e',
-
-      );
-
+    final trimmed = instruction.trim();
+    if (trimmed.isEmpty) return;
+
+    String? effectiveTripId = _activeTripIdFromState();
+    if (effectiveTripId == null &&
+        fallbackTrip != null &&
+        _isValidPersistedTripId(fallbackTrip.id)) {
+      effectiveTripId = fallbackTrip.id.trim();
     }
 
+    // Nếu đang có bản xem trước nhưng chưa có trip_id hợp lệ trong CSDL, tự động tạo/lưu nháp để lấy trip_id thực
+    final previewCandidate = state.tripPreview ?? fallbackTrip;
+    if (effectiveTripId == null && previewCandidate != null) {
+      try {
+        state = state.copyWith(
+          planningState: TripPlanningState.revising,
+          voiceState: VoiceState.processing,
+          error: null,
+        );
+        final persistedId = await _tripRepo.saveTripPreview(
+          trip: previewCandidate,
+          conversationId: state.conversationId ?? previewCandidate.conversationId ?? 0,
+        );
+        if (_isValidPersistedTripId(persistedId)) {
+          effectiveTripId = persistedId.trim();
+          state = state.copyWith(
+            savedTripId: effectiveTripId,
+            tripPreview: previewCandidate.copyWith(id: effectiveTripId),
+          );
+        }
+      } catch (e) {
+        log('auto_persist_before_edit_error', {'error': e.toString()});
+      }
+    }
+
+    if (effectiveTripId != null) {
+      await editSavedTrip(
+        tripId: effectiveTripId,
+        instruction: trimmed,
+        targetDay: targetDay,
+        rethrowOnError: rethrowOnError,
+      );
+    } else {
+      await sendMessage(trimmed);
+    }
+  }
+
+  Future<void> editSavedTrip({
+    required String tripId,
+    required String instruction,
+    int? targetDay,
+    bool rethrowOnError = false,
+  }) async {
+    final wasSaved = state.planningState == TripPlanningState.saved ||
+        state.tripPreview?.status == 'CONFIRMED';
+
+    // Nếu người dùng bấm nút "Sửa với AI" (text UI), ghi nhận cả câu yêu cầu vào lịch sử chat để rõ ngữ cảnh
+    final lastMsg = state.messages.isNotEmpty ? state.messages.last : null;
+    final alreadyHasUserMsg =
+        lastMsg != null && lastMsg.isUser && lastMsg.text.trim() == instruction.trim();
+    final updatedBaseMessages = alreadyHasUserMsg
+        ? state.messages
+        : [
+            ...state.messages,
+            ChatMessage(
+              text: instruction.trim(),
+              isUser: true,
+              timestamp: DateTime.now(),
+            ),
+          ];
+
+    log('editing_trip', {'tripId': tripId, 'instruction': instruction, 'targetDay': targetDay});
+    state = state.copyWith(
+      messages: updatedBaseMessages,
+      planningState: TripPlanningState.revising,
+      voiceState: VoiceState.processing,
+      error: null,
+    );
+
+    try {
+      final serverRes = await _tripRepo.editItineraryRaw(
+        tripId: tripId,
+        instruction: instruction,
+        targetDay: targetDay,
+      );
+
+      if (serverRes != null) {
+        final statusStr = serverRes['status']?.toString();
+        final serverMsg = serverRes['message']?.toString();
+        final itineraryData = serverRes['itinerary'] is Map<String, dynamic>
+            ? serverRes['itinerary'] as Map<String, dynamic>
+            : null;
+
+        if (statusStr == 'ANSWERED') {
+          final answerMsg =
+              serverMsg ?? 'Lịch trình hiện tại vẫn được giữ nguyên.';
+          final aiMsg = ChatMessage(
+            text: answerMsg,
+            isUser: false,
+            timestamp: DateTime.now(),
+            tripItinerary: state.tripPreview,
+          );
+          state = state.copyWith(
+            planningState: wasSaved
+                ? TripPlanningState.saved
+                : TripPlanningState.previewReady,
+            messages: [...state.messages, aiMsg],
+            currentTranscript: answerMsg,
+          );
+          if (_isVoiceSession) {
+            _userKeepMicOn = true;
+          }
+          if (state.isTtsEnabled) {
+            _ttsCancelled = false;
+            await _playTts(answerMsg);
+          } else {
+            state = state.copyWith(voiceState: VoiceState.idle);
+            _resumeListeningIfPersistent();
+          }
+          return;
+        }
+
+        if (statusStr == 'FAILED' ||
+            statusStr == 'NEED_CLARIFICATION' ||
+            itineraryData == null) {
+          final failMsg = serverMsg ??
+              'Mình chưa thể cập nhật lịch trình theo yêu cầu này. Bạn hãy thử nói rõ hơn ngày hoặc địa điểm muốn đổi nhé!';
+          final aiMsg = ChatMessage(
+            text: failMsg,
+            isUser: false,
+            timestamp: DateTime.now(),
+            tripItinerary: state.tripPreview,
+          );
+          state = state.copyWith(
+            planningState: state.tripPreview != null
+                ? (wasSaved ? TripPlanningState.saved : TripPlanningState.previewReady)
+                : TripPlanningState.error,
+            voiceState: VoiceState.idle,
+            messages: [...state.messages, aiMsg],
+            currentTranscript: failMsg,
+            error: failMsg,
+          );
+          if (rethrowOnError) {
+            throw Exception(failMsg);
+          }
+          if (_isVoiceSession) {
+            _userKeepMicOn = true;
+          }
+          if (state.isTtsEnabled) {
+            _ttsCancelled = false;
+            await _playTts(failMsg);
+          } else {
+            _resumeListeningIfPersistent();
+          }
+          return;
+        }
+
+        final updatedTrip = Trip.fromJson(itineraryData);
+        final resolvedTrip = (updatedTrip.id.isNotEmpty ? updatedTrip : updatedTrip.copyWith(id: tripId))
+            .copyWith(status: wasSaved ? 'CONFIRMED' : updatedTrip.status);
+
+        _ref.invalidate(tripsListProvider);
+        _ref.invalidate(tripDetailProvider(tripId));
+        _ref.read(currentTripPreviewProvider.notifier).state = resolvedTrip;
+
+        final nextPlanningState = (wasSaved || resolvedTrip.status == 'CONFIRMED')
+            ? TripPlanningState.saved
+            : TripPlanningState.previewReady;
+
+        state = state.copyWith(
+          planningState: nextPlanningState,
+          tripPreview: resolvedTrip,
+          savedTripId: tripId,
+          error: null,
+        );
+
+        final editMsg = serverMsg ??
+            'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
+        final aiMsg = ChatMessage(
+          text: editMsg,
+          isUser: false,
+          timestamp: DateTime.now(),
+          tripItinerary: resolvedTrip,
+        );
+        state = state.copyWith(
+          messages: [...state.messages, aiMsg],
+          currentTranscript: editMsg,
+        );
+
+        if (_isVoiceSession) {
+          _userKeepMicOn = true;
+        }
+        if (state.isTtsEnabled) {
+          _ttsCancelled = false;
+          await _playTts(editMsg);
+        } else {
+          state = state.copyWith(voiceState: VoiceState.idle);
+          _resumeListeningIfPersistent();
+        }
+      } else {
+        state = state.copyWith(
+          planningState: wasSaved ? TripPlanningState.saved : TripPlanningState.previewReady,
+          voiceState: VoiceState.idle,
+        );
+      }
+    } catch (e) {
+      log('edit_trip_error', {'error': e.toString()});
+      final cleanErr = e.toString().replaceFirst('Exception: ', '');
+      final errReply = 'Chưa thể chỉnh sửa lịch trình: $cleanErr';
+      final aiErrMsg = ChatMessage(
+        text: errReply,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      state = state.copyWith(
+        planningState: state.tripPreview != null
+            ? (wasSaved ? TripPlanningState.saved : TripPlanningState.previewReady)
+            : TripPlanningState.error,
+        voiceState: VoiceState.idle,
+        messages: [...state.messages, aiErrMsg],
+        currentTranscript: errReply,
+        error: errReply,
+      );
+      if (rethrowOnError) {
+        rethrow;
+      }
+      if (_isVoiceSession) {
+        _userKeepMicOn = true;
+      }
+      _resumeListeningIfPersistent();
+    }
   }
 
 

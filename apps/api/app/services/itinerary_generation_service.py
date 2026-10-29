@@ -33,6 +33,7 @@ from sqlmodel import Session, select
 
 from app.models.itinerary_activity import ItineraryActivity
 from app.models.itinerary_day import ItineraryDay
+from app.models.place import Place
 from app.models.trip import Trip
 from app.rag.llm import extract_response_text, get_chat_llm
 from app.schemas.itinerary import (
@@ -214,6 +215,7 @@ class ItineraryGenerationService:
         save_to_db: bool = True,
         user_prompt: Optional[str] = None,
         existing_itinerary: Optional[Any] = None,
+        allow_overwrite_confirmed: bool = False,
     ) -> ItineraryGenerationResponse:
         """Executes the full itinerary generation pipeline.
 
@@ -263,8 +265,41 @@ class ItineraryGenerationService:
             reference_lon=current_location.longitude if current_location else None,
         )
 
-        candidates: List[SearchPlaceItem] = place_response.places
+        candidates: List[SearchPlaceItem] = list(place_response.places)
         candidate_map: Dict[int, SearchPlaceItem] = {p.place_id: p for p in candidates}
+
+        # Preserve real places already used in existing_itinerary so unaffected stops never lose place_id
+        if existing_itinerary and hasattr(existing_itinerary, "days") and existing_itinerary.days:
+            existing_pids: Set[int] = set()
+            for d in existing_itinerary.days:
+                for a in (getattr(d, "activities", None) or []):
+                    pid = getattr(a, "place_id", None)
+                    if isinstance(pid, int) and pid > 0 and pid not in candidate_map:
+                        existing_pids.add(pid)
+            if existing_pids:
+                try:
+                    db_places = session.exec(
+                        select(Place).where(Place.id.in_(list(existing_pids)))
+                    ).all()
+                    for db_p in db_places:
+                        if getattr(db_p, "is_deleted", False):
+                            continue
+                        cat_name = db_p.category.name if getattr(db_p, "category", None) else None
+                        item = SearchPlaceItem(
+                            place_id=db_p.id,
+                            name=db_p.name,
+                            category=cat_name,
+                            category_id=getattr(db_p, "category_id", None),
+                            address=db_p.address,
+                            latitude=db_p.latitude,
+                            longitude=db_p.longitude,
+                            opening_hours=getattr(db_p, "opening_hours", None),
+                        )
+                        candidates.append(item)
+                        candidate_map[item.place_id] = item
+                except Exception as ex_place_err:
+                    logger.debug("Could not hydrate existing itinerary places: %s", ex_place_err)
+
         candidate_ids: Set[int] = set(candidate_map.keys())
         geographic_groups = cls._build_geographic_groups(candidates, duration_days)
 
@@ -374,6 +409,7 @@ class ItineraryGenerationService:
                     trip_id=effective_trip_id,
                     response=validated_response,
                     context=context,
+                    allow_overwrite_confirmed=allow_overwrite_confirmed,
                 )
             except Exception as db_err:
                 logger.error("Error saving itinerary to SQL Server: %s", db_err)
@@ -924,12 +960,14 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
         trip_id: int,
         response: ItineraryGenerationResponse,
         context: TripPlanningContext,
+        allow_overwrite_confirmed: bool = False,
     ) -> None:
         """Saves generated itinerary into SQL Server via ItineraryPersistenceService."""
         ItineraryPersistenceService.save_itinerary(
             session=session,
             trip_id=trip_id,
             itinerary=response,
+            allow_overwrite_confirmed=allow_overwrite_confirmed,
             check_ownership=False,
             context=context,
         )

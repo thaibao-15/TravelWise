@@ -5,6 +5,7 @@ Trips and Trip Planning Context API routes.
 from datetime import datetime
 import json
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,6 +28,7 @@ from app.schemas.itinerary import (
     ItineraryEditResponse,
     ItineraryGenerationRequest,
     ItineraryGenerationResponse,
+    ItineraryStatusEnum,
     TripCreateRequest,
     TripListResponse,
     TripSummaryItem,
@@ -733,19 +735,47 @@ def generate_itinerary_for_trip(
             detail=f"Chuyến đi {trip_id} chưa có thông tin lập kế hoạch (TripPlanningContext).",
         )
 
+    # Hydrate missing destination / duration from Trip entity so generation does not fail unnecessarily
+    if not context.trip.trip_id:
+        context.trip.trip_id = trip.id
+    if not context.trip.destination.city and trip.destination_city:
+        context.trip.destination.city = trip.destination_city
+    if not context.trip.destination.country and trip.destination_country:
+        context.trip.destination.country = trip.destination_country
+    if not context.trip.dates.start_date and trip.start_date:
+        context.trip.dates.start_date = trip.start_date.isoformat()
+    if not context.trip.dates.end_date and trip.end_date:
+        context.trip.dates.end_date = trip.end_date.isoformat()
+    if (not context.trip.dates.duration_days or context.trip.dates.duration_days <= 0):
+        if trip.start_date and trip.end_date:
+            context.trip.dates.duration_days = max(1, (trip.end_date - trip.start_date).days + 1)
+        elif trip.itinerary_days:
+            context.trip.dates.duration_days = len(trip.itinerary_days)
+
     if request_data and request_data.current_location:
         context.current_location = request_data.current_location
 
     save_to_db = request_data.save_to_db if request_data is not None else True
+    allow_overwrite = request_data.allow_overwrite_confirmed if request_data is not None else False
     user_prompt = request_data.user_prompt if request_data is not None else None
 
-    return ItineraryGenerationService.generate_itinerary(
-        session=session,
-        context=context,
-        trip_id=trip.id,
-        save_to_db=save_to_db,
-        user_prompt=user_prompt,
-    )
+    try:
+        return ItineraryGenerationService.generate_itinerary(
+            session=session,
+            context=context,
+            trip_id=trip.id,
+            save_to_db=save_to_db,
+            user_prompt=user_prompt,
+            allow_overwrite_confirmed=allow_overwrite,
+        )
+    except HTTPException:
+        raise
+    except Exception as gen_err:
+        logger.exception("Unhandled error in generate_itinerary_for_trip(%s): %s", trip_id, gen_err)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Không thể tạo lịch trình cho chuyến đi {trip_id}: {gen_err}",
+        ) from gen_err
 
 
 @router.post(
@@ -830,6 +860,20 @@ def edit_itinerary_for_trip(
         if trip.user_id != current_user.id and current_user.role != "ADMIN":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
+    was_confirmed = (trip.status == "CONFIRMED")
+
+    # 0. Lấy chi tiết lịch trình hiện tại trước để phục vụ nhận diện ngữ cảnh và bảo toàn dữ liệu
+    current_details: Optional[ItineraryDetailResponse] = None
+    try:
+        current_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+            session=session,
+            trip_id=trip.id,
+            current_user=current_user,
+            check_ownership=True if current_user else False,
+        )
+    except Exception as cur_err:
+        logger.warning("Could not fetch current itinerary before edit for trip %s: %s", trip.id, cur_err)
+
     # 1. Tự động xác định bằng LLM và RAG xem prompt có phải yêu cầu chỉnh sửa hay không
     intent_check = ItineraryGenerationService.detect_edit_intent(
         session=session,
@@ -839,29 +883,72 @@ def edit_itinerary_for_trip(
         current_user=current_user,
     )
 
-    # 2. Retrieve planning context
+    # 2. Retrieve & hydrate planning context
     pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
     context: Optional[TripPlanningContext] = None
     if pref and pref.raw_context_snapshot:
         try:
             data = json.loads(pref.raw_context_snapshot)
-            context = TripPlanningContext.model_validate(data)
+            if isinstance(data, dict) and isinstance(data.get("trip"), dict):
+                context = TripPlanningContext.model_validate(data)
         except Exception:
             pass
 
     if not context and trip.conversation_id:
-        context = TripPlanningContextExtractionService.get_planning_context_by_conversation(
-            session=session,
-            conversation_id=trip.conversation_id,
-            current_user=current_user,
-            check_ownership=True if current_user else False,
-        )
+        try:
+            context = TripPlanningContextExtractionService.get_planning_context_by_conversation(
+                session=session,
+                conversation_id=trip.conversation_id,
+                current_user=current_user,
+                check_ownership=True if current_user else False,
+            )
+        except Exception as ctx_err:
+            logger.warning("Could not load conversation planning context for trip %s: %s", trip.id, ctx_err)
 
     if not context:
         context = TripPlanningContext()
-        context.trip.trip_id = trip.id
-        context.trip.destination.city = trip.destination_city or "Đà Nẵng"
-        context.trip.destination.country = trip.destination_country or "Việt Nam"
+
+    # Đảm bảo đầy đủ thông tin bắt buộc (destination, duration_days, dates) từ Trip & lịch trình hiện tại
+    context.trip.trip_id = trip.id
+    if not context.trip.destination.city:
+        context.trip.destination.city = (
+            trip.destination_city
+            or (current_details.destination_city if current_details else None)
+            or "Đà Nẵng"
+        )
+    if not context.trip.destination.country:
+        context.trip.destination.country = (
+            trip.destination_country
+            or (current_details.destination_country if current_details else None)
+            or "Việt Nam"
+        )
+    if not context.trip.dates.start_date and trip.start_date:
+        context.trip.dates.start_date = trip.start_date.isoformat()
+    if not context.trip.dates.end_date and trip.end_date:
+        context.trip.dates.end_date = trip.end_date.isoformat()
+
+    # Kiểm tra nếu người dùng yêu cầu đổi tổng số ngày (VD: "rút gọn còn 2 ngày", "kéo dài thành 4 ngày")
+    prompt_lower = (request_data.change_prompt or "").lower()
+    explicit_days_match = re.search(
+        r"(?:rút\s*gọn\s*(?:còn|xuống|thành)?|kéo\s*dài\s*(?:lên|thành)?|đổi\s*(?:lịch\s*trình\s*)?(?:thành|sang)|chuyển\s*(?:thành|sang)|tăng\s*lên|giảm\s*(?:còn|xuống))\s*(\d+)\s*ngày",
+        prompt_lower,
+    )
+    if explicit_days_match:
+        try:
+            new_days = int(explicit_days_match.group(1))
+            if 1 <= new_days <= 14:
+                context.trip.dates.duration_days = new_days
+                context.trip.dates.end_date = None
+        except ValueError:
+            pass
+
+    if not context.trip.dates.duration_days or context.trip.dates.duration_days <= 0:
+        if current_details and current_details.days:
+            context.trip.dates.duration_days = len(current_details.days)
+        elif trip.start_date and trip.end_date:
+            context.trip.dates.duration_days = max(1, (trip.end_date - trip.start_date).days + 1)
+        else:
+            context.trip.dates.duration_days = 3
 
     # Xử lý trường hợp HOÀN TÁC / QUAY LẠI LỊCH CŨ (is_undo = true)
     if intent_check.get("is_undo"):
@@ -882,9 +969,17 @@ def edit_itinerary_for_trip(
                     trip_id=trip.id,
                     itinerary=backup_itin,
                     current_user=current_user,
+                    allow_overwrite_confirmed=request_data.allow_overwrite,
                     check_ownership=True if current_user else False,
                     context=context,
                 )
+                if was_confirmed:
+                    trip_ref = session.get(Trip, trip.id)
+                    if trip_ref:
+                        trip_ref.status = "CONFIRMED"
+                        trip_ref.updated_at = _utcnow()
+                        session.add(trip_ref)
+                        session.commit()
                 restored_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
                     session=session,
                     trip_id=trip.id,
@@ -905,12 +1000,6 @@ def edit_itinerary_for_trip(
 
     # Nếu LLM xác định KHÔNG PHẢI là yêu cầu chỉnh sửa (ví dụ hỏi FAQ, thời tiết, giá vé...)
     if not intent_check.get("is_edit_intent"):
-        details = ItineraryPersistenceService.get_itinerary_by_trip_id(
-            session=session,
-            trip_id=trip.id,
-            current_user=current_user,
-            check_ownership=True if current_user else False,
-        )
         rag_msg = intent_check.get("reason") or "Lịch trình hiện tại vẫn được giữ nguyên."
         try:
             from app.rag.chain import get_rag_chain
@@ -931,32 +1020,36 @@ def edit_itinerary_for_trip(
             conversation_id=trip.conversation_id,
             message=rag_msg,
             applied_changes=[],
-            itinerary=details,
+            itinerary=current_details,
             warnings=[],
         )
 
     effective_prompt = intent_check.get("change_prompt") or request_data.change_prompt
+    if request_data.target_day and f"ngày {request_data.target_day}" not in effective_prompt.lower():
+        effective_prompt = f"[Áp dụng cho Ngày {request_data.target_day}] {effective_prompt}"
 
-    # Lấy lịch trình hiện tại và lưu snapshot backup trước khi chỉnh sửa
-    current_details = None
-    try:
-        current_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
-            session=session,
-            trip_id=trip.id,
-            current_user=current_user,
-            check_ownership=True if current_user else False,
-        )
-        if pref and current_details:
-            pref.special_requirements = json.dumps(
-                {"backup_itinerary": current_details.model_dump(mode="json")},
-                ensure_ascii=False,
-            )
+    # Lưu snapshot backup trước khi chỉnh sửa (tự tạo TripPreference nếu chưa có)
+    if current_details and current_details.days:
+        try:
+            if not pref:
+                pref = TripPreference(trip_id=trip.id)
+            existing_special = {}
+            if pref.special_requirements:
+                try:
+                    parsed_sp = json.loads(pref.special_requirements)
+                    if isinstance(parsed_sp, dict):
+                        existing_special = parsed_sp
+                except Exception:
+                    existing_special = {}
+            existing_special["backup_itinerary"] = current_details.model_dump(mode="json")
+            pref.special_requirements = json.dumps(existing_special, ensure_ascii=False)
             session.add(pref)
             session.commit()
-    except Exception as snap_err:
-        logger.warning("Could not snapshot backup itinerary: %s", snap_err)
+        except Exception as snap_err:
+            session.rollback()
+            logger.warning("Could not snapshot backup itinerary: %s", snap_err)
 
-    # 3. Re-generate with validated user prompt and existing itinerary context
+    # 3. Re-generate with validated user prompt, existing itinerary context, and overwrite permission
     gen_res = ItineraryGenerationService.generate_itinerary(
         session=session,
         context=context,
@@ -964,21 +1057,59 @@ def edit_itinerary_for_trip(
         save_to_db=True,
         user_prompt=effective_prompt,
         existing_itinerary=current_details,
+        allow_overwrite_confirmed=request_data.allow_overwrite,
     )
 
-    # 4. Retrieve fresh details
-    try:
-        details = ItineraryPersistenceService.get_itinerary_by_trip_id(
-            session=session,
-            trip_id=trip.id,
-            current_user=current_user,
-            check_ownership=True if current_user else False,
+    # 4. Kiểm tra kết quả tạo và lưu DB thực tế (không báo thành công giả nếu thất bại)
+    db_persist_failed = any(
+        "gặp lỗi khi lưu vào cơ sở dữ liệu" in w for w in (gen_res.warnings or [])
+    )
+    if (
+        gen_res.status != ItineraryStatusEnum.GENERATED.value
+        or not gen_res.days
+        or db_persist_failed
+    ):
+        err_reasons = list(gen_res.warnings or []) + list(gen_res.missing_information or [])
+        fail_msg = (
+            err_reasons[0]
+            if err_reasons
+            else "Chưa thể cập nhật lịch trình theo yêu cầu này. Bạn vui lòng nói rõ hơn thay đổi mong muốn nhé!"
         )
-    except Exception as fetch_err:
-        logger.warning("Could not fetch detailed persisted itinerary, falling back to gen_res: %s", fetch_err)
-        details = gen_res
+        return ItineraryEditResponse(
+            status=(
+                EditStatusEnum.NEED_CLARIFICATION.value
+                if gen_res.status == ItineraryStatusEnum.NEED_MORE_INFORMATION.value
+                else EditStatusEnum.FAILED.value
+            ),
+            trip_id=trip.id,
+            conversation_id=trip.conversation_id,
+            message=fail_msg,
+            applied_changes=[],
+            itinerary=current_details,
+            warnings=gen_res.warnings,
+        )
 
-    edit_summary = getattr(gen_res, "summary", None) or f"Đã tối ưu và cập nhật lại lịch trình cho chuyến đi của bạn! 🗺️✨"
+    # Bảo toàn trạng thái CONFIRMED nếu chuyến đi đã được người dùng lưu trước khi sửa
+    if was_confirmed:
+        try:
+            trip_after = session.get(Trip, trip.id)
+            if trip_after and trip_after.status != "CONFIRMED":
+                trip_after.status = "CONFIRMED"
+                trip_after.updated_at = _utcnow()
+                session.add(trip_after)
+                session.commit()
+        except Exception as status_err:
+            logger.warning("Could not restore CONFIRMED status after edit: %s", status_err)
+
+    # 5. Retrieve fresh persisted details from SQL Server
+    details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+        session=session,
+        trip_id=trip.id,
+        current_user=current_user,
+        check_ownership=True if current_user else False,
+    )
+
+    edit_summary = getattr(gen_res, "summary", None) or "Đã tối ưu và cập nhật lại lịch trình cho chuyến đi của bạn!"
     return ItineraryEditResponse(
         status=EditStatusEnum.EDITED.value,
         trip_id=trip.id,
