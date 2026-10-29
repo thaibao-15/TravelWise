@@ -383,6 +383,12 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   bool _isVoiceSession = false;
   bool _userKeepMicOn = false;
 
+  bool _isDirectTripEditMode = false;
+  Trip? _directEditTrip;
+  int? _directEditTargetDay;
+
+  bool get isDirectTripEditMode => _isDirectTripEditMode;
+
   void _resumeListeningIfPersistent() {
     if (!mounted) return;
     if ((_userKeepMicOn || _isVoiceSession) && !state.isMuted) {
@@ -568,9 +574,123 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         return;
       }
       log('user_toggle_recording_on');
+      _isDirectTripEditMode = false;
+      _directEditTrip = null;
+      _directEditTargetDay = null;
       _userKeepMicOn = true;
       _isVoiceSession = true;
       _beginListening();
+    }
+  }
+
+  /// Bật / tắt chế độ nói trực tiếp để chỉnh sửa lịch trình ngay tại màn hình Chi tiết chuyến đi
+  /// mà không cần chuyển sang tab Trợ lý AI.
+  void toggleDirectTripVoiceEdit({
+    required Trip trip,
+    int? targetDay,
+  }) {
+    if (state.voiceState == VoiceState.speaking) {
+      log('direct_trip_voice_stop_tts');
+      stopAudio();
+      return;
+    }
+
+    if (_listeningTurnActive ||
+        state.isRecording ||
+        state.voiceState == VoiceState.connecting ||
+        state.voiceState == VoiceState.listening) {
+      log('direct_trip_voice_manual_submit');
+      _userKeepMicOn = false;
+      _isVoiceSession = false;
+      _finishListening(reason: 'direct_trip_manual_stop', submit: true);
+      return;
+    }
+
+    if (_isCommitting ||
+        state.planningState == TripPlanningState.revising ||
+        state.voiceState == VoiceState.thinking ||
+        state.voiceState == VoiceState.processing) {
+      log('direct_trip_voice_blocked_busy', {'voiceState': state.voiceState.name});
+      return;
+    }
+
+    if (state.isMuted) {
+      state = state.copyWith(isMuted: false);
+    }
+
+    log('direct_trip_voice_start', {'tripId': trip.id, 'targetDay': targetDay});
+    _isDirectTripEditMode = true;
+    _directEditTrip = trip;
+    _directEditTargetDay = targetDay;
+    _userKeepMicOn = false;
+    _isVoiceSession = false;
+
+    final hasPersistedId = _isValidPersistedTripId(trip.id);
+    state = state.copyWith(
+      tripPreview: trip,
+      savedTripId: hasPersistedId ? trip.id.trim() : null,
+      clearSavedTripId: !hasPersistedId,
+      planningState: (hasPersistedId && trip.status == 'CONFIRMED')
+          ? TripPlanningState.saved
+          : TripPlanningState.previewReady,
+      error: null,
+    );
+
+    _beginDirectTripListening();
+  }
+
+  /// Huỷ phiên thu âm chỉnh sửa trực tiếp tại trang chi tiết chuyến đi mà không gửi yêu cầu.
+  void cancelDirectTripVoiceEdit() {
+    log('direct_trip_voice_cancel');
+    _isDirectTripEditMode = false;
+    _directEditTrip = null;
+    _directEditTargetDay = null;
+    _userKeepMicOn = false;
+    _isVoiceSession = false;
+    _abortListening();
+    state = state.copyWith(
+      isRecording: false,
+      voiceState: VoiceState.idle,
+      currentTranscript: '',
+      error: null,
+    );
+  }
+
+  /// Dừng an toàn micro / giọng đọc đang chạy trên màn hình Chi tiết chuyến đi (ví dụ khi thoát trang).
+  void stopDirectTripVoiceSession({bool fromDispose = false}) {
+    final hadActiveVoice = _isDirectTripEditMode ||
+        _listeningTurnActive ||
+        state.isRecording ||
+        state.voiceState == VoiceState.speaking ||
+        state.voiceState == VoiceState.listening ||
+        state.voiceState == VoiceState.connecting;
+
+    _isDirectTripEditMode = false;
+    _directEditTrip = null;
+    _directEditTargetDay = null;
+    if (!hadActiveVoice) return;
+
+    _userKeepMicOn = false;
+    _isVoiceSession = false;
+    _abortListening();
+    _ttsCancelled = true;
+    _audioService.stopTts();
+
+    void resetIdleState() {
+      if (mounted &&
+          state.planningState != TripPlanningState.revising &&
+          state.planningState != TripPlanningState.generating) {
+        state = state.copyWith(
+          isRecording: false,
+          voiceState: VoiceState.idle,
+        );
+      }
+    }
+
+    if (fromDispose) {
+      Future.microtask(resetIdleState);
+    } else {
+      resetIdleState();
     }
   }
 
@@ -836,6 +956,37 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     _openRecognizer();
 
+  }
+
+  void _beginDirectTripListening() {
+    if (_listeningTurnActive) return;
+
+    _cancelTimers();
+    _finalSegments.clear();
+    _partialSegment = '';
+    _isCommitting = false;
+    _autoRestarts = 0;
+    _turnStartedAt = DateTime.now();
+    _audioService.unlockAudio();
+    _listeningTurnActive = true;
+    _isVoiceSession = false;
+    _userKeepMicOn = false;
+    _audioService.stopTts();
+
+    state = state.copyWith(
+      voiceState: VoiceState.connecting,
+      currentTranscript: '',
+      error: null,
+      isRecording: false,
+    );
+
+    _maxSessionTimer = Timer(_config.listenFor, () {
+      if (!mounted || !_listeningTurnActive) return;
+      log('stt_max_session_reached_direct_trip');
+      _finishListening(reason: 'max_session', submit: true);
+    });
+
+    _openRecognizer();
   }
 
 
@@ -1200,43 +1351,49 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
   /// Ends the listening turn and optionally submits the accumulated text.
-
   void _finishListening({required String reason, required bool submit}) {
+    final text = _accumulatedTranscript.trim();
+    final isDirectEdit = _isDirectTripEditMode;
+    final targetTrip = _directEditTrip;
+    final targetDay = _directEditTargetDay;
 
-    final text = _accumulatedTranscript;
-
-    log('stt_finish', {'reason': reason, 'textLength': text.length});
+    log('stt_finish', {
+      'reason': reason,
+      'textLength': text.length,
+      'isDirectEdit': isDirectEdit,
+    });
 
     _abortListening();
 
     if (submit && text.isNotEmpty) {
-
-      sendMessage(text, isVoiceMode: true);
-
+      if (isDirectEdit && targetTrip != null) {
+        state = state.copyWith(
+          isRecording: false,
+          currentTranscript: text,
+        );
+        editCurrentOrSavedTrip(
+          instruction: text,
+          targetDay: targetDay,
+          fallbackTrip: targetTrip,
+        );
+      } else {
+        sendMessage(text, isVoiceMode: true);
+      }
     } else {
-
       state = state.copyWith(isRecording: false, voiceState: VoiceState.idle);
-
     }
-
   }
 
-
-
   /// Stops the recognizer, invalidates pending callbacks and disables any
-
   /// automatic restart. Does not touch [state].
-
   void _abortListening() {
-
     _listeningTurnActive = false;
-
+    _isDirectTripEditMode = false;
+    _directEditTrip = null;
+    _directEditTargetDay = null;
     _cancelTimers();
-
     _sessionId++;
-
     _audioService.stopRecording();
-
   }
 
 
@@ -3416,15 +3573,25 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     final trimmed = instruction.trim();
     if (trimmed.isEmpty) return;
 
-    String? effectiveTripId = _activeTripIdFromState();
-    if (effectiveTripId == null &&
-        fallbackTrip != null &&
-        _isValidPersistedTripId(fallbackTrip.id)) {
+    String? effectiveTripId;
+    if (fallbackTrip != null && _isValidPersistedTripId(fallbackTrip.id)) {
       effectiveTripId = fallbackTrip.id.trim();
+      state = state.copyWith(
+        tripPreview: fallbackTrip,
+        savedTripId: effectiveTripId,
+        planningState: fallbackTrip.status == 'CONFIRMED'
+            ? TripPlanningState.saved
+            : TripPlanningState.previewReady,
+      );
+    } else if (fallbackTrip == null ||
+        (state.tripPreview != null &&
+            state.tripPreview!.title == fallbackTrip.title &&
+            state.tripPreview!.destination == fallbackTrip.destination)) {
+      effectiveTripId = _activeTripIdFromState();
     }
 
     // Nếu đang có bản xem trước nhưng chưa có trip_id hợp lệ trong CSDL, tự động tạo/lưu nháp để lấy trip_id thực
-    final previewCandidate = state.tripPreview ?? fallbackTrip;
+    final previewCandidate = fallbackTrip ?? state.tripPreview;
     if (effectiveTripId == null && previewCandidate != null) {
       try {
         state = state.copyWith(

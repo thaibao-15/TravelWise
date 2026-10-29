@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/audio/voice_audio_service.dart';
 import 'package:mobile/features/assistant/presentation/models/chat_media.dart';
 import 'package:mobile/features/assistant/presentation/providers/voice_assistant_provider.dart';
+import 'package:mobile/features/trips/models/trip_model.dart';
 
 /// Fake recognizer: records calls and lets tests drive STT callbacks.
 class FakeVoiceAudioService implements VoiceAudioService {
@@ -113,6 +114,27 @@ class _TestNotifier extends VoiceAssistantNotifier {
     );
   }
 
+  final List<({String instruction, String? tripId, int? targetDay})> directTripEdits = [];
+
+  @override
+  Future<void> editCurrentOrSavedTrip({
+    required String instruction,
+    int? targetDay,
+    Trip? fallbackTrip,
+    bool rethrowOnError = false,
+  }) async {
+    directTripEdits.add((
+      instruction: instruction,
+      tripId: fallbackTrip?.id,
+      targetDay: targetDay,
+    ));
+    state = state.copyWith(
+      planningState: TripPlanningState.saved,
+      voiceState: VoiceState.idle,
+      isRecording: false,
+      currentTranscript: instruction,
+    );
+  }
 }
 
 typedef _Harness = ({
@@ -341,6 +363,64 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     }
     expect(h.notifier.submitted.length, 1);
+    h.container.dispose();
+  });
+
+  testWidgets('direct trip voice edit on TripDetailScreen submits directly to editCurrentOrSavedTrip',
+      (tester) async {
+    final h = _setup();
+    final sampleTrip = Trip(
+      id: '42',
+      title: 'Khám phá Đà Nẵng',
+      destination: 'Đà Nẵng',
+      startDate: DateTime(2026, 11, 1),
+      endDate: DateTime(2026, 11, 3),
+      days: const [],
+      status: 'CONFIRMED',
+    );
+
+    h.notifier.toggleDirectTripVoiceEdit(trip: sampleTrip, targetDay: 2);
+    h.audio.ready();
+    h.audio.say('đổi buổi tối đi ăn hải sản Mỹ Khê', isFinal: true);
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(h.notifier.submitted, isEmpty,
+        reason: 'should edit trip directly instead of general chat');
+    expect(h.notifier.directTripEdits.length, 1);
+    expect(
+      h.notifier.directTripEdits.single,
+      (
+        instruction: 'đổi buổi tối đi ăn hải sản Mỹ Khê',
+        tripId: '42',
+        targetDay: 2,
+      ),
+    );
+    expect(h.notifier.isDirectTripEditMode, isFalse);
+    h.container.dispose();
+  });
+
+  testWidgets('cancelDirectTripVoiceEdit aborts without submitting',
+      (tester) async {
+    final h = _setup();
+    final sampleTrip = Trip(
+      id: '99',
+      title: 'Khám phá Hội An',
+      destination: 'Hội An',
+      startDate: DateTime(2026, 11, 5),
+      endDate: DateTime(2026, 11, 7),
+      days: const [],
+      status: 'CONFIRMED',
+    );
+
+    h.notifier.toggleDirectTripVoiceEdit(trip: sampleTrip, targetDay: 1);
+    h.audio.ready();
+    h.audio.say('thêm phố cổ buổi tối');
+    h.notifier.cancelDirectTripVoiceEdit();
+
+    await tester.pump(const Duration(seconds: 5));
+    expect(h.notifier.directTripEdits, isEmpty);
+    expect(h.notifier.submitted, isEmpty);
+    expect(h.notifier.state.voiceState, VoiceState.idle);
     h.container.dispose();
   });
 }
