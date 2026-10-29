@@ -3138,27 +3138,68 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       if (existingTripId != null && existingTripId.isNotEmpty) {
 
-        final generated = await _tripRepo.generateItineraryForTrip(
+        try {
 
-          existingTripId,
+          final generated = await _tripRepo.generateItineraryForTrip(
 
-          userPrompt: userPrompt,
+            existingTripId,
 
-          saveToDb: true,
+            userPrompt: userPrompt,
 
-        );
+            saveToDb: true,
 
-        if (generated != null) {
+            context: effectiveCtx,
 
-          trip = generated;
+          );
 
-        } else {
+          if (generated != null) {
+
+            trip = generated;
+
+          } else {
+
+            trip = await _tripRepo.generateItineraryPreview(
+
+              conversationId: cid ?? 0,
+
+              context: effectiveCtx,
+
+              userPrompt: userPrompt,
+
+            );
+
+          }
+
+        } on TripNotFoundException {
+
+          final fallbackContext = Map<String, dynamic>.from(effectiveCtx ?? {});
+
+          final tripContext = fallbackContext['trip'];
+
+          if (tripContext is Map<String, dynamic>) {
+
+            final updatedTripContext = Map<String, dynamic>.from(tripContext)
+              ..remove('trip_id');
+
+            fallbackContext['trip'] = updatedTripContext;
+
+          }
+
+          state = state.copyWith(
+
+            clearSavedTripId: true,
+
+            clearTripPreview: true,
+
+            planningContext: fallbackContext,
+
+          );
 
           trip = await _tripRepo.generateItineraryPreview(
 
             conversationId: cid ?? 0,
 
-            context: effectiveCtx,
+            context: fallbackContext,
 
             userPrompt: userPrompt,
 
@@ -3860,4 +3901,3 @@ final voiceAssistantProvider =
   (ref) => VoiceAssistantNotifier(ref),
 
 );
-

@@ -4,6 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/auth_di.dart';
 import '../../models/trip_model.dart';
 
+class TripNotFoundException implements Exception {
+  final String message;
+
+  const TripNotFoundException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class TripRepository {
   final Dio _dio;
 
@@ -374,6 +383,11 @@ class TripRepository {
           ? responseData['detail'] ?? e.message
           : e.message;
       _log('generateItineraryForTrip_error', {'detail': detail});
+      if (e.response?.statusCode == 404) {
+        throw TripNotFoundException(
+          detail?.toString() ?? 'Không tìm thấy chuyến đi $tripId.',
+        );
+      }
       throw Exception('Không thể tạo lịch trình cho chuyến đi: $detail');
     }
   }
