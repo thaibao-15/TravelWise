@@ -63,6 +63,10 @@ class PlaceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class NearbyPlaceResponse(PlaceResponse):
+    distance_km: float
+
+
 class PlaceDetailResponse(PlaceResponse):
     """Detailed Place response — includes nested relations."""
     restaurant_detail: Optional[RestaurantDetailResponse] = None

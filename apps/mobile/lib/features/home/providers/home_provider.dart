@@ -45,12 +45,38 @@ final homePlacesProvider = FutureProvider.family<List<Place>, int?>((
       .getPlaces(categoryId: categoryId);
 });
 
+final nearbyPlacesProvider = FutureProvider.autoDispose<List<Place>>((ref) {
+  final position = ref.watch(locationProvider).position;
+  if (position == null) {
+    return const <Place>[];
+  }
+
+  return ref
+      .watch(homeRemoteDataSourceProvider)
+      .getNearbyPlaces(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+});
+
 final exploreMapPlacesProvider = FutureProvider.autoDispose
     .family<List<Place>, int?>((ref, categoryId) {
       return ref
           .watch(homeRemoteDataSourceProvider)
           .getAllPlaces(categoryId: categoryId);
     });
+
+final exploreMapFocusPlaceProvider = StateProvider<Place?>((ref) => null);
+
+final placeRatingsRefreshProvider = StateProvider<int>((ref) => 0);
+
+void invalidatePlaceRatingProviders(WidgetRef ref, int placeId) {
+  ref.invalidate(placeDetailProvider(placeId));
+  ref.invalidate(homePlacesProvider);
+  ref.invalidate(exploreMapPlacesProvider);
+  ref.invalidate(homeSearchPlacesProvider);
+  ref.read(placeRatingsRefreshProvider.notifier).state++;
+}
 
 final homeSearchPlacesProvider = FutureProvider.family<List<Place>, String>((
   ref,

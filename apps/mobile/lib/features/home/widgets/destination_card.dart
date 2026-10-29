@@ -6,7 +6,7 @@ import '../../../core/constants/text_styles.dart';
 
 class DestinationCard extends StatefulWidget {
   final String title;
-  final String rating;
+  final String? rating;
   final String subtitle;
   final String imageUrl;
   final String? secondaryImageUrl;
@@ -202,21 +202,22 @@ class _DestinationCardState extends State<DestinationCard>
                                 ),
                               ),
                               const SizedBox(width: AppSpacing.xs),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.star,
-                                    size: 16,
-                                    color: AppColors.warning,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.rating,
-                                    style: AppTextStyles.label,
-                                  ),
-                                ],
-                              ),
+                              if (widget.rating != null)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.star,
+                                      size: 16,
+                                      color: AppColors.warning,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      widget.rating!,
+                                      style: AppTextStyles.label,
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
                           const SizedBox(height: AppSpacing.xs),
@@ -236,7 +237,9 @@ class _DestinationCardState extends State<DestinationCard>
                         child: ElevatedButton(
                           onPressed: widget.onTap ?? () {},
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                            backgroundColor: AppColors.primary.withValues(
+                              alpha: 0.1,
+                            ),
                             elevation: 0,
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(

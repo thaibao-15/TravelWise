@@ -304,7 +304,7 @@ class _ExploreMapSectionState extends State<ExploreMapSection> {
                         style: AppTextStyles.caption,
                       ),
                     ],
-                    if (place.rating > 0) ...[
+                    if (place.reviewCount > 0) ...[
                       const SizedBox(height: 3),
                       Row(
                         children: [

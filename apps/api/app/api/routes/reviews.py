@@ -59,6 +59,24 @@ def list_place_reviews(
     )
 
 
+@router.get(
+    "/api/v1/places/{place_id}/reviews/me",
+    response_model=Optional[PlaceReviewResponse],
+    summary="Lấy đánh giá hiện có của người dùng cho địa điểm",
+)
+def get_my_place_review(
+    place_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Optional[PlaceReviewResponse]:
+    """Lấy đánh giá của người dùng hiện tại để hỗ trợ sửa thay vì tạo trùng."""
+    return ReviewService.get_user_review_for_place(
+        session=session,
+        user_id=current_user.id,
+        place_id=place_id,
+    )
+
+
 @router.post(
     "/api/v1/places/{place_id}/reviews",
     response_model=PlaceReviewResponse,

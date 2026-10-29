@@ -281,7 +281,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: DestinationCard(
                   title: place.name,
-                  rating: place.rating.toStringAsFixed(1),
+                  rating: place.reviewCount > 0
+                      ? place.rating.toStringAsFixed(1)
+                      : null,
                   subtitle: place.description.isEmpty
                       ? 'Khám phá địa điểm này'
                       : place.description,

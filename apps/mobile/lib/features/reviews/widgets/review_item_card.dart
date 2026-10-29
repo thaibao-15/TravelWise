@@ -7,12 +7,14 @@ class ReviewItemCard extends StatefulWidget {
   final PlaceReview review;
   final ValueChanged<PlaceReview>? onHelpfulToggled;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   const ReviewItemCard({
     super.key,
     required this.review,
     this.onHelpfulToggled,
     this.onEdit,
+    this.onDelete,
   });
 
   @override
@@ -56,10 +58,7 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-              ),
+              child: Image.network(imageUrl, fit: BoxFit.contain),
             ),
             IconButton(
               icon: const CircleAvatar(
@@ -109,7 +108,9 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                     : null,
                 child: author?.avatarUrl == null
                     ? Text(
-                        authorName.isNotEmpty ? authorName[0].toUpperCase() : 'U',
+                        authorName.isNotEmpty
+                            ? authorName[0].toUpperCase()
+                            : 'U',
                         style: const TextStyle(
                           color: AppColors.primary,
                           fontWeight: FontWeight.bold,
@@ -142,9 +143,13 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                           ),
                         ),
                         if (widget.review.visitedAt != null) ...[
-                          const Text(' • ',
-                              style: TextStyle(
-                                  color: AppColors.textSecondary, fontSize: 11)),
+                          const Text(
+                            ' • ',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
                           Text(
                             'Đi T${widget.review.visitedAt!.month}/${widget.review.visitedAt!.year}',
                             style: const TextStyle(
@@ -337,8 +342,10 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                 onTap: _toggleHelpful,
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _isHelpful
                         ? AppColors.primary.withValues(alpha: 0.1)
@@ -352,9 +359,7 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _isHelpful
-                            ? Icons.thumb_up
-                            : Icons.thumb_up_outlined,
+                        _isHelpful ? Icons.thumb_up : Icons.thumb_up_outlined,
                         size: 13,
                         color: _isHelpful
                             ? AppColors.primary
@@ -377,35 +382,58 @@ class _ReviewItemCardState extends State<ReviewItemCard> {
                   ),
                 ),
               ),
-              if (widget.onEdit != null)
+              if (widget.onEdit != null || widget.onDelete != null)
+                PopupMenuButton<String>(
+                  tooltip: 'Tùy chọn đánh giá',
+                  onSelected: (action) {
+                    if (action == 'edit') widget.onEdit?.call();
+                    if (action == 'delete') widget.onDelete?.call();
+                  },
+                  itemBuilder: (context) => [
+                    if (widget.onEdit != null)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Sửa đánh giá'),
+                        ),
+                      ),
+                    if (widget.onDelete != null)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: AppColors.error,
+                          ),
+                          title: Text(
+                            'Xóa đánh giá',
+                            style: TextStyle(color: AppColors.error),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              if (widget.onEdit == null && widget.onDelete == null)
                 IconButton(
                   icon: const Icon(
-                    Icons.edit_outlined,
+                    Icons.more_horiz,
                     size: 18,
                     color: AppColors.textSecondary,
                   ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: widget.onEdit,
-                )
-              else
-                IconButton(
-                icon: const Icon(
-                  Icons.more_horiz,
-                  size: 18,
-                  color: AppColors.textSecondary,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Đã nhận phản ánh về đánh giá này'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã nhận phản ánh về đánh giá này'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-              ),
             ],
           ),
         ],

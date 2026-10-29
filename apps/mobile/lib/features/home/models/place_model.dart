@@ -10,6 +10,7 @@ class Place {
   final int reviewCount;
   final String imageUrl;
   final String? secondaryImageUrl;
+  final double? distanceKm;
 
   const Place({
     required this.id,
@@ -23,6 +24,7 @@ class Place {
     required this.reviewCount,
     required this.imageUrl,
     this.secondaryImageUrl,
+    this.distanceKm,
   });
 
   factory Place.fromJson(
@@ -57,6 +59,7 @@ class Place {
       reviewCount: (json['review_count'] as num?)?.toInt() ?? 0,
       imageUrl: imageUrls.isEmpty ? '' : imageUrls.first,
       secondaryImageUrl: imageUrls.length > 1 ? imageUrls[1] : null,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
     );
   }
 

@@ -7,8 +7,7 @@ class ReviewService {
   final Dio _dio;
 
   ReviewService({Dio? dio})
-      : _dio = dio ??
-            DioClient(storageService: SecureStorageService()).dio;
+    : _dio = dio ?? DioClient(storageService: SecureStorageService()).dio;
 
   /// Lấy danh sách đánh giá của địa điểm từ API
   /// GET /api/v1/places/{place_id}/reviews
@@ -39,6 +38,18 @@ class ReviewService {
     );
 
     return PlaceReviewList.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Lấy đánh giá hiện có của người dùng cho địa điểm.
+  Future<PlaceReview?> getMyPlaceReview({required int placeId}) async {
+    final response = await _dio.get('/api/v1/places/$placeId/reviews/me');
+    final data = response.data;
+    if (data == null) return null;
+    if (data is! Map) {
+      throw const FormatException('API trả về đánh giá không hợp lệ');
+    }
+
+    return PlaceReview.fromJson(Map<String, dynamic>.from(data));
   }
 
   /// Đăng bài đánh giá mới kèm danh sách ảnh
@@ -110,9 +121,7 @@ class ReviewService {
   Future<Map<String, dynamic>> toggleHelpfulVote({
     required int reviewId,
   }) async {
-    final response = await _dio.post(
-      '/api/v1/reviews/$reviewId/helpful',
-    );
+    final response = await _dio.post('/api/v1/reviews/$reviewId/helpful');
     return response.data as Map<String, dynamic>;
   }
 

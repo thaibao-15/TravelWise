@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
@@ -83,7 +84,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
   Future<void> _submit() async {
     if (_commentController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập nội dung đánh giá của bạn')),
+        const SnackBar(
+          content: Text('Vui lòng nhập nội dung đánh giá của bạn'),
+        ),
       );
       return;
     }
@@ -121,14 +124,13 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      final errorMsg = e.toString().contains('401')
+      final errorMsg = e is DioException && e.response?.statusCode == 409
+          ? 'Bạn đã đánh giá địa điểm này. Hãy chỉnh sửa đánh giá hiện có.'
+          : e.toString().contains('401')
           ? 'Vui lòng đăng nhập để gửi bài đánh giá.'
           : 'Không thể gửi đánh giá: $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.error,
-        ),
+        SnackBar(content: Text(errorMsg), backgroundColor: AppColors.error),
       );
     }
   }
@@ -271,7 +273,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                       selectedColor: AppColors.primary,
                       labelStyle: TextStyle(
                         fontSize: 12,
-                        color: isSelected ? Colors.white : AppColors.textPrimary,
+                        color: isSelected
+                            ? Colors.white
+                            : AppColors.textPrimary,
                       ),
                       onSelected: (selected) {
                         setState(() {
@@ -296,8 +300,10 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: const BorderSide(color: AppColors.border),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
               ),
             ),
 
@@ -359,8 +365,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                                     top: 0,
                                     right: 0,
                                     child: GestureDetector(
-                                      onTap: () => setState(() =>
-                                          _attachedImages.remove(img)),
+                                      onTap: () => setState(
+                                        () => _attachedImages.remove(img),
+                                      ),
                                       child: Container(
                                         color: Colors.black54,
                                         child: const Icon(
@@ -402,8 +409,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                         height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(
