@@ -9,10 +9,9 @@ import 'package:mobile/shared/widgets/main_shell.dart';
 
 /// Location service that never touches platform channels.
 class _FakeLocationService extends LocationService {
-  _FakeLocationService();
+  _FakeLocationService() : permission = LocationPermission.denied;
 
-  final LocationPermission permission = LocationPermission.denied;
-
+  final LocationPermission permission;
 
   @override
   Future<bool> isLocationServiceEnabled() async => true;

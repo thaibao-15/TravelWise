@@ -399,7 +399,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.25),
+                color: AppColors.primary.withValues(alpha: 0.25),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -610,7 +610,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
-                onTap: (_, __) {
+                onTap: (_, _) {
                   if (_selectedActivity != null) {
                     setState(() {
                       _selectedActivity = null;
@@ -683,7 +683,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         strokeWidth: 3.5,
                         color: _getDayColor(
                           _selectedDayFilter > 0 ? _selectedDayFilter : 1,
-                        ).withOpacity(0.65),
+                        ).withValues(alpha: 0.65),
                       ),
                     ],
                   ),
@@ -713,8 +713,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         point: currentPosition,
                         radius: accuracy.clamp(12.0, 300.0),
                         useRadiusInMeter: true,
-                        color: AppColors.primary.withOpacity(0.12),
-                        borderColor: AppColors.primary.withOpacity(0.35),
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderColor: AppColors.primary.withValues(alpha: 0.35),
                         borderStrokeWidth: 1.5,
                       ),
                     ],
@@ -742,7 +742,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 borderRadius: BorderRadius.circular(8),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
+                                    color: Colors.black.withValues(alpha: 0.2),
                                     blurRadius: 4,
                                   ),
                                 ],
@@ -798,7 +798,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.28),
+                                  color: Colors.black.withValues(alpha: 0.28),
                                   blurRadius: isSelected ? 12 : 6,
                                   offset: const Offset(0, 3),
                                 ),
@@ -849,7 +849,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   borderRadius: BorderRadius.circular(AppRadius.md),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
@@ -949,7 +949,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 12,
               offset: const Offset(0, 3),
             ),
@@ -1041,7 +1041,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -1142,12 +1142,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.primary.withOpacity(0.1),
-                    const Color(0xFF0EA5E9).withOpacity(0.08),
+                    AppColors.primary.withValues(alpha: 0.1),
+                    const Color(0xFF0EA5E9).withValues(alpha: 0.08),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.primary.withOpacity(0.25)),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
               ),
               child: Row(
                 children: [
@@ -1358,7 +1358,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: state.hasLocation
-                  ? AppColors.primary.withOpacity(0.1)
+                  ? AppColors.primary.withValues(alpha: 0.1)
                   : AppColors.background,
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.border),
@@ -1411,7 +1411,7 @@ class _CurrentLocationFab extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: (hasLocation ? AppColors.primary : Colors.black)
-                    .withOpacity(0.2),
+                    .withValues(alpha: 0.2),
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),

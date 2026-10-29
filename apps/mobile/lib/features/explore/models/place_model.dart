@@ -7,7 +7,7 @@ class Place {
   final double distance;
   final String imageUrl;
   final String price;
-  final bool isOpen;
+  final bool? isOpen;
   final List<String> tags;
   final String? topReviewSnippet;
   final String? topReviewAuthor;
@@ -21,7 +21,7 @@ class Place {
     required this.distance,
     required this.imageUrl,
     required this.price,
-    this.isOpen = true,
+    this.isOpen,
     this.tags = const [],
     this.topReviewSnippet,
     this.topReviewAuthor,

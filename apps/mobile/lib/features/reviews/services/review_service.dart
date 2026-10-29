@@ -7,8 +7,7 @@ class ReviewService {
   final Dio _dio;
 
   ReviewService({Dio? dio})
-      : _dio = dio ??
-            DioClient(storageService: SecureStorageService()).dio;
+    : _dio = dio ?? DioClient(storageService: SecureStorageService()).dio;
 
   /// Lấy danh sách đánh giá của địa điểm từ API
   /// GET /api/v1/places/{place_id}/reviews
@@ -39,6 +38,18 @@ class ReviewService {
     );
 
     return PlaceReviewList.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Lấy đánh giá hiện có của người dùng cho địa điểm.
+  Future<PlaceReview?> getMyPlaceReview({required int placeId}) async {
+    final response = await _dio.get('/api/v1/places/$placeId/reviews/me');
+    final data = response.data;
+    if (data == null) return null;
+    if (data is! Map) {
+      throw const FormatException('API trả về đánh giá không hợp lệ');
+    }
+
+    return PlaceReview.fromJson(Map<String, dynamic>.from(data));
   }
 
   /// Đăng bài đánh giá mới kèm danh sách ảnh
@@ -81,14 +92,36 @@ class ReviewService {
     return PlaceReview.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Cập nhật bài đánh giá của người dùng hiện tại
+  /// PUT /api/v1/reviews/{review_id}
+  Future<PlaceReview> updateReview({
+    required int reviewId,
+    required int rating,
+    String? title,
+    String? comment,
+    String? tripType,
+    DateTime? visitedAt,
+  }) async {
+    final response = await _dio.put(
+      '/api/v1/reviews/$reviewId',
+      data: {
+        'rating': rating,
+        'title': title,
+        'comment': comment,
+        'trip_type': tripType,
+        'visited_at': visitedAt?.toIso8601String().split('T').first,
+      },
+    );
+
+    return PlaceReview.fromJson(response.data as Map<String, dynamic>);
+  }
+
   /// Bấm thích hoặc bỏ thích đánh giá
   /// POST /api/v1/reviews/{review_id}/helpful
   Future<Map<String, dynamic>> toggleHelpfulVote({
     required int reviewId,
   }) async {
-    final response = await _dio.post(
-      '/api/v1/reviews/$reviewId/helpful',
-    );
+    final response = await _dio.post('/api/v1/reviews/$reviewId/helpful');
     return response.data as Map<String, dynamic>;
   }
 
@@ -98,4 +131,3 @@ class ReviewService {
     await _dio.delete('/api/v1/reviews/$reviewId');
   }
 }
-

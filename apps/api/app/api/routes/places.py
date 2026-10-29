@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, get_session
 from app.models.user import User
 from app.schemas.knowledge import KnowledgeCreate, KnowledgeResponse
 from app.schemas.place import (
+    NearbyPlaceResponse,
     PlaceCreate,
     PlaceDetailResponse,
     PlaceImageCreate,
@@ -40,8 +41,33 @@ def search_places(
     limit: int = Query(default=20, ge=1, le=100),
     session: Session = Depends(get_session),
 ) -> List[PlaceResponse]:
-    """Tìm kiếm địa điểm du lịch theo từ khóa tên hoặc địa chỉ. Public."""
+    """Tìm kiếm theo tên, mô tả, địa chỉ hoặc tên category. Public."""
     return PlaceService.search_places_by_keyword(session, query=q, skip=skip, limit=limit)
+
+
+@router.get("/nearby", response_model=List[NearbyPlaceResponse])
+def get_nearby_places(
+    latitude: float = Query(..., ge=-90, le=90, description="Vĩ độ vị trí hiện tại"),
+    longitude: float = Query(..., ge=-180, le=180, description="Kinh độ vị trí hiện tại"),
+    radius_km: float = Query(default=10, gt=0, le=500, description="Bán kính tìm kiếm (km)"),
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> List[NearbyPlaceResponse]:
+    """Lấy các địa điểm có tọa độ gần vị trí hiện tại, xếp theo khoảng cách."""
+    places_with_distance = PlaceService.get_nearby_places(
+        session,
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+        limit=limit,
+    )
+    return [
+        NearbyPlaceResponse(
+            **PlaceResponse.model_validate(place).model_dump(),
+            distance_km=round(distance_km, 2),
+        )
+        for place, distance_km in places_with_distance
+    ]
 
 
 @router.get("/category/{category_id}", response_model=List[PlaceResponse])
@@ -152,4 +178,3 @@ def search_places_for_itinerary(
         skip=request.skip,
         limit=request.limit,
     )
-

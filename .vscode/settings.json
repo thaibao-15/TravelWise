@@ -7,6 +7,7 @@
         "/^Set-Location apps\\\\api; uv sync$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "dart": true
     }
 }

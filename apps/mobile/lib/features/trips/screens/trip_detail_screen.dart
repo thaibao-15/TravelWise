@@ -116,7 +116,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
+                          color: AppColors.primary.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -142,7 +142,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                               'Ví dụ: "Ngày thứ 2 đổi Bà Nà sang đi biển Mỹ Khê"',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.textSecondary.withOpacity(0.8),
+                                color: AppColors.textSecondary.withValues(alpha: 0.8),
                               ),
                             ),
                           ],
@@ -164,8 +164,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           'Thêm quán ăn đặc sản buổi tối',
                           style: TextStyle(fontSize: 11.5, color: AppColors.primary),
                         ),
-                        backgroundColor: AppColors.primary.withOpacity(0.08),
-                        side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -178,8 +178,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           'Đổi ngày 2 sang đi biển thư giãn',
                           style: TextStyle(fontSize: 11.5, color: AppColors.primary),
                         ),
-                        backgroundColor: AppColors.primary.withOpacity(0.08),
-                        side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),

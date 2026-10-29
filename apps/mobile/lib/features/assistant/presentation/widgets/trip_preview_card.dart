@@ -56,7 +56,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      color: AppColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -171,8 +171,8 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         text,
         style: const TextStyle(fontSize: 11.5, color: AppColors.primary),
       ),
-      backgroundColor: AppColors.primary.withOpacity(0.08),
-      side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+      backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       onPressed: () => ctrl.text = text,
     );
@@ -215,7 +215,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -327,7 +327,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -530,9 +530,9 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.background.withOpacity(0.6),
+          color: AppColors.background.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border.withOpacity(0.6)),
+          border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -732,7 +732,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
+                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),

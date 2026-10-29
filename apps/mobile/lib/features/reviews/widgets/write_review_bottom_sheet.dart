@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
@@ -8,12 +9,14 @@ class WriteReviewBottomSheet extends StatefulWidget {
   final int placeId;
   final String placeName;
   final ValueChanged<PlaceReview> onReviewSubmitted;
+  final PlaceReview? reviewToEdit;
 
   const WriteReviewBottomSheet({
     super.key,
     required this.placeId,
     required this.placeName,
     required this.onReviewSubmitted,
+    this.reviewToEdit,
   });
 
   static Future<void> show({
@@ -21,6 +24,7 @@ class WriteReviewBottomSheet extends StatefulWidget {
     required int placeId,
     required String placeName,
     required ValueChanged<PlaceReview> onReviewSubmitted,
+    PlaceReview? reviewToEdit,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -30,6 +34,7 @@ class WriteReviewBottomSheet extends StatefulWidget {
         placeId: placeId,
         placeName: placeName,
         onReviewSubmitted: onReviewSubmitted,
+        reviewToEdit: reviewToEdit,
       ),
     );
   }
@@ -39,9 +44,9 @@ class WriteReviewBottomSheet extends StatefulWidget {
 }
 
 class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
-  int _rating = 5;
+  late int _rating;
   String? _selectedTripType = 'couple';
-  final DateTime _visitedAt = DateTime.now();
+  late DateTime _visitedAt;
   final _titleController = TextEditingController();
   final _commentController = TextEditingController();
   final _imageUrlController = TextEditingController();
@@ -65,10 +70,23 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    final review = widget.reviewToEdit;
+    _rating = review?.rating ?? 5;
+    _selectedTripType = review?.tripType ?? 'couple';
+    _visitedAt = review?.visitedAt ?? DateTime.now();
+    _titleController.text = review?.title ?? '';
+    _commentController.text = review?.comment ?? '';
+  }
+
   Future<void> _submit() async {
     if (_commentController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập nội dung đánh giá của bạn')),
+        const SnackBar(
+          content: Text('Vui lòng nhập nội dung đánh giá của bạn'),
+        ),
       );
       return;
     }
@@ -77,17 +95,28 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
 
     try {
       final service = ReviewService();
-      final newReview = await service.createReview(
-        placeId: widget.placeId,
-        rating: _rating,
-        title: _titleController.text.trim().isNotEmpty
-            ? _titleController.text.trim()
-            : null,
-        comment: _commentController.text.trim(),
-        tripType: _selectedTripType,
-        visitedAt: _visitedAt,
-        imageUrls: _attachedImages,
-      );
+      final title = _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : null;
+      final comment = _commentController.text.trim();
+      final newReview = widget.reviewToEdit == null
+          ? await service.createReview(
+              placeId: widget.placeId,
+              rating: _rating,
+              title: title,
+              comment: comment,
+              tripType: _selectedTripType,
+              visitedAt: _visitedAt,
+              imageUrls: _attachedImages,
+            )
+          : await service.updateReview(
+              reviewId: widget.reviewToEdit!.id,
+              rating: _rating,
+              title: title,
+              comment: comment,
+              tripType: _selectedTripType,
+              visitedAt: _visitedAt,
+            );
 
       if (!mounted) return;
       widget.onReviewSubmitted(newReview);
@@ -95,14 +124,13 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      final errorMsg = e.toString().contains('401')
+      final errorMsg = e is DioException && e.response?.statusCode == 409
+          ? 'Bạn đã đánh giá địa điểm này. Hãy chỉnh sửa đánh giá hiện có.'
+          : e.toString().contains('401')
           ? 'Vui lòng đăng nhập để gửi bài đánh giá.'
           : 'Không thể gửi đánh giá: $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.error,
-        ),
+        SnackBar(content: Text(errorMsg), backgroundColor: AppColors.error),
       );
     }
   }
@@ -155,9 +183,11 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Viết đánh giá trải nghiệm',
-                        style: TextStyle(
+                      Text(
+                        widget.reviewToEdit == null
+                            ? 'Viết đánh giá trải nghiệm'
+                            : 'Sửa đánh giá của bạn',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -243,7 +273,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                       selectedColor: AppColors.primary,
                       labelStyle: TextStyle(
                         fontSize: 12,
-                        color: isSelected ? Colors.white : AppColors.textPrimary,
+                        color: isSelected
+                            ? Colors.white
+                            : AppColors.textPrimary,
                       ),
                       onSelected: (selected) {
                         setState(() {
@@ -268,8 +300,10 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: const BorderSide(color: AppColors.border),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
               ),
             ),
 
@@ -331,8 +365,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                                     top: 0,
                                     right: 0,
                                     child: GestureDetector(
-                                      onTap: () => setState(() =>
-                                          _attachedImages.remove(img)),
+                                      onTap: () => setState(
+                                        () => _attachedImages.remove(img),
+                                      ),
                                       child: Container(
                                         color: Colors.black54,
                                         child: const Icon(
@@ -374,8 +409,9 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                         height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(
@@ -394,4 +430,3 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
     );
   }
 }
-
