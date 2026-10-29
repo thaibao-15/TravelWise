@@ -12,12 +12,14 @@ import '../../home/models/place_model.dart';
 class ExploreMapSection extends StatefulWidget {
   final List<Place> places;
   final List<Category> categories;
+  final Place? focusedPlace;
   final ValueChanged<Place> onPlaceTap;
 
   const ExploreMapSection({
     super.key,
     required this.places,
     required this.categories,
+    this.focusedPlace,
     required this.onPlaceTap,
   });
 
@@ -26,11 +28,30 @@ class ExploreMapSection extends StatefulWidget {
 }
 
 class _ExploreMapSectionState extends State<ExploreMapSection> {
-  Place? _selectedPlace;
+  late Place? _selectedPlace;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPlace = widget.focusedPlace;
+  }
+
+  @override
+  void didUpdateWidget(covariant ExploreMapSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusedPlace?.id != widget.focusedPlace?.id) {
+      _selectedPlace = widget.focusedPlace;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final mappablePlaces = widget.places
+    final places =
+        widget.focusedPlace != null &&
+            !widget.places.any((place) => place.id == widget.focusedPlace!.id)
+        ? [...widget.places, widget.focusedPlace!]
+        : widget.places;
+    final mappablePlaces = places
         .where(
           (place) =>
               place.latitude != null &&
@@ -45,7 +66,18 @@ class _ExploreMapSectionState extends State<ExploreMapSection> {
     final mapPoints = mappablePlaces
         .map((place) => LatLng(place.latitude!, place.longitude!))
         .toList(growable: false);
-    final initialCenter = mapPoints.isNotEmpty
+    final focusedPlace = widget.focusedPlace;
+    final hasFocusedCoordinates =
+        focusedPlace?.latitude != null &&
+        focusedPlace?.longitude != null &&
+        focusedPlace!.latitude! >= -90 &&
+        focusedPlace.latitude! <= 90 &&
+        focusedPlace.longitude! >= -180 &&
+        focusedPlace.longitude! <= 180 &&
+        (focusedPlace.latitude != 0 || focusedPlace.longitude != 0);
+    final initialCenter = hasFocusedCoordinates
+        ? LatLng(focusedPlace.latitude!, focusedPlace.longitude!)
+        : mapPoints.isNotEmpty
         ? mapPoints.first
         : const LatLng(16.0544, 108.2022);
     return Padding(
@@ -67,8 +99,14 @@ class _ExploreMapSectionState extends State<ExploreMapSection> {
                     ),
                     options: MapOptions(
                       initialCenter: initialCenter,
-                      initialZoom: mapPoints.length > 1 ? 12 : 14,
-                      initialCameraFit: _cameraFit(mapPoints),
+                      initialZoom: hasFocusedCoordinates
+                          ? 15
+                          : mapPoints.length > 1
+                          ? 12
+                          : 14,
+                      initialCameraFit: hasFocusedCoordinates
+                          ? null
+                          : _cameraFit(mapPoints),
                       minZoom: 3,
                       maxZoom: 19,
                       interactionOptions: const InteractionOptions(
@@ -104,7 +142,9 @@ class _ExploreMapSectionState extends State<ExploreMapSection> {
                                   },
                                   child: Icon(
                                     Icons.location_on,
-                                    color: _colorForCategory(place.categoryId),
+                                    color: isSelected
+                                        ? AppColors.error
+                                        : _colorForCategory(place.categoryId),
                                     size: isSelected ? 48 : 40,
                                     shadows: [
                                       Shadow(
@@ -176,12 +216,20 @@ class _ExploreMapSectionState extends State<ExploreMapSection> {
       (category) => category.id == categoryId,
     );
     if (categoryIndex < 0) return AppColors.textSecondary;
-    return HSVColor.fromAHSV(
-      1,
-      (categoryIndex * 137.508) % 360,
-      0.78,
-      0.82,
-    ).toColor();
+    final categoryName = widget.categories[categoryIndex].name.toLowerCase();
+    if (categoryName.contains('thiên nhiên') ||
+        categoryName.contains('cảnh quan')) {
+      return AppColors.success;
+    }
+
+    const categoryColors = [
+      Color(0xFF2563EB),
+      Color(0xFF9333EA),
+      Color(0xFFF59E0B),
+      Color(0xFF0891B2),
+      Color(0xFFDB2777),
+    ];
+    return categoryColors[categoryIndex % categoryColors.length];
   }
 
   Widget _buildPlacePreview(Place place) {

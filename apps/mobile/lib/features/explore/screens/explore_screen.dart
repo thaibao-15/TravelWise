@@ -32,6 +32,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   int? _selectedCategoryId;
   String _searchQuery = '';
   bool _isSearchFocused = false;
+  home_model.Place? _focusedMapPlace;
 
   final List<Place> _places = [
     Place(
@@ -199,6 +200,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       setState(() {
                         _isSearchFocused = false;
                         _searchQuery = '';
+                        _focusedMapPlace = null;
                       });
                     },
                     onChanged: (query) {
@@ -501,6 +503,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         key: ValueKey(_selectedCategoryId),
         places: items,
         categories: categoryItems,
+        focusedPlace: _focusedMapPlace,
         onPlaceTap: (place) {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
@@ -622,12 +625,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         color: AppColors.textSecondary,
                       ),
                       onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                PlaceDetailScreen(placeId: place.id),
-                          ),
-                        );
+                        FocusScope.of(context).unfocus();
+                        setState(() {
+                          _selectedCategoryId = place.categoryId;
+                          _focusedMapPlace = place;
+                          _isSearchFocused = false;
+                        });
                       },
                     );
                   },
