@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 class VoiceAudioService {
@@ -25,6 +26,7 @@ class VoiceAudioService {
     onError?.call('Phát âm thanh chưa được hỗ trợ trên nền tảng này.');
   }
 
+  void unlockAudio() {}
   void stopTts() {}
 
   void startRecording({
@@ -38,4 +40,14 @@ class VoiceAudioService {
   }
 
   void stopRecording() {}
+
+  void abortStream() {}
+
+  Stream<String> askStream({
+    required String url,
+    String? token,
+    required String bodyJson,
+  }) {
+    return const Stream<String>.empty();
+  }
 }

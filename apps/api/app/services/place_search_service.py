@@ -525,6 +525,7 @@ class PlaceSearchService:
             # Extract price and hours
             price_val, price_info_text = extract_price_and_info(place)
             opening_hours_text = format_opening_hours(place.opening_hours)
+            first_image = place.images[0].url if (place.images and place.images[0].url) else None
 
             item = SearchPlaceItem(
                 place_id=place.id,
@@ -543,6 +544,7 @@ class PlaceSearchService:
                 match_reasons=match_reasons,
                 score=round(score, 2),
                 data_completeness=completeness,
+                image_url=first_image,
             )
             scored_candidates.append(item)
 

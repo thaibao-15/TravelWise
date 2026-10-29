@@ -187,7 +187,7 @@ class _WriteReviewBottomSheetState extends State<WriteReviewBottomSheet> {
                         widget.reviewToEdit == null
                             ? 'Viết đánh giá trải nghiệm'
                             : 'Sửa đánh giá của bạn',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,

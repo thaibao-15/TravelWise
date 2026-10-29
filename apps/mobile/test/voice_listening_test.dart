@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/audio/voice_audio_service.dart';
+import 'package:mobile/features/assistant/presentation/models/chat_media.dart';
 import 'package:mobile/features/assistant/presentation/providers/voice_assistant_provider.dart';
 
 /// Fake recognizer: records calls and lets tests drive STT callbacks.
 class FakeVoiceAudioService implements VoiceAudioService {
+  @override
+  void unlockAudio() {}
   int startCount = 0;
   int stopCount = 0;
   int ttsStopCount = 0;
@@ -56,6 +60,17 @@ class FakeVoiceAudioService implements VoiceAudioService {
   void markStreamDone() {}
 
   @override
+  void abortStream() {}
+
+  @override
+  Stream<String> askStream({
+    required String url,
+    String? token,
+    required String bodyJson,
+  }) => const Stream<String>.empty();
+
+
+  @override
   void playWavBytes(
     Uint8List bytes, {
     void Function()? onPlay,
@@ -85,7 +100,11 @@ class _TestNotifier extends VoiceAssistantNotifier {
   final List<String> submitted = [];
 
   @override
-  Future<void> sendMessage(String text, {bool isVoiceMode = false}) async {
+  Future<void> sendMessage(
+    String text, {
+    bool isVoiceMode = false,
+    List<ChatMedia> media = const [],
+  }) async {
     submitted.add(text);
     state = state.copyWith(
       voiceState: VoiceState.processing,
@@ -93,6 +112,7 @@ class _TestNotifier extends VoiceAssistantNotifier {
       currentTranscript: text,
     );
   }
+
 }
 
 typedef _Harness = ({

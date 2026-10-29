@@ -1,6 +1,7 @@
 import '../../../map/presentation/screens/map_screen.dart';
 import 'assistant_chat_screen.dart';
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../auth/presentation/providers/auth_notifier.dart';
@@ -28,12 +29,13 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   @override
   void initState() {
     super.initState();
+    // Tạo controller sóng âm nhưng KHÔNG lặp vô tận ngay để tiết kiệm CPU/GPU lúc khởi động
     _rippleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
-    )..repeat();
+    );
 
-    // Tự động kiểm tra và chào người dùng khi vào màn hình
+    // Chỉ chào khi người dùng thực sự kích hoạt tab Assistant
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndGreetIfActive();
     });
@@ -42,8 +44,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   void _checkAndGreetIfActive() {
     if (!mounted) return;
     final currentTab = ref.read(mainTabProvider);
-    // Kích hoạt khi đang ở tab Assistant (tab 2) hoặc mở độc lập
-    if (currentTab == 2 || MainShell.currentTab == -1 || MainShell.currentTab == 2) {
+    // Chỉ kích hoạt khi đang thực sự xem tab Trợ lý du lịch (tab 2)
+    if (currentTab == 2) {
       final authState = ref.read(authProvider);
       String? userName;
       if (authState is AuthAuthenticated) {
@@ -64,15 +66,38 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
 
-    // Lắng nghe thay đổi tab: Khi người dùng chuyển đến trang Assistant thì AI tự chào và giới thiệu
+    // Lắng nghe thay đổi tab: Chỉ kích hoạt AI & animation khi người dùng chuyển vào tab 2
     ref.listen<int>(mainTabProvider, (prev, next) {
       if (next == 2) {
         _checkAndGreetIfActive();
+        final isBusy = ref.read(voiceAssistantProvider).voiceState == VoiceState.listening ||
+            ref.read(voiceAssistantProvider).voiceState == VoiceState.speaking;
+        if (isBusy && !_rippleController.isAnimating) {
+          _rippleController.repeat();
+        }
       } else if (prev == 2 && next != 2) {
-        // Dừng nghe và dừng phát audio nếu chuyển sang tab khác
+        // Dừng nghe, dừng phát audio và dừng animation khi rời tab Assistant
+        if (_rippleController.isAnimating) {
+          _rippleController.stop();
+        }
         notifier.cancelListening();
         notifier.stopAudio();
       }
+    });
+
+    // Đồng bộ animation sóng âm: Chỉ chạy khi đang nghe hoặc đang nói trên tab Assistant
+    ref.listen<VoiceAssistantState>(voiceAssistantProvider, (prev, next) {
+      final isBusy = next.voiceState == VoiceState.listening ||
+          next.voiceState == VoiceState.speaking;
+      final isTabActive = ref.read(mainTabProvider) == 2;
+      if (isBusy && isTabActive) {
+        if (!_rippleController.isAnimating) _rippleController.repeat();
+      } else {
+        if (_rippleController.isAnimating) _rippleController.stop();
+      }
+
+      // Lịch trình xem trước đã được hiển thị trực quan ở Smart Panel phía dưới.
+      // Người dùng có thể chạm vào từng ngày hoặc bấm Xem tất cả để mở toàn bộ chi tiết bất cứ lúc nào.
     });
 
     return Scaffold(
@@ -324,6 +349,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                     Image.asset(
                       'assets/images/linh_ai.jpg',
                       fit: BoxFit.cover,
+                      cacheWidth: 640,
                       alignment: const Alignment(0, -0.2),
                       errorBuilder: (ctx, err, stack) => Container(
                         decoration: const BoxDecoration(
@@ -411,68 +437,149 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 builder: (context) {
                   final isUserSpeaking = (state.voiceState == VoiceState.listening || state.isRecording) &&
                       state.currentTranscript.trim().isNotEmpty;
-                  final displayText = isUserSpeaking ? state.currentTranscript : latestAiSpeech;
+                  final isThinking = state.voiceState == VoiceState.thinking ||
+                      state.voiceState == VoiceState.processing;
+                  final isSpeaking = state.voiceState == VoiceState.speaking;
 
-                  return Container(
+                  String displayText;
+                  if (isUserSpeaking) {
+                    displayText = state.currentTranscript;
+                  } else if (isThinking) {
+                    displayText = 'Linh AI đang suy nghĩ và tổng hợp thông tin tốt nhất cho bạn...';
+                  } else {
+                    displayText = latestAiSpeech;
+                  }
+
+                  final borderColor = isUserSpeaking
+                      ? const Color(0xFF93C5FD)
+                      : (isThinking
+                          ? const Color(0xFF5EEAD4)
+                          : (isSpeaking
+                              ? const Color(0xFF0284C7)
+                              : Colors.white));
+
+                  final bgColor = isUserSpeaking
+                      ? const Color(0xFFEFF6FF)
+                      : (isThinking
+                          ? const Color(0xFFF0FDFA)
+                          : Colors.white.withValues(alpha: 0.98));
+
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: isUserSpeaking ? const Color(0xFFEFF6FF) : Colors.white.withValues(alpha: 0.96),
+                      color: bgColor,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: isUserSpeaking ? const Color(0xFF93C5FD) : Colors.white,
+                        color: borderColor,
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: isUserSpeaking
-                              ? const Color(0xFF0284C7).withValues(alpha: 0.14)
-                              : const Color(0xFF0F172A).withValues(alpha: 0.08),
-                          blurRadius: 20,
-                          offset: const Offset(0, 6),
+                          color: (isSpeaking || isUserSpeaking
+                                  ? const Color(0xFF0284C7)
+                                  : const Color(0xFF0F172A))
+                              .withValues(alpha: isSpeaking || isUserSpeaking ? 0.16 : 0.08),
+                          blurRadius: isSpeaking || isUserSpeaking ? 22 : 18,
+                          offset: const Offset(0, 5),
                         ),
                       ],
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Icon microphone hoặc sóng âm âm thanh
+                        // Icon trạng thái giọng nói
                         Container(
                           padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0284C7).withValues(alpha: isUserSpeaking ? 0.2 : 0.1),
+                            color: (isUserSpeaking || isSpeaking
+                                    ? const Color(0xFF0284C7)
+                                    : (isThinking ? const Color(0xFF0D9488) : const Color(0xFF64748B)))
+                                .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
-                            isUserSpeaking ? Icons.mic : Icons.graphic_eq_rounded,
-                            color: const Color(0xFF0284C7),
+                            isUserSpeaking
+                                ? Icons.mic
+                                : (isThinking
+                                    ? Icons.auto_awesome
+                                    : (isSpeaking ? Icons.volume_up_rounded : Icons.graphic_eq_rounded)),
+                            color: isThinking
+                                ? const Color(0xFF0D9488)
+                                : (isSpeaking || isUserSpeaking
+                                    ? const Color(0xFF0284C7)
+                                    : const Color(0xFF64748B)),
                             size: 20,
                           ),
                         ),
                         const SizedBox(width: 10),
-                        // Văn bản thoại (User nói hoặc AI nói)
+                        // Văn bản thoại hiển thị theo thời gian thực
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (isUserSpeaking) ...[
-                                const Text(
-                                  'Bạn đang nói...',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0284C7),
-                                    letterSpacing: 0.3,
+                              Row(
+                                children: [
+                                  if (isSpeaking) ...[
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      margin: const EdgeInsets.only(right: 5),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ],
+                                  Text(
+                                    isUserSpeaking
+                                        ? 'Bạn đang nói...'
+                                        : (isThinking
+                                            ? 'Linh AI đang xử lý...'
+                                            : (isSpeaking
+                                                ? 'Linh AI đang đọc giọng nói...'
+                                                : 'Linh AI • Trợ lý du lịch')),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: isThinking
+                                          ? const Color(0xFF0D9488)
+                                          : (isUserSpeaking || isSpeaking
+                                              ? const Color(0xFF0284C7)
+                                              : const Color(0xFF64748B)),
+                                      letterSpacing: 0.2,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                              ],
+                                  if (isSpeaking) ...[
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'Chạm mic để ngắt lời',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFFDC2626),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 3),
                               Text(
                                 displayText,
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: isUserSpeaking ? FontWeight.w700 : FontWeight.w600,
-                                  color: isUserSpeaking ? const Color(0xFF1E3A8A) : const Color(0xFF1E293B),
+                                  color: isUserSpeaking
+                                      ? const Color(0xFF1E3A8A)
+                                      : const Color(0xFF1E293B),
                                   height: 1.4,
                                 ),
                                 maxLines: 3,
@@ -504,6 +611,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     final isListening = state.voiceState == VoiceState.listening ||
         state.voiceState == VoiceState.connecting;
     final isSpeaking = state.voiceState == VoiceState.speaking;
+    final isThinking = state.voiceState == VoiceState.thinking ||
+        state.voiceState == VoiceState.processing;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -513,7 +622,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Nút bên trái: Nhắn tin (Mở Chat Drawer & Bàn phím)
+              // Nút bên trái: Nhắn tin (Mở Chat Screen)
               _buildCircleActionButton(
                 icon: Icons.chat_bubble_outline_rounded,
                 label: 'Nhắn tin',
@@ -522,16 +631,18 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
               const SizedBox(width: 24),
 
-              // Nút giữa: Voice Orb Mic lớn (Nhấn để nói / Dừng nghe / Dừng AI nói)
+              // Nút giữa: Voice Orb Mic lớn (Hỗ trợ 1-tap barge-in ngắt lời tức thì)
               GestureDetector(
-                onTap: isSpeaking ? notifier.stopSpeaking : notifier.toggleRecording,
+                onTap: (isSpeaking || isThinking)
+                    ? notifier.bargeIn
+                    : notifier.toggleRecording,
                 child: SizedBox(
                   width: 96,
                   height: 96,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Sóng âm tỏa ra khi đang nghe (Ripple Ring 1)
+                      // Sóng âm tỏa ra khi đang nghe hoặc đang nói (Ripple Ring 1)
                       if (isListening || isSpeaking)
                         AnimatedBuilder(
                           animation: _rippleController,
@@ -543,7 +654,10 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: const Color(0xFF0284C7).withValues(alpha: (1 - val) * 0.4),
+                                  color: (isSpeaking
+                                          ? const Color(0xFFEF4444)
+                                          : const Color(0xFF0284C7))
+                                      .withValues(alpha: (1 - val) * 0.45),
                                   width: 2,
                                 ),
                               ),
@@ -551,7 +665,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                           },
                         ),
 
-                      // Sóng âm tỏa ra 2 (Offset)
+                      // Sóng âm tỏa ra 2 (Offset 0.5)
                       if (isListening || isSpeaking)
                         AnimatedBuilder(
                           animation: _rippleController,
@@ -563,7 +677,10 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: const Color(0xFF0284C7).withValues(alpha: (1 - val) * 0.25),
+                                  color: (isSpeaking
+                                          ? const Color(0xFFEF4444)
+                                          : const Color(0xFF0284C7))
+                                      .withValues(alpha: (1 - val) * 0.3),
                                   width: 1.5,
                                 ),
                               ),
@@ -571,25 +688,38 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                           },
                         ),
 
-                      // Vòng viền Gradient xanh bóng bẩy
-                      Container(
+                      // Vòng viền Gradient xanh / đỏ phát sáng
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
                         width: 76,
                         height: 76,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFFE0F2FE),
+                          color: isSpeaking
+                              ? const Color(0xFFFEE2E2)
+                              : (isThinking
+                                  ? const Color(0xFFF1F5F9)
+                                  : (isListening
+                                      ? const Color(0xFFE0F2FE)
+                                      : const Color(0xFFCCFBF1))),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF0284C7).withValues(alpha: 0.25),
-                              blurRadius: 16,
+                              color: (isSpeaking
+                                      ? const Color(0xFFEF4444)
+                                      : (isThinking
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF0284C7)))
+                                  .withValues(alpha: isListening || isSpeaking ? 0.35 : 0.2),
+                              blurRadius: isListening || isSpeaking ? 20 : 12,
                               offset: const Offset(0, 4),
                             ),
                           ],
                         ),
                       ),
 
-                      // Nút chính giữa (Đỏ khi đang nói/dừng, Xanh khi bình thường)
-                      Container(
+                      // Nút chính giữa (Đỏ khi đang nói/dừng, Xanh khi nghe, Xám khi suy nghĩ)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
                         width: 64,
                         height: 64,
                         decoration: BoxDecoration(
@@ -597,17 +727,44 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                           gradient: LinearGradient(
                             colors: isSpeaking
                                 ? const [Color(0xFFEF4444), Color(0xFFDC2626)]
-                                : const [Color(0xFF0284C7), Color(0xFF0369A1)],
+                                : (isThinking
+                                    ? const [Color(0xFF94A3B8), Color(0xFF64748B)]
+                                    : (isListening
+                                        ? const [Color(0xFF0284C7), Color(0xFF0369A1)]
+                                        : const [Color(0xFF0D9488), Color(0xFF0284C7)])),
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isSpeaking
+                                      ? const Color(0xFFEF4444)
+                                      : (isListening
+                                          ? const Color(0xFF0284C7)
+                                          : const Color(0xFF0D9488)))
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: Center(
-                          child: Icon(
-                            (isSpeaking || isListening) ? Icons.stop_rounded : Icons.mic_rounded,
-                            color: Colors.white,
-                            size: 32,
-                          ),
+                          child: isThinking
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : Icon(
+                                  isSpeaking
+                                      ? Icons.stop_rounded
+                                      : (isListening ? Icons.graphic_eq_rounded : Icons.mic_rounded),
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
                         ),
                       ),
                     ],
@@ -668,7 +825,63 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             ),
           ] else if (isSpeaking) ...[
             const SizedBox(height: 2),
-            _StopSpeakingButton(onPressed: notifier.stopSpeaking),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _StopSpeakingButton(onPressed: notifier.stopSpeaking),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: notifier.bargeIn,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.mic_rounded, size: 14, color: Color(0xFF0284C7)),
+                        SizedBox(width: 4),
+                        Text(
+                          'Nói luôn (Barge-in)',
+                          style: TextStyle(
+                            color: Color(0xFF0284C7),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (isThinking) ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(Color(0xFF0284C7)),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Linh AI đang suy nghĩ câu trả lời...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0284C7),
+                  ),
+                ),
+              ],
+            ),
           ] else ...[
             Text(
               _resolveVoiceStateStatus(state),
@@ -861,16 +1074,55 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'Nháp',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                ),
+              Builder(
+                builder: (context) {
+                  final isSaved = state.planningState == TripPlanningState.saved ||
+                      (state.savedTripId != null && state.savedTripId!.isNotEmpty && state.savedTripId != '0') ||
+                      trip.status == 'CONFIRMED';
+                  final isSaving = state.planningState == TripPlanningState.saving;
+
+                  return GestureDetector(
+                    onTap: isSaved || isSaving ? null : () => notifier.saveCurrentTrip(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isSaved
+                            ? const Color(0xFFDCFCE7)
+                            : (isSaving ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSaving) ...[
+                            const SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                valueColor: AlwaysStoppedAnimation(Color(0xFFD97706)),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ] else if (isSaved) ...[
+                            const Icon(Icons.check, size: 10, color: Color(0xFF16A34A)),
+                            const SizedBox(width: 3),
+                          ],
+                          Text(
+                            isSaving ? 'Đang lưu...' : (isSaved ? 'Đã lưu' : 'Nháp • Lưu'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: isSaved
+                                  ? const Color(0xFF16A34A)
+                                  : (isSaving ? const Color(0xFFD97706) : const Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -902,17 +1154,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                       children: [
                         // Thumbnail ảnh của ngày
                         Expanded(
-                          child: ClipRRect(
+                          child: AppNetworkImage(
+                            imageUrl: fallbackImage,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
-                            child: Image.network(
-                              fallbackImage,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, err, stack) => Container(
-                                color: const Color(0xFFE2E8F0),
-                                child: const Icon(Icons.image, color: Colors.grey, size: 24),
-                              ),
-                            ),
                           ),
                         ),
                         // Thông tin ngày
@@ -1123,26 +1369,27 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   String _resolveVoiceStateStatus(VoiceAssistantState state) {
     switch (state.voiceState) {
       case VoiceState.listening:
-        return 'Đang nghe... Bạn có thể nói bất cứ lúc nào';
+        return 'Đang nghe bạn nói... (Nói xong tự động trả lời)';
       case VoiceState.thinking:
       case VoiceState.processing:
-        return 'Đang suy nghĩ câu trả lời...';
+        return 'Linh AI đang suy nghĩ câu trả lời...';
       case VoiceState.speaking:
-        return 'Linh AI đang nói...';
+        return 'Linh AI đang nói... (Chạm mic để ngắt lời)';
       case VoiceState.connecting:
-        return 'Đang mở micro...';
+        return 'Đang mở micro kết nối thời gian thực...';
       case VoiceState.error:
-        return 'Đã có lỗi, chạm để thử lại';
+        return state.error ?? 'Đã có lỗi, chạm micro để thử lại';
       case VoiceState.idle:
-        return 'Chạm micro hoặc bắt đầu trò chuyện';
+        return 'Chạm micro để nói chuyện trực tiếp với Linh AI';
     }
   }
 
   String _getDayFallbackImage(int index) {
     final images = [
-      'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b', // Mỹ Khê
-      'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9', // Hội An
-      'https://images.unsplash.com/photo-1599707367072-cd6ada2bc375', // Bà Nà
+      'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=600&q=80', // Mỹ Khê / Cầu Rồng
+      'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80', // Phố cổ Hội An (hoạt động 100%)
+      'https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=600&q=80', // Bà Nà Hills
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80', // Biển đảo Cù Lao Chàm
     ];
     return images[index % images.length];
   }
