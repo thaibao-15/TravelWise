@@ -262,7 +262,7 @@ class TripRepository {
         '/api/v1/trips/$tripId/itinerary/detect-intent',
         data: {
           'message': message,
-          if (conversationId != null) 'conversation_id': conversationId,
+          'conversation_id': ?conversationId,
         },
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
@@ -333,7 +333,7 @@ class TripRepository {
           'save_to_db': saveToDb,
           if (userPrompt != null && userPrompt.isNotEmpty)
             'user_prompt': userPrompt,
-          if (context != null) 'context': context,
+          'context': ?context,
         },
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
@@ -437,7 +437,7 @@ class TripRepository {
         data: {
           'change_prompt': instruction,
           'instruction': instruction,
-          if (targetDay != null) 'target_day': targetDay,
+          'target_day': ?targetDay,
         },
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {

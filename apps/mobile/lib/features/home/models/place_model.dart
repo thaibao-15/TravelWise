@@ -2,6 +2,7 @@ class Place {
   final int id;
   final String name;
   final String description;
+  final int? categoryId;
   final String? address;
   final double? latitude;
   final double? longitude;
@@ -14,6 +15,7 @@ class Place {
     required this.id,
     required this.name,
     required this.description,
+    this.categoryId,
     this.address,
     this.latitude,
     this.longitude,
@@ -47,6 +49,7 @@ class Place {
       id: (json['id'] as num).toInt(),
       name: (json['name'] as String?) ?? 'Địa điểm chưa đặt tên',
       description: (json['description'] as String?)?.trim() ?? '',
+      categoryId: (json['category_id'] as num?)?.toInt(),
       address: json['address'] as String?,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),

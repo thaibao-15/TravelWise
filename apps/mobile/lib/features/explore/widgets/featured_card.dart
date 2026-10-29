@@ -14,7 +14,7 @@ class FeaturedCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -34,7 +34,7 @@ class FeaturedCard extends StatelessWidget {
                   height: 200,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     height: 200,
                     width: double.infinity,
                     color: AppColors.surfaceContainerHigh,
@@ -59,9 +59,9 @@ class FeaturedCard extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.15),
+                        Colors.black.withValues(alpha: 0.15),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.75),
+                        Colors.black.withValues(alpha: 0.75),
                       ],
                       stops: const [0.0, 0.4, 1.0],
                     ),
@@ -79,7 +79,7 @@ class FeaturedCard extends StatelessWidget {
                     vertical: AppSpacing.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                   ),
                   child: Row(
@@ -109,7 +109,7 @@ class FeaturedCard extends StatelessWidget {
                 top: AppSpacing.md,
                 right: AppSpacing.md,
                 child: CircleAvatar(
-                  backgroundColor: Colors.white.withOpacity(0.95),
+                  backgroundColor: Colors.white.withValues(alpha: 0.95),
                   radius: 16,
                   child: const Icon(
                     Icons.bookmark_border,

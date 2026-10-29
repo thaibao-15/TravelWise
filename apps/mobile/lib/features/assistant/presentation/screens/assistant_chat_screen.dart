@@ -82,7 +82,7 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
     // Auto-scroll when new messages arrive
     ref.listen<int>(
       voiceAssistantProvider.select((s) => s.messages.length),
-      (_, __) => _scrollToBottom(),
+      (_, _) => _scrollToBottom(),
     );
 
     return Scaffold(

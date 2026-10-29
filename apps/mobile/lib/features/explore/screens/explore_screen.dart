@@ -1,30 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
+import '../../../core/constants/text_styles.dart';
 import '../../../shared/widgets/custom_app_bar.dart';
+import '../../home/models/category_model.dart';
+import '../../home/models/place_model.dart' as home_model;
+import '../../home/providers/home_provider.dart';
+import '../../home/screens/place_detail_screen.dart';
+import '../../home/widgets/search_bar.dart' as home_search;
 import '../../reviews/screens/place_reviews_bottom_sheet.dart';
 import '../../reviews/services/review_service.dart';
 import '../models/place_model.dart';
 import '../widgets/category_chips.dart';
-import '../widgets/featured_card.dart';
 import '../widgets/filter_row.dart';
 import '../widgets/floating_ai_button.dart';
+import '../widgets/explore_map_section.dart';
 import '../widgets/place_card.dart';
-import '../widgets/search_bar.dart';
 import '../widgets/section_header.dart';
 
-class ExploreScreen extends StatefulWidget {
+class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
 
   @override
-  State<ExploreScreen> createState() => _ExploreScreenState();
+  ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final ReviewService _reviewService = ReviewService();
   String? _activeFilter;
+  int? _selectedCategoryId;
+  String _searchQuery = '';
+  bool _isSearchFocused = false;
 
-  List<Place> _places = [
+  final List<Place> _places = [
     Place(
       id: '1',
       name: 'Bán đảo Sơn Trà & Chùa Linh Ứng',
@@ -65,8 +74,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       rating: 4.8,
       reviews: 6900,
       distance: 1.5,
-      imageUrl:
-          'https://images.unsplash.com/photo-1585032226651-759b368d7246',
+      imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246',
       price: '35k - 60k',
       tags: ['Ẩm thực địa phương'],
       isOpen: false,
@@ -137,7 +145,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
               reviews: reviewList.total > 0 ? reviewList.total : place.reviews,
               topReviewSnippet: top.comment ?? place.topReviewSnippet,
               topReviewAuthor:
-                  top.user?.fullName ?? top.user?.email ?? place.topReviewAuthor,
+                  top.user?.fullName ??
+                  top.user?.email ??
+                  place.topReviewAuthor,
             );
           });
         }
@@ -159,6 +169,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final places = _filteredPlaces;
+    final categories = ref.watch(homeCategoriesProvider);
+    final categoryItems = categories.when(
+      data: (items) => items,
+      loading: () => const <Category>[],
+      error: (_, _) => const <Category>[],
+    );
+    final mapPlaces = ref.watch(exploreMapPlacesProvider(_selectedCategoryId));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -172,217 +189,449 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const CustomAppBar(),
-                  const ExploreSearchBar(),
-                  const SizedBox(height: AppSpacing.lg),
-                  const CategoryChips(),
-                  const SizedBox(height: AppSpacing.md),
-                  FilterRow(
-                    onFilterSelected: (filter) {
+                  home_search.SearchBar(
+                    hintText: 'Tìm địa điểm, món ăn, hoạt động...',
+                    showBackButton: _isSearchFocused,
+                    onFocus: () {
+                      setState(() => _isSearchFocused = true);
+                    },
+                    onBack: () {
                       setState(() {
-                        _activeFilter = _activeFilter == filter ? null : filter;
+                        _isSearchFocused = false;
+                        _searchQuery = '';
                       });
                     },
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  const FeaturedCard(),
-
-                  // ─── COMMUNITY REVIEWS HIGHLIGHT SECTION ───────────────
-                  const SizedBox(height: AppSpacing.xl),
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'Trải nghiệm cộng đồng',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Đánh giá thực tế từ du khách TravelWise',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                          ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  SizedBox(
-                    height: 140,
-                    child: ListView.separated(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: _communityReviews.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(width: 12),
-                      itemBuilder: (context, index) {
-                        final item = _communityReviews[index];
-                        return InkWell(
-                          onTap: () {
-                            PlaceReviewsBottomSheet.show(
-                              context: context,
-                              placeId: item['placeId'] as int,
-                              placeName: item['placeName'] as String,
-                              ratingAvg: 4.8,
-                              totalReviews: 1240,
-                            );
-                          },
-                          borderRadius:
-                              BorderRadius.circular(AppSpacing.radiusMd),
-                          child: Container(
-                            width: 280,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
-                              border: Border.all(color: AppColors.border),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: SizedBox(
-                              width: 256,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    item['image'] as String,
-                                    width: 72,
-                                    height: 116,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 10,
-                                            backgroundImage: NetworkImage(
-                                                item['avatar'] as String),
-                                          ),
-                                          const SizedBox(width: 5),
-                                          Expanded(
-                                            child: Text(
-                                              item['author'] as String,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppColors.textPrimary,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${item['rating']}★',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.warning,
-                                            ),
-                                          ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 3),
-                                      Text(
-                                        item['placeName'] as String,
-                                        style: const TextStyle(
-                                          fontSize: 10.5,
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Expanded(
-                                        child: Text(
-                                          '"${item['comment']}"',
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 10.5,
-                                            height: 1.3,
-                                            color: AppColors.textSecondary,
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                      },
-                    ),
-                  ),
-
-                  // ─── PLACES LIST SECTION ──────────────────────────────
-                  const SizedBox(height: AppSpacing.xxl),
-                  SectionHeader(
-                    title: 'Khám phá quanh bạn',
-                    subtitle: '${places.length} địa điểm nổi bật đang mở cửa',
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: places.length,
-                    itemBuilder: (context, index) {
-                      return PlaceCard(place: places[index]);
+                    onChanged: (query) {
+                      setState(() => _searchQuery = query);
                     },
                   ),
-                  const SizedBox(
-                    height: 120,
-                  ), // Spacing for floating ai button & nav
+                  if (_isSearchFocused)
+                    _buildSearchResults()
+                  else ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    categories.when(
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                          vertical: AppSpacing.sm,
+                        ),
+                        child: Text('Đang tải danh mục...'),
+                      ),
+                      error: (error, _) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Không thể tải danh mục: $error',
+                                style: AppTextStyles.caption.copyWith(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  ref.invalidate(homeCategoriesProvider),
+                              child: const Text('Thử lại'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      data: (items) => CategoryChips(
+                        categories: items,
+                        selectedCategoryId: _selectedCategoryId,
+                        onSelected: (categoryId) {
+                          setState(() {
+                            _selectedCategoryId = categoryId;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _buildExploreMap(mapPlaces, categoryItems),
+                    const SizedBox(height: AppSpacing.lg),
+                    FilterRow(
+                      onFilterSelected: (filter) {
+                        setState(() {
+                          _activeFilter = _activeFilter == filter
+                              ? null
+                              : filter;
+                        });
+                      },
+                    ),
+                    // ─── COMMUNITY REVIEWS HIGHLIGHT SECTION ───────────────
+                    const SizedBox(height: AppSpacing.xl),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'Trải nghiệm cộng đồng',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Đánh giá thực tế từ du khách TravelWise',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.verified_user_outlined,
+                            color: AppColors.primary,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    SizedBox(
+                      height: 140,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                        ),
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _communityReviews.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final item = _communityReviews[index];
+                          return InkWell(
+                            onTap: () {
+                              PlaceReviewsBottomSheet.show(
+                                context: context,
+                                placeId: item['placeId'] as int,
+                                placeName: item['placeName'] as String,
+                                ratingAvg: 4.8,
+                                totalReviews: 1240,
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusMd,
+                            ),
+                            child: Container(
+                              width: 280,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(
+                                  AppSpacing.radiusMd,
+                                ),
+                                border: Border.all(color: AppColors.border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: SizedBox(
+                                width: 256,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        item['image'] as String,
+                                        width: 72,
+                                        height: 116,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 10,
+                                                backgroundImage: NetworkImage(
+                                                  item['avatar'] as String,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Expanded(
+                                                child: Text(
+                                                  item['author'] as String,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${item['rating']}★',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.warning,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            item['placeName'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              color: AppColors.primary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Expanded(
+                                            child: Text(
+                                              '"${item['comment']}"',
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 10.5,
+                                                height: 1.3,
+                                                color: AppColors.textSecondary,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    // ─── PLACES LIST SECTION ──────────────────────────────
+                    const SizedBox(height: AppSpacing.xxl),
+                    SectionHeader(
+                      title: 'Khám phá quanh bạn',
+                      subtitle: '${places.length} địa điểm nổi bật đang mở cửa',
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: places.length,
+                      itemBuilder: (context, index) {
+                        return PlaceCard(place: places[index]);
+                      },
+                    ),
+                    const SizedBox(
+                      height: 120,
+                    ), // Spacing for floating ai button & nav
+                  ],
                 ],
               ),
             ),
-            const Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: FloatingAiButton(),
-            ),
+            if (!_isSearchFocused)
+              const Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: FloatingAiButton(),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildExploreMap(
+    AsyncValue<List<home_model.Place>> mapPlaces,
+    List<Category> categoryItems,
+  ) {
+    return mapPlaces.when(
+      loading: () => const SizedBox(
+        height: 340,
+        child: Center(child: Text('Đang tải địa điểm trên bản đồ...')),
+      ),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Không thể tải địa điểm trên bản đồ: $error',
+                style: AppTextStyles.caption.copyWith(color: AppColors.error),
+              ),
+            ),
+            TextButton(
+              onPressed: () =>
+                  ref.invalidate(exploreMapPlacesProvider(_selectedCategoryId)),
+              child: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      ),
+      data: (items) => ExploreMapSection(
+        key: ValueKey(_selectedCategoryId),
+        places: items,
+        categories: categoryItems,
+        onPlaceTap: (place) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => PlaceDetailScreen(placeId: place.id),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    if (_searchQuery.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          100,
+        ),
+        child: Text(
+          'Nhập tên địa điểm để bắt đầu tìm kiếm',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+      );
+    }
+
+    final provider = homeSearchPlacesProvider(_searchQuery);
+    return ref
+        .watch(provider)
+        .when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(AppSpacing.xl),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, _) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Không thể tìm kiếm địa điểm: $error',
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => ref.invalidate(provider),
+                  child: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          ),
+          data: (items) => items.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Text(
+                    'Không tìm thấy địa điểm phù hợp.',
+                    style: AppTextStyles.bodyMedium,
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.only(
+                    top: AppSpacing.sm,
+                    bottom: 100,
+                  ),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, indent: 72),
+                  itemBuilder: (context, index) {
+                    final place = items[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                        vertical: AppSpacing.xs,
+                      ),
+                      leading: CircleAvatar(
+                        radius: 24,
+                        backgroundColor: AppColors.primary.withValues(
+                          alpha: 0.1,
+                        ),
+                        backgroundImage: place.imageUrl.isNotEmpty
+                            ? NetworkImage(place.imageUrl)
+                            : null,
+                        child: place.imageUrl.isEmpty
+                            ? const Icon(
+                                Icons.location_on_outlined,
+                                color: AppColors.primary,
+                              )
+                            : null,
+                      ),
+                      title: Text(
+                        place.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.label.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        (place.address?.trim().isNotEmpty == true
+                                    ? place.address
+                                    : place.description)
+                                ?.trim() ??
+                            'Địa điểm du lịch',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.north_west,
+                        color: AppColors.textSecondary,
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                PlaceDetailScreen(placeId: place.id),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        );
   }
 }

@@ -5,7 +5,7 @@ import '../../../core/constants/text_styles.dart';
 import '../../home/screens/home_screen.dart';
 
 class SocialLogin extends StatelessWidget {
-  const SocialLogin({Key? key}) : super(key: key);
+  const SocialLogin({super.key});
 
   @override
   Widget build(BuildContext context) {

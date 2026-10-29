@@ -45,6 +45,13 @@ final homePlacesProvider = FutureProvider.family<List<Place>, int?>((
       .getPlaces(categoryId: categoryId);
 });
 
+final exploreMapPlacesProvider = FutureProvider.autoDispose
+    .family<List<Place>, int?>((ref, categoryId) {
+      return ref
+          .watch(homeRemoteDataSourceProvider)
+          .getAllPlaces(categoryId: categoryId);
+    });
+
 final homeSearchPlacesProvider = FutureProvider.family<List<Place>, String>((
   ref,
   query,

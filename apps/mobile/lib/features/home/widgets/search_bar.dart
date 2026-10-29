@@ -10,14 +10,16 @@ class SearchBar extends StatelessWidget {
   final VoidCallback? onFocus;
   final VoidCallback? onBack;
   final bool showBackButton;
+  final String hintText;
 
   const SearchBar({
-    Key? key,
+    super.key,
     this.onChanged,
     this.onFocus,
     this.onBack,
     this.showBackButton = false,
-  }) : super(key: key);
+    this.hintText = 'Bạn muốn đi đâu hôm nay?',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +28,7 @@ class SearchBar extends StatelessWidget {
       onFocus: onFocus,
       onBack: onBack,
       showBackButton: showBackButton,
+      hintText: hintText,
     );
   }
 }
@@ -35,12 +38,14 @@ class _SearchField extends StatefulWidget {
   final VoidCallback? onFocus;
   final VoidCallback? onBack;
   final bool showBackButton;
+  final String hintText;
 
   const _SearchField({
     this.onChanged,
     this.onFocus,
     this.onBack,
     this.showBackButton = false,
+    required this.hintText,
   });
 
   @override
@@ -83,7 +88,7 @@ class _SearchFieldState extends State<_SearchField> {
           borderRadius: BorderRadius.circular(AppRadius.lg),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -94,7 +99,7 @@ class _SearchFieldState extends State<_SearchField> {
           onChanged: _handleChanged,
           onTap: widget.onFocus,
           decoration: InputDecoration(
-            hintText: 'Bạn muốn đi đâu hôm nay?',
+            hintText: widget.hintText,
             hintStyle: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -119,7 +124,7 @@ class _SearchFieldState extends State<_SearchField> {
                 ? Container(
                     margin: const EdgeInsets.all(AppSpacing.sm),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      color: AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: const Icon(

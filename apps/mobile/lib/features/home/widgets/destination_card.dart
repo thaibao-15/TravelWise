@@ -13,7 +13,7 @@ class DestinationCard extends StatefulWidget {
   final VoidCallback? onTap;
 
   const DestinationCard({
-    Key? key,
+    super.key,
     this.title = 'Đà Nẵng',
     this.rating = '4.9',
     this.subtitle = 'Thành phố đáng sống nhất Việt Nam',
@@ -21,7 +21,7 @@ class DestinationCard extends StatefulWidget {
         'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80',
     this.secondaryImageUrl,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   State<DestinationCard> createState() => _DestinationCardState();
@@ -70,7 +70,7 @@ class _DestinationCardState extends State<DestinationCard>
             borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -127,7 +127,7 @@ class _DestinationCardState extends State<DestinationCard>
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
+                          color: Colors.black.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Text(
@@ -148,7 +148,7 @@ class _DestinationCardState extends State<DestinationCard>
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Text(
@@ -167,7 +167,7 @@ class _DestinationCardState extends State<DestinationCard>
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                       child: const Icon(
                         LucideIcons.heart,
@@ -236,7 +236,7 @@ class _DestinationCardState extends State<DestinationCard>
                         child: ElevatedButton(
                           onPressed: widget.onTap ?? () {},
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary.withOpacity(0.1),
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                             elevation: 0,
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
@@ -268,7 +268,7 @@ class _DestinationCardState extends State<DestinationCard>
       width: double.infinity,
       fit: BoxFit.cover,
       webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-      errorBuilder: (_, __, ___) => Container(
+      errorBuilder: (_, _, _) => Container(
         color: AppColors.surfaceContainerHigh,
         alignment: Alignment.center,
         child: const Icon(
@@ -288,7 +288,7 @@ class _DestinationCardState extends State<DestinationCard>
       decoration: BoxDecoration(
         color: _currentImageIndex == index
             ? Colors.white
-            : Colors.white.withOpacity(0.65),
+            : Colors.white.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(4),
       ),
     );

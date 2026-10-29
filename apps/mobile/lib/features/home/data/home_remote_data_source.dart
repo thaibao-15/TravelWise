@@ -19,7 +19,7 @@ class HomeRemoteDataSource {
     final response = await _dio.get(
       '/api/v1/places/',
       queryParameters: {
-        if (categoryId != null) 'category_id': categoryId,
+        'category_id': ?categoryId,
         'skip': 0,
         'limit': 50,
       },
@@ -33,6 +33,37 @@ class HomeRemoteDataSource {
           ),
         )
         .toList(growable: false);
+  }
+
+  Future<List<Place>> getAllPlaces({int? categoryId}) async {
+    const pageSize = 200;
+    final places = <Place>[];
+    var skip = 0;
+
+    while (true) {
+      final response = await _dio.get(
+        '/api/v1/places/',
+        queryParameters: {
+          'category_id': ?categoryId,
+          'skip': skip,
+          'limit': pageSize,
+        },
+      );
+      final page = _parseList(response.data)
+          .map(
+            (json) => Place.fromJson(
+              json,
+              imageBaseUrl: _dio.options.baseUrl,
+            ),
+          )
+          .toList(growable: false);
+      places.addAll(page);
+
+      if (page.length < pageSize) {
+        return places;
+      }
+      skip += pageSize;
+    }
   }
 
   Future<List<Place>> searchPlaces(String query) async {

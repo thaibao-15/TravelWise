@@ -21,7 +21,7 @@ class PlaceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -73,8 +73,8 @@ class PlaceCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: place.isOpen
-                            ? AppColors.tertiary.withOpacity(0.9)
-                            : AppColors.error.withOpacity(0.9),
+                            ? AppColors.tertiary.withValues(alpha: 0.9)
+                            : AppColors.error.withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                       ),
                       child: Row(
@@ -109,7 +109,7 @@ class PlaceCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                         ),
                         child: Text(
@@ -131,7 +131,7 @@ class PlaceCard extends StatelessWidget {
                 right: AppSpacing.md,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
