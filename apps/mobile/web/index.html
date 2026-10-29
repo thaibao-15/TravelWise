@@ -29,6 +29,11 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+    <!-- Preconnect critical origins for faster startup & streaming -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="http://127.0.0.1:8000">
+  <link rel="dns-prefetch" href="https://api.blaze.vn">
   <title>TravelWise</title>
   <link rel="manifest" href="manifest.json">
 
@@ -61,7 +66,7 @@
 
       _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
         var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-        var spd = speed || '1.5';
+        var spd = speed || '1.2';
         var spk = speakerId || 'DaNang-Nu-1-BL';
         return cleanBase + '/api/v1/tts/stream?text=' + encodeURIComponent(text) +
                '&speed=' + encodeURIComponent(spd) +
@@ -72,7 +77,7 @@
         var self = this;
         var clean = (sentence || '').trim();
         if (!clean) return Promise.resolve('');
-        var cacheKey = clean + '|' + (speed || '1.5') + '|' + (speakerId || 'DaNang-Nu-1-BL');
+        var cacheKey = clean + '|' + (speed || '1.2') + '|' + (speakerId || 'DaNang-Nu-1-BL');
 
         if (self._audioCache[cacheKey]) {
           return Promise.resolve(self._audioCache[cacheKey]);
@@ -89,6 +94,12 @@
           })
           .then(function(blob) {
             var blobUrl = URL.createObjectURL(blob);
+            var keys = Object.keys(self._audioCache);
+            if (keys.length > 50) {
+              var oldKey = keys[0];
+              try { URL.revokeObjectURL(self._audioCache[oldKey]); } catch(_) {}
+              delete self._audioCache[oldKey];
+            }
             self._audioCache[cacheKey] = blobUrl;
             delete self._inFlightPrefetch[cacheKey];
             return blobUrl;
@@ -122,7 +133,7 @@
         this._queue.push({
           baseUrl: baseUrl,
           text: clean,
-          speed: speed || '1.5',
+          speed: speed || '1.2',
           speakerId: speakerId || 'DaNang-Nu-1-BL'
         });
 
@@ -134,11 +145,16 @@
       },
 
       markStreamDone: function() {
-        this._isStreamDone = true;
-        if (!this._isPlayingQueue && this._queue.length === 0) {
-          if (this._onQueueEnded) this._onQueueEnded();
-        }
-      },
+    this._isStreamDone = true;
+    if (this._queue.length === 0 && (!this._isPlayingQueue || !this._currentAudio || this._currentAudio.paused || this._currentAudio.ended)) {
+      this._isPlayingQueue = false;
+      if (this._onQueueEnded) {
+        var cb = this._onQueueEnded;
+        this._onQueueEnded = null;
+        cb();
+      }
+    }
+  },
 
       _playNextInQueue: function() {
         var self = this;
@@ -161,11 +177,16 @@
         if (!cachedUrl) {
           self.prefetchSingle(item.baseUrl, item.text, item.speed, item.speakerId).catch(function() {});
         }
+        // Prefetch next sentence in queue in parallel for zero latency transition
+        if (self._queue.length > 0) {
+          var nextItem = self._queue[0];
+          self.prefetchSingle(nextItem.baseUrl, nextItem.text, nextItem.speed, nextItem.speakerId).catch(function() {});
+        }
 
         try {
           var audio = new Audio(audioUrl);
           audio.preload = 'auto';
-          audio.playbackRate = 1.08;
+          audio.playbackRate = 1.0;
           self._currentAudio = audio;
 
           audio.onplay = function() {
@@ -214,7 +235,7 @@
           var blob = new Blob([new Uint8Array(byteArray)], { type: 'audio/mpeg' });
           this._currentUrl = URL.createObjectURL(blob);
           var audio = new Audio(this._currentUrl);
-          audio.playbackRate = 1.1;
+          audio.playbackRate = 1.0;
           this._currentAudio = audio;
 
           audio.onplay = function() {
@@ -607,6 +628,104 @@
         }
       }
     };
+  
+    window.TravelWiseStream = {
+      _currentController: null,
+
+      abortStream: function() {
+        if (this._currentController) {
+          try {
+            this._currentController.abort();
+          } catch (e) {}
+          this._currentController = null;
+        }
+      },
+
+      askStream: function(url, token, bodyJson, onChunkCallback, onDoneCallback, onErrorCallback) {
+        var self = this;
+        self.abortStream();
+
+        var controller = new AbortController();
+        self._currentController = controller;
+
+        var headers = {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        };
+
+        if (token && token !== 'null' && token !== 'undefined' && String(token).trim().length > 0) {
+          headers['Authorization'] = 'Bearer ' + String(token).trim();
+        }
+
+        console.log('[TravelWiseStream] Starting SSE request to:', url);
+
+        fetch(url, {
+          method: 'POST',
+          headers: headers,
+          body: bodyJson,
+          signal: controller.signal
+        }).then(function(res) {
+          if (!res.ok) {
+            return res.text().then(function(errText) {
+              var errMsg = 'HTTP ' + res.status + ': ' + (errText || res.statusText);
+              console.error('[TravelWiseStream] Server error:', errMsg);
+              if (onErrorCallback) onErrorCallback(errMsg);
+            });
+          }
+
+          if (!res.body) {
+            var bodyErr = 'Phản hồi từ máy chủ không có luồng dữ liệu (ReadableStream).';
+            console.error('[TravelWiseStream]', bodyErr);
+            if (onErrorCallback) onErrorCallback(bodyErr);
+            return;
+          }
+
+          var reader = res.body.getReader();
+          var decoder = new TextDecoder('utf-8');
+
+          function readChunk() {
+            reader.read().then(function(result) {
+              if (result.done) {
+                if (self._currentController === controller) {
+                  self._currentController = null;
+                }
+                if (onDoneCallback) onDoneCallback();
+                return;
+              }
+
+              var chunk = decoder.decode(result.value, { stream: true });
+              if (chunk && onChunkCallback) {
+                onChunkCallback(chunk);
+              }
+              readChunk();
+            }).catch(function(readErr) {
+              if (readErr && (readErr.name === 'AbortError' || String(readErr).indexOf('abort') !== -1)) {
+                if (onDoneCallback) onDoneCallback();
+                return;
+              }
+              console.error('[TravelWiseStream] Stream read error:', readErr);
+              if (self._currentController === controller) {
+                self._currentController = null;
+              }
+              if (onErrorCallback) onErrorCallback(readErr.toString());
+            });
+          }
+
+          readChunk();
+        }).catch(function(fetchErr) {
+          if (fetchErr && (fetchErr.name === 'AbortError' || String(fetchErr).indexOf('abort') !== -1)) {
+            if (onDoneCallback) onDoneCallback();
+            return;
+          }
+          console.error('[TravelWiseStream] Fetch error:', fetchErr);
+          if (self._currentController === controller) {
+            self._currentController = null;
+          }
+          if (onErrorCallback) onErrorCallback(fetchErr.toString());
+        });
+      }
+    };
+
   </script>
 </body>
 </html>

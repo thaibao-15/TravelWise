@@ -73,7 +73,7 @@ final List<Trip> mockTripsList = [
     distanceKm: 15.0,
     estimatedBudget: '2.5M',
     optimized: true,
-    coverImage: 'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9',
+    coverImage: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1',
     days: [],
     status: 'completed',
     category: 'Phố cổ & Đèn lồng',

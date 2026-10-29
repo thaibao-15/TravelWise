@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 class VoiceAudioService {
@@ -38,4 +39,14 @@ class VoiceAudioService {
   }
 
   void stopRecording() {}
+
+  void abortStream() {}
+
+  Stream<String> askStream({
+    required String url,
+    String? token,
+    required String bodyJson,
+  }) {
+    return const Stream<String>.empty();
+  }
 }

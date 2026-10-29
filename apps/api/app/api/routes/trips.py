@@ -907,12 +907,16 @@ def edit_itinerary_for_trip(
     )
 
     # 4. Retrieve fresh details
-    details = ItineraryPersistenceService.get_itinerary_by_trip_id(
-        session=session,
-        trip_id=trip.id,
-        current_user=current_user,
-        check_ownership=True if current_user else False,
-    )
+    try:
+        details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+            session=session,
+            trip_id=trip.id,
+            current_user=current_user,
+            check_ownership=True if current_user else False,
+        )
+    except Exception as fetch_err:
+        logger.warning("Could not fetch detailed persisted itinerary, falling back to gen_res: %s", fetch_err)
+        details = gen_res
 
     edit_summary = getattr(gen_res, "summary", None) or f"Đã tối ưu và cập nhật lại lịch trình cho chuyến đi của bạn! 🗺️✨"
     return ItineraryEditResponse(

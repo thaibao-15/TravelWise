@@ -952,6 +952,19 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
             logger.warning("Failed to fetch current itinerary for intent detection: %s", e)
 
         if not itinerary or not itinerary.days:
+            clean_lower = clean_msg.lower()
+            is_obvious_edit = any(kw in clean_lower for kw in [
+                "thêm", "bớt", "xóa", "xoá", "bỏ", "đổi", "thay", "sửa", "dời", "chuyển",
+                "cập nhật", "chỉnh", "ngày", "ngay", "buổi", "buoi", "lịch trình", "lich trinh",
+                "ghé", "ghe", "đi", "di", "quán", "khách sạn", "hotel", "bà nà", "hội an"
+            ])
+            if is_obvious_edit:
+                return {
+                    "is_edit_intent": True,
+                    "confidence": "HIGH",
+                    "change_prompt": clean_msg,
+                    "reason": "Tin nhắn chứa yêu cầu chỉnh sửa/bổ sung lịch trình.",
+                }
             return {
                 "is_edit_intent": False,
                 "confidence": "HIGH",

@@ -77,7 +77,7 @@ class Trip {
       return 'https://images.unsplash.com/photo-1626587979672-0050e828d506';
     }
     if (lower.contains('hội an') || lower.contains('hoi an')) {
-      return 'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9';
+      return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1';
     }
     if (lower.contains('hà nội') || lower.contains('ha noi')) {
       return 'https://images.unsplash.com/photo-1509030450996-dd1a26dda07a';

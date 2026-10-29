@@ -29,7 +29,7 @@ class TripPlacesSection extends StatelessWidget {
               final titles = ['Bán Đảo Sơn Trà', 'Cầu Vàng', 'Chợ Hàn'];
               final images = [
                 'https://images.unsplash.com/photo-1621255855018-9366e6097fc0',
-                'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9',
+                'https://images.unsplash.com/photo-1555939594-58d7cb561ad1',
                 'https://images.unsplash.com/photo-1628172911295-a0bc3c42845c'
               ];
               return Container(

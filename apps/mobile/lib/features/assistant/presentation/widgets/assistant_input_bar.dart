@@ -254,7 +254,8 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
     final notifier = ref.read(voiceAssistantProvider.notifier);
 
     if (state.voiceState == VoiceState.speaking) {
-      notifier.stopAudio();
+      // 1-Tap Barge-in: interrupt AI speech and listen immediately
+      notifier.bargeIn();
       return;
     }
     notifier.toggleRecording();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,6 +56,17 @@ class FakeVoiceAudioService implements VoiceAudioService {
 
   @override
   void markStreamDone() {}
+
+  @override
+  void abortStream() {}
+
+  @override
+  Stream<String> askStream({
+    required String url,
+    String? token,
+    required String bodyJson,
+  }) => const Stream<String>.empty();
+
 
   @override
   void playWavBytes(

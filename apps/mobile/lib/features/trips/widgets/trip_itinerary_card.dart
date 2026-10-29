@@ -48,7 +48,7 @@ class TripItineraryCard extends ConsumerWidget {
       return 'https://images.unsplash.com/photo-1628172911295-a0bc3c42845c?auto=format&fit=crop&w=400&q=80';
     }
     if (title.contains('hội an') || title.contains('chùa cầu')) {
-      return 'https://images.unsplash.com/photo-1582236968604-ee5ea861a4c9?auto=format&fit=crop&w=400&q=80';
+      return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=400&q=80';
     }
     if (title.contains('phú quốc') || title.contains('bãi sao')) {
       return 'https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=400&q=80';
