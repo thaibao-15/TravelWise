@@ -5,6 +5,7 @@ import 'package:mobile/core/constants/colors.dart';
 import 'package:mobile/features/assistant/presentation/providers/voice_assistant_provider.dart';
 import 'package:mobile/features/map/presentation/screens/map_screen.dart';
 import 'package:mobile/features/trips/models/trip_model.dart';
+import 'package:mobile/shared/widgets/app_network_image.dart';
 import 'package:mobile/features/trips/screens/trip_detail_screen.dart';
 
 import 'package:mobile/features/assistant/presentation/models/chat_media.dart';
@@ -298,15 +299,12 @@ class TripItineraryCard extends ConsumerWidget {
                                               child: Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
-                                                  ClipRRect(
+                                                  AppNetworkImage(
+                                                    imageUrl: item.img,
+                                                    width: 26,
+                                                    height: 26,
+                                                    fit: BoxFit.cover,
                                                     borderRadius: BorderRadius.circular(16),
-                                                    child: Image.network(
-                                                      item.img!,
-                                                      width: 26,
-                                                      height: 26,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                                                    ),
                                                   ),
                                                   const SizedBox(width: 5),
                                                   Text(

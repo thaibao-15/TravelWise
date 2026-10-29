@@ -26,6 +26,7 @@ class VoiceAudioService {
     onError?.call('Phát âm thanh chưa được hỗ trợ trên nền tảng này.');
   }
 
+  void unlockAudio() {}
   void stopTts() {}
 
   void startRecording({

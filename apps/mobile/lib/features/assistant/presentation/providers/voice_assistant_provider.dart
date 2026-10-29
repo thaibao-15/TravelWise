@@ -798,6 +798,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     _turnStartedAt = DateTime.now();
 
+    _audioService.unlockAudio();
+
     _listeningTurnActive = true;
 
     _isVoiceSession = true;
@@ -1659,6 +1661,37 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
 
+    /// Kiểm tra xem người dùng có ý định lưu chuyến đi / bản nháp hay không
+  bool _looksLikeSaveTripRequest(String text) {
+    final lower = text.trim().toLowerCase();
+    if (lower.isEmpty) return false;
+    final noAccent = _removeVietnameseAccents(lower);
+
+    // 1. Nhận diện các cụm từ chứa 'lưu' hoặc 'save'
+    final savePhrases = RegExp(
+      r'(?:^|\b)(?:lưu|luu|save|xác\s*nhận|xac\s*nhan)\s*(?:lại\s*|lai\s*)?(?:chuyến\s*đi|chuyen\s*di|lịch\s*trình|lich\s*trinh|bản\s*nháp|ban\s*nhap|kế\s*hoạch|ke\s*hoach|tour)?',
+      caseSensitive: false,
+    );
+    if (savePhrases.hasMatch(lower) || savePhrases.hasMatch(noAccent)) {
+      if (lower.contains('lưu ý') ||
+          lower.contains('luu y') ||
+          lower.contains('lưu niệm') ||
+          lower.contains('luu niem') ||
+          lower.contains('lưu thông') ||
+          lower.contains('luu thong')) {
+        return false;
+      }
+      return true;
+    }
+
+    // 2. Các câu ngắn gọn: "lưu đi", "lưu lại", "lưu nhé", "lưu nha", "save it", "lưu bản nháp"
+    final shortSave = RegExp(
+      r'^(?:lưu|luu|save)(?:\s*(?:lại|lai|đi|di|nha|nhé|nhe|luôn|luon|giúp|gium|hộ|ho|it|nay|này|đó|do))?$',
+      caseSensitive: false,
+    );
+    return shortSave.hasMatch(lower) || shortSave.hasMatch(noAccent);
+  }
+
   // ── Send message (RAG ask + Web useChat.ts Itinerary Flow) ───────────────
 
 
@@ -2004,6 +2037,71 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
 
 
+
+      // 3c. Fast-path: Người dùng yêu cầu LƯU CHUYẾN ĐI / BẢN NHÁP (VD: "Lưu chuyến đi", "Lưu bản nháp", "Lưu lại nhé")
+      if (_looksLikeSaveTripRequest(trimmed)) {
+        if (state.tripPreview != null) {
+          final alreadySaved = state.planningState == TripPlanningState.saved ||
+              (state.savedTripId != null &&
+                  state.savedTripId!.isNotEmpty &&
+                  state.savedTripId != '0' &&
+                  state.tripPreview?.status == 'CONFIRMED');
+
+          if (alreadySaved) {
+            final alreadySavedMsg =
+                'Chuyến đi "${state.tripPreview!.title}" đã được lưu an toàn trong danh sách của bạn rồi nhé! Bạn có thể xem lại trong mục Chuyến đi bất cứ lúc nào.';
+            final aiMsg = ChatMessage(
+              text: alreadySavedMsg,
+              isUser: false,
+              timestamp: DateTime.now(),
+              tripItinerary: state.tripPreview,
+            );
+            state = state.copyWith(
+              messages: [...state.messages, aiMsg],
+              currentTranscript: alreadySavedMsg,
+              voiceState: VoiceState.idle,
+            );
+            if (_isVoiceSession) {
+              _userKeepMicOn = true;
+            }
+            if (state.isTtsEnabled) {
+              _ttsCancelled = false;
+              await _playTts(alreadySavedMsg);
+            } else {
+              _resumeListeningIfPersistent();
+            }
+            return;
+          }
+
+          // Gọi API lưu chuyến đi bản nháp vào CSDL
+          await saveCurrentTrip();
+          return;
+        } else {
+          // Chưa có bản nháp lịch trình nào để lưu
+          const noTripMsg =
+              'Hiện tại chưa có bản nháp lịch trình nào để lưu. Bạn hãy nói "Tạo lịch trình đi Đà Nẵng 3 ngày" để mình tạo lịch trình mới cho bạn nhé!';
+          final aiMsg = ChatMessage(
+            text: noTripMsg,
+            isUser: false,
+            timestamp: DateTime.now(),
+          );
+          state = state.copyWith(
+            messages: [...state.messages, aiMsg],
+            currentTranscript: noTripMsg,
+            voiceState: VoiceState.idle,
+          );
+          if (_isVoiceSession) {
+            _userKeepMicOn = true;
+          }
+          if (state.isTtsEnabled) {
+            _ttsCancelled = false;
+            await _playTts(noTripMsg);
+          } else {
+            _resumeListeningIfPersistent();
+          }
+          return;
+        }
+      }
 
       // 4. Tự động xác định ý định CHỈNH SỬA LỊCH TRÌNH (Fast-path: Gọi thẳng /itinerary/edit khi có dấu hiệu sửa,
 
@@ -3134,14 +3232,15 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
 
+      if (_isVoiceSession) {
+        _userKeepMicOn = true;
+      }
+
       if (state.isTtsEnabled) {
-
+        _ttsCancelled = false;
         await _playTts(previewMsg);
-
       } else {
-
         _resumeListeningIfPersistent();
-
       }
 
     } catch (e) {
@@ -3165,110 +3264,75 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
   Future<void> saveCurrentTrip({int? convId}) async {
-
     final cid = convId ?? state.conversationId;
-
-    if (state.tripPreview == null || cid == null) return;
-
-
+    if (state.tripPreview == null) return;
 
     log('saving_trip', {'conversationId': cid, 'title': state.tripPreview!.title});
-
-    state = state.copyWith(planningState: TripPlanningState.saving, error: null);
-
-
+    state = state.copyWith(
+      planningState: TripPlanningState.saving,
+      voiceState: VoiceState.processing,
+      error: null,
+    );
 
     try {
-
       final savedId = await _tripRepo.saveTripPreview(
-
         trip: state.tripPreview!,
-
-        conversationId: cid,
-
+        conversationId: cid ?? 0,
       );
-
-
 
       // Invalidate tripsListProvider to trigger immediate refresh of trips history
-
       _ref.invalidate(tripsListProvider);
-
       if (savedId.isNotEmpty) {
-
         _ref.invalidate(tripDetailProvider(savedId));
-
       }
-
-
 
       final updatedPreview =
-
           state.tripPreview!.copyWith(id: savedId, status: 'CONFIRMED');
 
-
-
       state = state.copyWith(
-
         planningState: TripPlanningState.saved,
-
         savedTripId: savedId,
-
         tripPreview: updatedPreview,
-
+        voiceState: VoiceState.idle,
+        error: null,
       );
 
-
-
-      const savedMsg =
-
-          'Chuyến đi của bạn đã được lưu thành công vào cơ sở dữ liệu! Bạn có thể xem lại bất cứ lúc nào trong mục Chuyến đi.';
-
+      final savedMsg =
+          'Mình đã lưu chuyến đi "${updatedPreview.title}" (${updatedPreview.daysCount} ngày) vào danh sách chuyến đi của bạn thành công! Bạn có thể xem lại bất cứ lúc nào trong mục Chuyến đi.';
       final aiMsg = ChatMessage(
-
         text: savedMsg,
-
         isUser: false,
-
         timestamp: DateTime.now(),
-
         tripItinerary: updatedPreview,
-
       );
-
       state = state.copyWith(
-
         messages: [...state.messages, aiMsg],
-
         currentTranscript: savedMsg,
-
       );
 
-
-
-      if (state.isTtsEnabled) {
-
-        await _playTts(savedMsg);
-
+      if (_isVoiceSession) {
+        _userKeepMicOn = true;
       }
 
+      if (state.isTtsEnabled) {
+        _ttsCancelled = false;
+        await _playTts(savedMsg);
+      } else {
+        _resumeListeningIfPersistent();
+      }
     } catch (e) {
-
       log('save_trip_error', {'error': e.toString()});
-
       state = state.copyWith(
-
         planningState: TripPlanningState.error,
-
+        voiceState: VoiceState.idle,
         error: 'Không thể lưu chuyến đi: $e',
-
       );
-
+      if (_isVoiceSession) {
+        _userKeepMicOn = true;
+      }
+      _resumeListeningIfPersistent();
     }
-
   }
-
-
 
   Future<void> editSavedTrip({
 
@@ -3622,7 +3686,15 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
 
+    Timer? safetyTimer;
+
     try {
+      safetyTimer = Timer(const Duration(seconds: 10), () {
+        if (mounted && (state.voiceState == VoiceState.speaking || state.voiceState == VoiceState.processing || state.voiceState == VoiceState.idle)) {
+          log('tts_safety_watchdog_fired');
+          _resumeListeningIfPersistent();
+        }
+      });
 
       _audioService.initStreamingQueue(
 
@@ -3652,6 +3724,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
         onEnded: () {
           if (!mounted) return;
+          safetyTimer?.cancel();
           log('tts_playback_finished');
           if (state.planningState != TripPlanningState.generating &&
               state.planningState != TripPlanningState.revising) {
@@ -3660,6 +3733,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         },
         onError: (err) {
           if (!mounted) return;
+          safetyTimer?.cancel();
           log('tts_playback_error', {'error': err});
           state = state.copyWith(error: 'Không thể phát audio: ');
           _resumeListeningIfPersistent();

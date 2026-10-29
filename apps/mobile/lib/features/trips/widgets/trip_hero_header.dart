@@ -6,6 +6,7 @@ import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../models/trip_model.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 import 'trip_stats_card.dart';
 
 class TripHeroHeader extends StatelessWidget {
@@ -33,7 +34,7 @@ class TripHeroHeader extends StatelessWidget {
           width: double.infinity,
           decoration: BoxDecoration(
             image: DecorationImage(
-              image: NetworkImage(trip.coverImage),
+              image: AppNetworkImage.provider(trip.coverImage),
               fit: BoxFit.cover,
             ),
             borderRadius: const BorderRadius.only(

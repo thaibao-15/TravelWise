@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
 
@@ -36,7 +37,7 @@ class TripPlacesSection extends StatelessWidget {
                 width: 140,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  image: DecorationImage(image: NetworkImage(images[index]), fit: BoxFit.cover),
+                  image: DecorationImage(image: AppNetworkImage.provider(images[index]), fit: BoxFit.cover),
                 ),
                 child: Container(
                   decoration: BoxDecoration(

@@ -5,6 +5,11 @@ import 'dart:js_util' as js_util;
 import 'dart:typed_data';
 
 class VoiceAudioService {
+  VoiceAudioService() {
+    _ensureAudioHelper();
+    _ensureStreamHelper();
+  }
+
   void _ensureAudioHelper() {
     try {
       if (js_util.getProperty(html.window, 'TravelWiseAudio') != null) return;
@@ -24,6 +29,26 @@ window.TravelWiseAudio = {
   _onQueuePlay: null,
   _onQueueEnded: null,
   _onQueueError: null,
+  _audioCtx: null,
+
+  unlockAudio: function() {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        if (!this._audioCtx) {
+          this._audioCtx = new AudioCtx();
+        }
+        if (this._audioCtx.state === 'suspended') {
+          this._audioCtx.resume();
+        }
+        var buffer = this._audioCtx.createBuffer(1, 1, 22050);
+        var source = this._audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this._audioCtx.destination);
+        source.start(0);
+      }
+    } catch (_) {}
+  },
 
   _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
     var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
@@ -97,8 +122,7 @@ window.TravelWiseAudio = {
 
   markStreamDone: function() {
     this._isStreamDone = true;
-    if (this._queue.length === 0 && (!this._isPlayingQueue || !this._currentAudio || this._currentAudio.paused || this._currentAudio.ended)) {
-      this._isPlayingQueue = false;
+    if (this._queue.length === 0 && !this._isPlayingQueue) {
       if (this._onQueueEnded) {
         var cb = this._onQueueEnded;
         this._onQueueEnded = null;
@@ -112,8 +136,11 @@ window.TravelWiseAudio = {
     if (self._isStopped) return;
     if (self._queue.length === 0) {
       self._isPlayingQueue = false;
+      self._currentAudio = null;
       if (self._isStreamDone && self._onQueueEnded) {
-        self._onQueueEnded();
+        var cb = self._onQueueEnded;
+        self._onQueueEnded = null;
+        cb();
       }
       return;
     }
@@ -130,6 +157,7 @@ window.TravelWiseAudio = {
 
     try {
       var audio = new Audio(audioUrl);
+      audio.crossOrigin = 'anonymous';
       audio.preload = 'auto';
       self._currentAudio = audio;
       audio.onplay = function() {
@@ -141,14 +169,46 @@ window.TravelWiseAudio = {
       audio.onended = function() {
         if (!self._isStopped) self._playNextInQueue();
       };
-      audio.onerror = function() {
+      var fallbackSpeech = function() {
+        if ('speechSynthesis' in window && !self._isStopped) {
+          try {
+            window.speechSynthesis.cancel();
+            var u = new SpeechSynthesisUtterance(item.text);
+            u.lang = 'vi-VN';
+            u.rate = 1.15;
+            window.__twActiveUtterance = u;
+            var advanceCalled = false;
+            var advance = function() {
+              if (advanceCalled) return;
+              advanceCalled = true;
+              window.__twActiveUtterance = null;
+              if (!self._isStopped) self._playNextInQueue();
+            };
+            var estDurationMs = Math.max(1200, (item.text.length * 85) + 800);
+            var speechWatchdog = setTimeout(advance, estDurationMs);
+
+            if (!self._hasStartedQueue) {
+              self._hasStartedQueue = true;
+              if (self._onQueuePlay) self._onQueuePlay();
+            }
+            u.onend = function() {
+              clearTimeout(speechWatchdog);
+              advance();
+            };
+            u.onerror = function() {
+              clearTimeout(speechWatchdog);
+              advance();
+            };
+            window.speechSynthesis.speak(u);
+            return;
+          } catch (_) {}
+        }
         if (!self._isStopped) self._playNextInQueue();
       };
+      audio.onerror = function() { fallbackSpeech(); };
       var p = audio.play();
       if (p !== undefined) {
-        p.catch(function() {
-          if (!self._isStopped) self._playNextInQueue();
-        });
+        p.catch(function() { fallbackSpeech(); });
       }
     } catch (_) {
       if (!self._isStopped) self._playNextInQueue();
@@ -371,6 +431,16 @@ window.TravelWiseStream = {
     } catch (e) {
       if (onError != null) onError('Không thể phát âm thanh: $e');
     }
+  }
+
+  void unlockAudio() {
+    try {
+      _ensureAudioHelper();
+      final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (twAudio != null) {
+        js_util.callMethod(twAudio, 'unlockAudio', []);
+      }
+    } catch (_) {}
   }
 
   void stopTts() {

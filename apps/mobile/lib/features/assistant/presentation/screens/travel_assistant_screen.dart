@@ -1,6 +1,7 @@
 import '../../../map/presentation/screens/map_screen.dart';
 import 'assistant_chat_screen.dart';
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../auth/presentation/providers/auth_notifier.dart';
@@ -1073,16 +1074,55 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'Nháp',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                ),
+              Builder(
+                builder: (context) {
+                  final isSaved = state.planningState == TripPlanningState.saved ||
+                      (state.savedTripId != null && state.savedTripId!.isNotEmpty && state.savedTripId != '0') ||
+                      trip.status == 'CONFIRMED';
+                  final isSaving = state.planningState == TripPlanningState.saving;
+
+                  return GestureDetector(
+                    onTap: isSaved || isSaving ? null : () => notifier.saveCurrentTrip(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isSaved
+                            ? const Color(0xFFDCFCE7)
+                            : (isSaving ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSaving) ...[
+                            const SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                valueColor: AlwaysStoppedAnimation(Color(0xFFD97706)),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ] else if (isSaved) ...[
+                            const Icon(Icons.check, size: 10, color: Color(0xFF16A34A)),
+                            const SizedBox(width: 3),
+                          ],
+                          Text(
+                            isSaving ? 'Đang lưu...' : (isSaved ? 'Đã lưu' : 'Nháp • Lưu'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: isSaved
+                                  ? const Color(0xFF16A34A)
+                                  : (isSaving ? const Color(0xFFD97706) : const Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -1114,17 +1154,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                       children: [
                         // Thumbnail ảnh của ngày
                         Expanded(
-                          child: ClipRRect(
+                          child: AppNetworkImage(
+                            imageUrl: fallbackImage,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
-                            child: Image.network(
-                              fallbackImage,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, err, stack) => Container(
-                                color: const Color(0xFFE2E8F0),
-                                child: const Icon(Icons.image, color: Colors.grey, size: 24),
-                              ),
-                            ),
                           ),
                         ),
                         // Thông tin ngày

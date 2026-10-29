@@ -9,6 +9,8 @@ import 'package:mobile/features/assistant/presentation/providers/voice_assistant
 
 /// Fake recognizer: records calls and lets tests drive STT callbacks.
 class FakeVoiceAudioService implements VoiceAudioService {
+  @override
+  void unlockAudio() {}
   int startCount = 0;
   int stopCount = 0;
   int ttsStopCount = 0;
