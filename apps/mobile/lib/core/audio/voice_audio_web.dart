@@ -12,11 +12,13 @@ class VoiceAudioService {
 
   void _ensureAudioHelper() {
     try {
-      if (js_util.getProperty(html.window, 'TravelWiseAudio') != null) return;
+      final existing = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (existing != null && js_util.getProperty(existing, '_v') == 2) return;
       final script = html.ScriptElement()
         ..type = 'text/javascript'
         ..text = r'''
 window.TravelWiseAudio = {
+  _v: 2,
   _currentAudio: null,
   _currentUrl: null,
   _audioCache: {},
@@ -26,6 +28,7 @@ window.TravelWiseAudio = {
   _isStopped: false,
   _isStreamDone: false,
   _hasStartedQueue: false,
+  _playSessionId: 0,
   _onQueuePlay: null,
   _onQueueEnded: null,
   _onQueueError: null,
@@ -39,7 +42,7 @@ window.TravelWiseAudio = {
           this._audioCtx = new AudioCtx();
         }
         if (this._audioCtx.state === 'suspended') {
-          this._audioCtx.resume();
+          this._audioCtx.resume().catch(function() {});
         }
         var buffer = this._audioCtx.createBuffer(1, 1, 22050);
         var source = this._audioCtx.createBufferSource();
@@ -52,7 +55,7 @@ window.TravelWiseAudio = {
 
   _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
     var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-    var spd = speed || '1.2';
+    var spd = speed || '1.5';
     var spk = speakerId || 'DaNang-Nu-1-BL';
     return cleanBase + '/api/v1/tts/stream?text=' + encodeURIComponent(text) +
            '&speed=' + encodeURIComponent(spd) +
@@ -63,11 +66,13 @@ window.TravelWiseAudio = {
     var self = this;
     var clean = (sentence || '').trim();
     if (!clean) return Promise.resolve('');
-    var cacheKey = clean + '|' + (speed || '1.2') + '|' + (speakerId || 'DaNang-Nu-1-BL');
+    var spd = speed || '1.5';
+    var spk = speakerId || 'DaNang-Nu-1-BL';
+    var cacheKey = clean + '|' + spd + '|' + spk;
     if (self._audioCache[cacheKey]) return Promise.resolve(self._audioCache[cacheKey]);
     if (self._inFlightPrefetch[cacheKey]) return self._inFlightPrefetch[cacheKey];
 
-    var streamUrl = self._buildStreamUrl(baseUrl, clean, speed, speakerId);
+    var streamUrl = self._buildStreamUrl(baseUrl, clean, spd, spk);
     var p = fetch(streamUrl)
       .then(function(res) {
         if (!res.ok) throw new Error('TTS Stream HTTP ' + res.status);
@@ -92,6 +97,22 @@ window.TravelWiseAudio = {
     return p;
   },
 
+  _pumpPrefetch: function() {
+    var self = this;
+    if (self._isStopped || self._queue.length === 0) return;
+    var activeCount = Object.keys(self._inFlightPrefetch).length;
+    for (var i = 0; i < self._queue.length && activeCount < 2; i++) {
+      var qItem = self._queue[i];
+      var key = qItem.text + '|' + qItem.speed + '|' + qItem.speakerId;
+      if (!self._audioCache[key] && !self._inFlightPrefetch[key]) {
+        activeCount++;
+        self.prefetchSingle(qItem.baseUrl, qItem.text, qItem.speed, qItem.speakerId)
+          .then(function() { self._pumpPrefetch(); })
+          .catch(function() { self._pumpPrefetch(); });
+      }
+    }
+  },
+
   initStreamingQueue: function(onPlayCallback, onEndedCallback, onErrorCallback) {
     this.stop();
     this._isStopped = false;
@@ -111,12 +132,13 @@ window.TravelWiseAudio = {
     this._queue.push({
       baseUrl: baseUrl,
       text: clean,
-      speed: speed || '1.2',
+      speed: speed || '1.5',
       speakerId: speakerId || 'DaNang-Nu-1-BL'
     });
-    this.prefetchSingle(baseUrl, clean, speed, speakerId).catch(function() {});
     if (!this._isPlayingQueue) {
       this._playNextInQueue();
+    } else {
+      this._pumpPrefetch();
     }
   },
 
@@ -127,6 +149,82 @@ window.TravelWiseAudio = {
         var cb = this._onQueueEnded;
         this._onQueueEnded = null;
         cb();
+      }
+    }
+  },
+
+  _playAudioUrl: function(audioUrl, item, sessionId) {
+    var self = this;
+    if (self._isStopped || self._playSessionId !== sessionId) return;
+
+    var fallbackSpeech = function() {
+      if (self._isStopped || self._playSessionId !== sessionId) return;
+      if ('speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          var u = new SpeechSynthesisUtterance(item.text);
+          u.lang = 'vi-VN';
+          u.rate = 1.15;
+          window.__twActiveUtterance = u;
+          var advanceCalled = false;
+          var advance = function() {
+            if (advanceCalled) return;
+            advanceCalled = true;
+            window.__twActiveUtterance = null;
+            if (!self._isStopped && self._playSessionId === sessionId) {
+              self._playNextInQueue();
+            }
+          };
+          var estDurationMs = Math.max(1200, (item.text.length * 85) + 800);
+          var speechWatchdog = setTimeout(advance, estDurationMs);
+
+          if (!self._hasStartedQueue) {
+            self._hasStartedQueue = true;
+            if (self._onQueuePlay) self._onQueuePlay();
+          }
+          u.onend = function() {
+            clearTimeout(speechWatchdog);
+            advance();
+          };
+          u.onerror = function() {
+            clearTimeout(speechWatchdog);
+            advance();
+          };
+          window.speechSynthesis.speak(u);
+          return;
+        } catch (_) {}
+      }
+      if (!self._isStopped && self._playSessionId === sessionId) {
+        self._playNextInQueue();
+      }
+    };
+
+    try {
+      var audio = new Audio(audioUrl);
+      audio.crossOrigin = 'anonymous';
+      audio.preload = 'auto';
+      audio.playbackRate = 1.0;
+      self._currentAudio = audio;
+      audio.onplay = function() {
+        if (self._isStopped || self._playSessionId !== sessionId) return;
+        if (!self._hasStartedQueue) {
+          self._hasStartedQueue = true;
+          if (self._onQueuePlay) self._onQueuePlay();
+        }
+      };
+      audio.onended = function() {
+        if (!self._isStopped && self._playSessionId === sessionId) {
+          self._playNextInQueue();
+        }
+      };
+      audio.onerror = function() { fallbackSpeech(); };
+      var p = audio.play();
+      if (p !== undefined) {
+        p.catch(function() { fallbackSpeech(); });
+      }
+    } catch (_) {
+      if (!self._isStopped && self._playSessionId === sessionId) {
+        self._playNextInQueue();
       }
     }
   },
@@ -145,74 +243,38 @@ window.TravelWiseAudio = {
       return;
     }
     self._isPlayingQueue = true;
+    var sessionId = self._playSessionId;
     var item = self._queue.shift();
     var cacheKey = item.text + '|' + item.speed + '|' + item.speakerId;
+
+    self._pumpPrefetch();
+
     var cachedUrl = self._audioCache[cacheKey];
-    var audioUrl = cachedUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
-
-    if (self._queue.length > 0) {
-      var nextItem = self._queue[0];
-      self.prefetchSingle(nextItem.baseUrl, nextItem.text, nextItem.speed, nextItem.speakerId).catch(function() {});
+    if (cachedUrl) {
+      self._playAudioUrl(cachedUrl, item, sessionId);
+      return;
     }
 
-    try {
-      var audio = new Audio(audioUrl);
-      audio.crossOrigin = 'anonymous';
-      audio.preload = 'auto';
-      self._currentAudio = audio;
-      audio.onplay = function() {
-        if (!self._hasStartedQueue) {
-          self._hasStartedQueue = true;
-          if (self._onQueuePlay) self._onQueuePlay();
-        }
-      };
-      audio.onended = function() {
-        if (!self._isStopped) self._playNextInQueue();
-      };
-      var fallbackSpeech = function() {
-        if ('speechSynthesis' in window && !self._isStopped) {
-          try {
-            window.speechSynthesis.cancel();
-            var u = new SpeechSynthesisUtterance(item.text);
-            u.lang = 'vi-VN';
-            u.rate = 1.15;
-            window.__twActiveUtterance = u;
-            var advanceCalled = false;
-            var advance = function() {
-              if (advanceCalled) return;
-              advanceCalled = true;
-              window.__twActiveUtterance = null;
-              if (!self._isStopped) self._playNextInQueue();
-            };
-            var estDurationMs = Math.max(1200, (item.text.length * 85) + 800);
-            var speechWatchdog = setTimeout(advance, estDurationMs);
-
-            if (!self._hasStartedQueue) {
-              self._hasStartedQueue = true;
-              if (self._onQueuePlay) self._onQueuePlay();
-            }
-            u.onend = function() {
-              clearTimeout(speechWatchdog);
-              advance();
-            };
-            u.onerror = function() {
-              clearTimeout(speechWatchdog);
-              advance();
-            };
-            window.speechSynthesis.speak(u);
-            return;
-          } catch (_) {}
-        }
-        if (!self._isStopped) self._playNextInQueue();
-      };
-      audio.onerror = function() { fallbackSpeech(); };
-      var p = audio.play();
-      if (p !== undefined) {
-        p.catch(function() { fallbackSpeech(); });
-      }
-    } catch (_) {
-      if (!self._isStopped) self._playNextInQueue();
+    var inFlight = self._inFlightPrefetch[cacheKey];
+    if (inFlight) {
+      inFlight.then(function(blobUrl) {
+        self._playAudioUrl(
+          blobUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
+          item,
+          sessionId
+        );
+      }).catch(function() {
+        self._playAudioUrl(
+          self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
+          item,
+          sessionId
+        );
+      });
+      return;
     }
+
+    var streamUrl = self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
+    self._playAudioUrl(streamUrl, item, sessionId);
   },
 
   playWavBytes: function(byteArray, onPlayCallback, onEndedCallback, onErrorCallback) {
@@ -237,6 +299,7 @@ window.TravelWiseAudio = {
   stop: function() {
     this._isStopped = true;
     this._isPlayingQueue = false;
+    this._playSessionId += 1;
     this._queue = [];
     if (this._currentAudio) {
       try {
@@ -244,6 +307,9 @@ window.TravelWiseAudio = {
         this._currentAudio.currentTime = 0;
       } catch (_) {}
       this._currentAudio = null;
+    }
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
     }
     if (this._currentUrl) {
       try { URL.revokeObjectURL(this._currentUrl); } catch (_) {}
@@ -261,11 +327,13 @@ window.TravelWiseAudio = {
 
   void _ensureStreamHelper() {
     try {
-      if (js_util.getProperty(html.window, 'TravelWiseStream') != null) return;
+      final existing = js_util.getProperty(html.window, 'TravelWiseStream');
+      if (existing != null && js_util.getProperty(existing, '_v') == 2) return;
       final script = html.ScriptElement()
         ..type = 'text/javascript'
         ..text = r'''
 window.TravelWiseStream = {
+  _v: 2,
   _currentController: null,
   abortStream: function() {
     if (this._currentController) {
@@ -306,6 +374,8 @@ window.TravelWiseStream = {
       function readChunk() {
         reader.read().then(function(result) {
           if (result.done) {
+            var flushed = decoder.decode();
+            if (flushed && onChunkCallback) onChunkCallback(flushed);
             if (self._currentController === controller) self._currentController = null;
             if (onDoneCallback) onDoneCallback();
             return;
@@ -372,7 +442,7 @@ window.TravelWiseStream = {
   void enqueueSentence({
     required String baseUrl,
     required String sentence,
-    String speed = '1.2',
+    String speed = '1.5',
     String speakerId = 'DaNang-Nu-1-BL',
   }) {
     try {
@@ -474,7 +544,9 @@ window.TravelWiseStream = {
       final twRecorder = js_util.getProperty(html.window, 'TravelWiseRecorder');
       if (twRecorder == null) {
         if (onError != null) {
-          onError('Vui lòng làm mới trang trình duyệt (F5) để cấp quyền microphone.');
+          onError(
+            'Vui lòng làm mới trang trình duyệt (F5) để cấp quyền microphone.',
+          );
         }
         return;
       }
@@ -482,15 +554,21 @@ window.TravelWiseStream = {
       final onReadyJs = js_util.allowInterop(() {
         if (onReady != null) onReady();
       });
-      final onTranscriptJs = js_util.allowInterop((dynamic text, dynamic isFinal) {
+      final onTranscriptJs = js_util.allowInterop((
+        dynamic text,
+        dynamic isFinal,
+      ) {
         if (onTranscript == null) return;
-        final finalFlag = isFinal == true ||
+        final finalFlag =
+            isFinal == true ||
             isFinal == 1 ||
             isFinal?.toString().toLowerCase() == 'true';
         onTranscript(text?.toString() ?? '', finalFlag);
       });
       final onErrorJs = js_util.allowInterop((dynamic err) {
-        if (onError != null) onError(err?.toString() ?? 'Lỗi thu âm microphone');
+        if (onError != null) {
+          onError(err?.toString() ?? 'Lỗi thu âm microphone');
+        }
       });
       final onDoneJs = js_util.allowInterop(() {
         if (onDone != null) onDone();

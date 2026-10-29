@@ -1,4 +1,5 @@
     window.TravelWiseAudio = {
+      _v: 2,
       _currentAudio: null,
       _currentUrl: null,
       _audioCache: {},
@@ -8,13 +9,34 @@
       _isStopped: false,
       _isStreamDone: false,
       _hasStartedQueue: false,
+      _playSessionId: 0,
       _onQueuePlay: null,
       _onQueueEnded: null,
       _onQueueError: null,
+      _audioCtx: null,
+
+      unlockAudio: function() {
+        try {
+          var AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            if (!this._audioCtx) {
+              this._audioCtx = new AudioCtx();
+            }
+            if (this._audioCtx.state === 'suspended') {
+              this._audioCtx.resume().catch(function() {});
+            }
+            var buffer = this._audioCtx.createBuffer(1, 1, 22050);
+            var source = this._audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this._audioCtx.destination);
+            source.start(0);
+          }
+        } catch (_) {}
+      },
 
       _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
         var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-        var spd = speed || '1.2';
+        var spd = speed || '1.5';
         var spk = speakerId || 'DaNang-Nu-1-BL';
         return cleanBase + '/api/v1/tts/stream?text=' + encodeURIComponent(text) +
                '&speed=' + encodeURIComponent(spd) +
@@ -25,7 +47,9 @@
         var self = this;
         var clean = (sentence || '').trim();
         if (!clean) return Promise.resolve('');
-        var cacheKey = clean + '|' + (speed || '1.2') + '|' + (speakerId || 'DaNang-Nu-1-BL');
+        var spd = speed || '1.5';
+        var spk = speakerId || 'DaNang-Nu-1-BL';
+        var cacheKey = clean + '|' + spd + '|' + spk;
 
         if (self._audioCache[cacheKey]) {
           return Promise.resolve(self._audioCache[cacheKey]);
@@ -34,7 +58,7 @@
           return self._inFlightPrefetch[cacheKey];
         }
 
-        var streamUrl = self._buildStreamUrl(baseUrl, clean, speed, speakerId);
+        var streamUrl = self._buildStreamUrl(baseUrl, clean, spd, spk);
         var p = fetch(streamUrl)
           .then(function(res) {
             if (!res.ok) throw new Error('TTS Stream HTTP ' + res.status);
@@ -61,6 +85,108 @@
         return p;
       },
 
+      _pumpPrefetch: function() {
+        var self = this;
+        if (self._isStopped || self._queue.length === 0) return;
+        var activeCount = Object.keys(self._inFlightPrefetch).length;
+        for (var i = 0; i < self._queue.length && activeCount < 2; i++) {
+          var qItem = self._queue[i];
+          var key = qItem.text + '|' + qItem.speed + '|' + qItem.speakerId;
+          if (!self._audioCache[key] && !self._inFlightPrefetch[key]) {
+            activeCount++;
+            self.prefetchSingle(qItem.baseUrl, qItem.text, qItem.speed, qItem.speakerId)
+              .then(function() { self._pumpPrefetch(); })
+              .catch(function() { self._pumpPrefetch(); });
+          }
+        }
+      },
+
+      _playAudioUrl: function(audioUrl, item, sessionId) {
+        var self = this;
+        if (self._isStopped || self._playSessionId !== sessionId) return;
+
+        var fallbackWebSpeech = function() {
+          if (self._isStopped || self._playSessionId !== sessionId) return;
+          if ('speechSynthesis' in window) {
+            try {
+              window.speechSynthesis.cancel();
+              var u = new SpeechSynthesisUtterance(item.text);
+              u.lang = 'vi-VN';
+              u.rate = 1.15;
+              window.__twActiveUtterance = u;
+              var advanceCalled = false;
+              var advance = function() {
+                if (advanceCalled) return;
+                advanceCalled = true;
+                window.__twActiveUtterance = null;
+                if (!self._isStopped && self._playSessionId === sessionId) {
+                  self._playNextInQueue();
+                }
+              };
+              var estDurationMs = Math.max(1200, (item.text.length * 85) + 800);
+              var speechWatchdog = setTimeout(advance, estDurationMs);
+
+              if (!self._hasStartedQueue) {
+                self._hasStartedQueue = true;
+                if (self._onQueuePlay) self._onQueuePlay();
+              }
+              u.onend = function() {
+                clearTimeout(speechWatchdog);
+                advance();
+              };
+              u.onerror = function() {
+                clearTimeout(speechWatchdog);
+                advance();
+              };
+              window.speechSynthesis.speak(u);
+              return;
+            } catch (_) {}
+          }
+          if (!self._isStopped && self._playSessionId === sessionId) {
+            self._playNextInQueue();
+          }
+        };
+
+        try {
+          var audio = new Audio(audioUrl);
+          audio.crossOrigin = 'anonymous';
+          audio.preload = 'auto';
+          audio.playbackRate = 1.0;
+          self._currentAudio = audio;
+
+          audio.onplay = function() {
+            if (self._isStopped || self._playSessionId !== sessionId) return;
+            if (!self._hasStartedQueue) {
+              self._hasStartedQueue = true;
+              if (self._onQueuePlay) self._onQueuePlay();
+            }
+          };
+
+          audio.onended = function() {
+            if (!self._isStopped && self._playSessionId === sessionId) {
+              self._playNextInQueue();
+            }
+          };
+
+          audio.onerror = function(e) {
+            console.warn('[TravelWise Audio] Sentence chunk error, fallback speech:', e);
+            fallbackWebSpeech();
+          };
+
+          var playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(function(error) {
+              console.warn('[TravelWise Audio] Stream play error, fallback speech:', error);
+              fallbackWebSpeech();
+            });
+          }
+        } catch (err) {
+          if (!self._isStopped && self._playSessionId === sessionId) {
+            self._playNextInQueue();
+          }
+        }
+      },
+
       initStreamingQueue: function(onPlayCallback, onEndedCallback, onErrorCallback) {
         this.stop();
         this._isStopped = false;
@@ -81,14 +207,16 @@
         this._queue.push({
           baseUrl: baseUrl,
           text: clean,
-          speed: speed || '1.2',
+          speed: speed || '1.5',
           speakerId: speakerId || 'DaNang-Nu-1-BL'
         });
 
-        this.prefetchSingle(baseUrl, clean, speed, speakerId).catch(function() {});
-
+        // Never prefetch the first sentence when queue is idle so <audio> streams
+        // chunked MP3 directly from Blaze TTS without waiting for full-blob download.
         if (!this._isPlayingQueue) {
           this._playNextInQueue();
+        } else {
+          this._pumpPrefetch();
         }
       },
 
@@ -121,81 +249,39 @@
         }
 
         self._isPlayingQueue = true;
+        var sessionId = self._playSessionId;
         var item = self._queue.shift();
         var cacheKey = item.text + '|' + item.speed + '|' + item.speakerId;
+
+        // Prefetch next queued sentences in background for zero-gap transitions
+        self._pumpPrefetch();
+
         var cachedUrl = self._audioCache[cacheKey];
-        var audioUrl = cachedUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
-
-        if (!cachedUrl) {
-          self.prefetchSingle(item.baseUrl, item.text, item.speed, item.speakerId).catch(function() {});
-        }
-        // Prefetch next sentence in queue in parallel for zero latency transition
-        if (self._queue.length > 0) {
-          var nextItem = self._queue[0];
-          self.prefetchSingle(nextItem.baseUrl, nextItem.text, nextItem.speed, nextItem.speakerId).catch(function() {});
+        if (cachedUrl) {
+          self._playAudioUrl(cachedUrl, item, sessionId);
+          return;
         }
 
-        try {
-          var audio = new Audio(audioUrl);
-          audio.crossOrigin = 'anonymous';
-          audio.preload = 'auto';
-          audio.playbackRate = 1.0;
-          self._currentAudio = audio;
-
-          audio.onplay = function() {
-            if (!self._hasStartedQueue) {
-              self._hasStartedQueue = true;
-              if (self._onQueuePlay) self._onQueuePlay();
-            }
-          };
-
-          audio.onended = function() {
-            if (!self._isStopped) {
-              self._playNextInQueue();
-            }
-          };
-
-          var fallbackWebSpeech = function() {
-            if ('speechSynthesis' in window && !self._isStopped) {
-              try {
-                window.speechSynthesis.cancel();
-                var u = new SpeechSynthesisUtterance(item.text);
-                u.lang = 'vi-VN';
-                u.rate = 1.15;
-                if (!self._hasStartedQueue) {
-                  self._hasStartedQueue = true;
-                  if (self._onQueuePlay) self._onQueuePlay();
-                }
-                u.onend = function() {
-                  if (!self._isStopped) self._playNextInQueue();
-                };
-                u.onerror = function() {
-                  if (!self._isStopped) self._playNextInQueue();
-                };
-                window.speechSynthesis.speak(u);
-                return;
-              } catch (_) {}
-            }
-            if (!self._isStopped) self._playNextInQueue();
-          };
-
-          audio.onerror = function(e) {
-            console.warn('[TravelWise Audio] Sentence chunk error, fallback speech:', e);
-            fallbackWebSpeech();
-          };
-
-          var playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(function(error) {
-              console.warn('[TravelWise Audio] Stream play error, fallback speech:', error);
-              fallbackWebSpeech();
-            });
-          }
-        } catch (err) {
-          if (!self._isStopped) {
-            self._playNextInQueue();
-          }
+        var inFlight = self._inFlightPrefetch[cacheKey];
+        if (inFlight) {
+          inFlight.then(function(blobUrl) {
+            self._playAudioUrl(
+              blobUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
+              item,
+              sessionId
+            );
+          }).catch(function() {
+            self._playAudioUrl(
+              self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
+              item,
+              sessionId
+            );
+          });
+          return;
         }
+
+        var streamUrl = self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
+        self._playAudioUrl(streamUrl, item, sessionId);
       },
 
       playWavBytes: function(byteArray, onPlayCallback, onEndedCallback, onErrorCallback) {
@@ -238,6 +324,7 @@
       stop: function() {
         this._isStopped = true;
         this._isPlayingQueue = false;
+        this._playSessionId += 1;
         this._queue = [];
         if (this._currentAudio) {
           try {
@@ -245,6 +332,9 @@
             this._currentAudio.currentTime = 0;
           } catch(e) {}
           this._currentAudio = null;
+        }
+        if ('speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch(e) {}
         }
         if (this._currentUrl) {
           try {
@@ -597,8 +687,9 @@
         }
       }
     };
-  
+
     window.TravelWiseStream = {
+      _v: 2,
       _currentController: null,
 
       abortStream: function() {
@@ -655,6 +746,10 @@
           function readChunk() {
             reader.read().then(function(result) {
               if (result.done) {
+                var flushed = decoder.decode();
+                if (flushed && onChunkCallback) {
+                  onChunkCallback(flushed);
+                }
                 if (self._currentController === controller) {
                   self._currentController = null;
                 }
@@ -694,4 +789,3 @@
         });
       }
     };
-
