@@ -1641,7 +1641,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     final hasEditCue = RegExp(
 
-          r'(?:thêm|bớt|xóa|xoá|bỏ|đổi|thay|sửa|dời|chuyển|cập\s*nhật|chỉnh|sắp\s*xếp|rút\s*gọn|kéo\s*dài|bắt\s*đầu|kết\s*thúc|lúc\s*\d|ngày\s*\d|buổi\s*(?:sáng|trưa|chiều|tối)|thay\s*vì|không\s*muốn\s*đi|ghé\s*thêm|cho\s*thêm)',
+          r'(?:thêm|bớt|xóa|xoá|bỏ|đổi|thay|sửa|dời|chuyển|cập\s*nhật|chỉnh|sắp\s*xếp|rút\s*gọn|kéo\s*dài|bắt\s*đầu|kết\s*thúc|lúc\s*\d|ngày\s*\d|buổi\s*(?:sáng|trưa|chiều|tối)|chiều\s*nay|sáng\s*mai|tối\s*nay|nghỉ\s*ngơi|nghỉ\s*(?:ở\s*)?khách\s*sạn|mệt|ngủ\s*nướng|dậy\s*(?:muộn|trễ)|không\s*thích|chỗ\s*khác|gần\s*hơn|xa\s*quá|quay\s*lại|hoàn\s*tác|lịch\s*cũ|như\s*cũ|trước\s*khi\s*sửa|giữ\s*nguyên|nhẹ\s*nhàng|thay\s*vì|không\s*muốn\s*đi|ghé\s*thêm|cho\s*thêm|mưa)',
 
           caseSensitive: false,
 
@@ -1649,7 +1649,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
         RegExp(
 
-          r'(?:them|bot|xoa|bo|doi|thay|sua|doi|chuyen|cap\s*nhat|chinh|sap\s*xep|rut\s*gon|keo\s*dai|bat\s*dau|ket\s*thuc|luc\s*\d|ngay\s*\d|buoi\s*(?:sang|trua|chieu|toi))',
+          r'(?:them|bot|xoa|bo|doi|thay|sua|doi|chuyen|cap\s*nhat|chinh|sap\s*xep|rut\s*gon|keo\s*dai|bat\s*dau|ket\s*thuc|luc\s*\d|ngay\s*\d|buoi\s*(?:sang|trua|chieu|toi)|chieu\s*nay|sang\s*mai|nghi|met|ngu\s*nuong|day\s*(?:muon|tre)|khong\s*thich|cho\s*khac|gan\s*hon|xa\s*qua|quay\s*lai|hoan\s*tac|lich\s*cu|nhu\s*cu|giu\s*nguyen|mua)',
 
           caseSensitive: false,
 
@@ -3492,7 +3492,15 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
 
 
+        if (_isVoiceSession) {
+
+          _userKeepMicOn = true;
+
+        }
+
         if (state.isTtsEnabled) {
+
+          _ttsCancelled = false;
 
           await _playTts(editMsg);
 

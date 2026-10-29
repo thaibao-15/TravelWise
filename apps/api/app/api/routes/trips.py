@@ -839,6 +839,70 @@ def edit_itinerary_for_trip(
         current_user=current_user,
     )
 
+    # 2. Retrieve planning context
+    pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
+    context: Optional[TripPlanningContext] = None
+    if pref and pref.raw_context_snapshot:
+        try:
+            data = json.loads(pref.raw_context_snapshot)
+            context = TripPlanningContext.model_validate(data)
+        except Exception:
+            pass
+
+    if not context and trip.conversation_id:
+        context = TripPlanningContextExtractionService.get_planning_context_by_conversation(
+            session=session,
+            conversation_id=trip.conversation_id,
+            current_user=current_user,
+            check_ownership=True if current_user else False,
+        )
+
+    if not context:
+        context = TripPlanningContext()
+        context.trip.trip_id = trip.id
+        context.trip.destination.city = trip.destination_city or "Đà Nẵng"
+        context.trip.destination.country = trip.destination_country or "Việt Nam"
+
+    # Xử lý trường hợp HOÀN TÁC / QUAY LẠI LỊCH CŨ (is_undo = true)
+    if intent_check.get("is_undo"):
+        backup_data = None
+        if pref and pref.special_requirements:
+            try:
+                stored = json.loads(pref.special_requirements)
+                if isinstance(stored, dict) and "backup_itinerary" in stored:
+                    backup_data = stored["backup_itinerary"]
+            except Exception:
+                pass
+
+        if backup_data:
+            try:
+                backup_itin = ItineraryGenerationResponse.model_validate(backup_data)
+                ItineraryPersistenceService.save_itinerary(
+                    session=session,
+                    trip_id=trip.id,
+                    itinerary=backup_itin,
+                    current_user=current_user,
+                    check_ownership=True if current_user else False,
+                    context=context,
+                )
+                restored_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                    session=session,
+                    trip_id=trip.id,
+                    current_user=current_user,
+                    check_ownership=True if current_user else False,
+                )
+                return ItineraryEditResponse(
+                    status=EditStatusEnum.EDITED.value,
+                    trip_id=trip.id,
+                    conversation_id=trip.conversation_id,
+                    message="Dạ được chứ! Mình đã khôi phục lại lịch trình trước khi chỉnh sửa cho bạn rồi nhé. Mọi kế hoạch đã trở về nguyên vẹn như ban đầu rồi nè!",
+                    applied_changes=["Hoàn tác về phiên bản trước"],
+                    itinerary=restored_details,
+                    warnings=[],
+                )
+            except Exception as undo_err:
+                logger.warning("Undo itinerary restore failed: %s", undo_err)
+
     # Nếu LLM xác định KHÔNG PHẢI là yêu cầu chỉnh sửa (ví dụ hỏi FAQ, thời tiết, giá vé...)
     if not intent_check.get("is_edit_intent"):
         details = ItineraryPersistenceService.get_itinerary_by_trip_id(
@@ -873,37 +937,33 @@ def edit_itinerary_for_trip(
 
     effective_prompt = intent_check.get("change_prompt") or request_data.change_prompt
 
-    # 2. Retrieve planning context
-    pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
-    context: Optional[TripPlanningContext] = None
-    if pref and pref.raw_context_snapshot:
-        try:
-            data = json.loads(pref.raw_context_snapshot)
-            context = TripPlanningContext.model_validate(data)
-        except Exception:
-            pass
-
-    if not context and trip.conversation_id:
-        context = TripPlanningContextExtractionService.get_planning_context_by_conversation(
+    # Lấy lịch trình hiện tại và lưu snapshot backup trước khi chỉnh sửa
+    current_details = None
+    try:
+        current_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
             session=session,
-            conversation_id=trip.conversation_id,
+            trip_id=trip.id,
             current_user=current_user,
             check_ownership=True if current_user else False,
         )
+        if pref and current_details:
+            pref.special_requirements = json.dumps(
+                {"backup_itinerary": current_details.model_dump(mode="json")},
+                ensure_ascii=False,
+            )
+            session.add(pref)
+            session.commit()
+    except Exception as snap_err:
+        logger.warning("Could not snapshot backup itinerary: %s", snap_err)
 
-    if not context:
-        context = TripPlanningContext()
-        context.trip.trip_id = trip.id
-        context.trip.destination.city = trip.destination_city or "Đà Nẵng"
-        context.trip.destination.country = trip.destination_country or "Việt Nam"
-
-    # 3. Re-generate with validated user prompt
+    # 3. Re-generate with validated user prompt and existing itinerary context
     gen_res = ItineraryGenerationService.generate_itinerary(
         session=session,
         context=context,
         trip_id=trip.id,
         save_to_db=True,
         user_prompt=effective_prompt,
+        existing_itinerary=current_details,
     )
 
     # 4. Retrieve fresh details

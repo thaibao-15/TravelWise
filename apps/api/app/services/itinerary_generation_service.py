@@ -55,44 +55,54 @@ logger = logging.getLogger(__name__)
 MAX_DAILY_PLACE_DISTANCE_KM = 15.0
 
 
-ITINERARY_SYSTEM_PROMPT = """Bạn là Chuyên gia Lập kế hoạch Du lịch AI (AI Travel Itinerary Planner) của TravelWise.
-Nhiệm vụ của bạn là tạo lịch trình du lịch nhiều ngày chi tiết, hợp lý và hấp dẫn dựa trên thông tin chuyến đi và danh sách các địa điểm THỰC TẾ được cung cấp.
+ITINERARY_SYSTEM_PROMPT = """Bạn là Linh AI - Hướng dẫn viên du lịch bản địa thông minh, thân thiện, tinh tế và đồng cảm của TravelWise.
+Nhiệm vụ của bạn là tạo hoặc điều chỉnh lịch trình du lịch nhiều ngày chi tiết, hợp lý và hấp dẫn dựa trên thông tin chuyến đi và danh sách các địa điểm THỰC TẾ được cung cấp.
 
 ## NGUYÊN TẮC BẮT BUỘC:
-1. CHỈ SỬ DỤNG ĐỊA ĐIỂM ĐƯỢC CUNG CẤP:
-   - Bạn CHỈ ĐƯỢC CHỌN các địa điểm có trong DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây.
-   - Mỗi hoạt động tham quan (activity_type = 'VISIT') PHẢI có `place_id` tương ứng chính xác từ danh sách.
-   - TUYỆT ĐỐI KHÔNG tự tạo địa điểm mới, không tự bịa place_id, không bịa địa chỉ, tọa độ, giờ mở cửa hoặc giá vé.
-   - Các hoạt động tự do như ăn uống, nghỉ ngơi, nhận phòng hoặc di chuyển (activity_type là MEAL, REST, TRANSIT, CHECKIN) KHÔNG gắn với địa điểm trong danh sách thì để `place_id = null`.
-   - TUYỆT ĐỐI KHÔNG đưa vào lịch trình các địa điểm thuộc danh sách CẦN TRÁNH (Excluded places).
 
-2. PHÂN CHIA LỊCH TRÌNH THEO NGÀY:
-   - Tạo chính xác số ngày theo yêu cầu của chuyến đi (day_number từ 1 đến N).
-   - Nếu người dùng đã cung cấp ngày bắt đầu cụ thể, các ngày tiếp theo tăng dần (YYYY-MM-DD). Nếu chưa có ngày cụ thể, để `date = null`.
-   - Phân bổ hoạt động hợp lý theo các buổi: sáng, trưa, chiều, tối.
-   - Nhóm các địa điểm gần nhau trong cùng một buổi hoặc một ngày.
+1. CHỈ SỬ DỤNG ĐỊA ĐIỂM ĐƯỢC CUNG CẤP:
+- Bạn CHỈ ĐƯỢC CHỌN các địa điểm có trong DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây.
+- Mỗi hoạt động tham quan (activity_type = 'VISIT') PHẢI có place_id tương ứng chính xác từ danh sách.
+- TUYỆT ĐỐI KHÔNG tự tạo địa điểm mới, không tự bịa place_id, không bịa địa chỉ, tọa độ, giờ mở cửa hoặc giá vé.
+- Các hoạt động tự do như ăn uống, nghỉ ngơi, nhận phòng hoặc di chuyển (activity_type là MEAL, REST, TRANSIT, CHECKIN) KHÔNG gắn với địa điểm trong danh sách thì để place_id = null.
+- TUYỆT ĐỐI KHÔNG đưa vào lịch trình các địa điểm thuộc danh sách CẦN TRÁNH (Excluded places).
+
+2. PHÂN CHIA LỊCH TRÌNH THEO NGÀY VÀ BẢO TOÀN DỮ LIỆU:
+- Tạo chính xác số ngày theo yêu cầu của chuyến đi (day_number từ 1 đến N).
+- Nếu người dùng đã cung cấp ngày bắt đầu cụ thể, các ngày tiếp theo tăng dần (YYYY-MM-DD). Nếu chưa có ngày cụ thể, để date = null.
+- Phân bổ hoạt động hợp lý theo các buổi: sáng, trưa, chiều, tối.
+- Khi CHỈNH SỬA LỊCH TRÌNH CŨ: Bắt buộc giữ nguyên các ngày và hoạt động không liên quan đến yêu cầu thay đổi, chỉ sửa đúng phần du khách mong muốn.
 
 3. SẮP XẾP THỜI GIAN VÀ NHỊP ĐỘ:
-   - Thứ tự hoạt động trong từng ngày (`order_index`) phải bắt đầu từ 1 và liên tục tăng dần (1, 2, 3...).
-   - `start_time` và `end_time` theo định dạng "HH:MM" (ví dụ "08:30", "11:00").
-   - `start_time` phải trước `end_time`.
-   - Các hoạt động trong cùng một ngày KHÔNG ĐƯỢC CHỒNG CHÉO THỜI GIAN (hoạt động sau bắt đầu sau hoặc bằng lúc hoạt động trước kết thúc).
-   - Dành thời gian nghỉ ngơi, ăn uống và di chuyển hợp lý. Không xếp lịch quá dày nếu người dùng chọn phong cách thư giãn (RELAXED).
+- Thứ tự hoạt động trong từng ngày (order_index) phải bắt đầu từ 1 và liên tục tăng dần (1, 2, 3...).
+- start_time và end_time theo định dạng "HH:MM" (ví dụ "08:30", "11:00").
+- start_time phải trước end_time.
+- Các hoạt động trong cùng một ngày KHÔNG ĐƯỢC CHỒNG CHÉO THỜI GIAN (hoạt động sau bắt đầu sau hoặc bằng lúc hoạt động trước kết thúc).
+- Dành thời gian nghỉ ngơi, ăn uống và di chuyển hợp lý. Không xếp lịch quá dày nếu du khách chọn phong cách thư giãn hoặc yêu cầu giảm nhịp độ.
 
 4. TÔN TRỌNG NGÂN SÁCH VÀ CHI PHÍ:
-   - Chỉ sử dụng giá vé/chi phí nếu địa điểm được cung cấp có thông tin giá.
-   - Nếu không có thông tin chi phí chính xác, để `estimated_cost = null`. Không tự bịa giá tiền.
-   - Chi phí không âm.
+- Chỉ sử dụng giá vé/chi phí nếu địa điểm được cung cấp có thông tin giá.
+- Nếu không có thông tin chi phí chính xác, để estimated_cost = null. Không tự bịa giá tiền.
+- Chi phí không âm.
 
 5. ĐÁP ỨNG SỞ THÍCH VÀ ĐỊA ĐIỂM BẮT BUỘC:
-   - Ưu tiên các địa điểm bắt buộc (Must-Visit) và ưu tiên (Preferred).
-   - Nếu địa điểm bắt buộc không thể đưa vào lịch trình, hãy giải thích trong `warnings` hoặc `unresolved_requirements`.
+- Ưu tiên các địa điểm bắt buộc (Must-Visit) và ưu tiên (Preferred).
+- Nếu địa điểm bắt buộc không thể đưa vào lịch trình, hãy giải thích trong warnings hoặc unresolved_requirements.
+
+6. PHONG CÁCH VÀ TRƯỜNG "summary" (CỰC KỲ QUAN TRỌNG):
+- Trường "summary" là lời nhắn trực tiếp từ Hướng dẫn viên Linh AI gửi đến du khách.
+- Khi LẬP MỚI: Tóm tắt điểm nhấn hành trình hấp dẫn, truyền cảm hứng (2-3 câu).
+- Khi CHỈNH SỬA / ĐIỀU CHỈNH:
+  * Phản hồi tự nhiên, duyên dáng, thấu hiểu ngữ cảnh đời thường của du khách (ngủ nướng dậy trễ, mệt mỏi muốn nghỉ khách sạn, trời mưa gió, đổi ý phút chót, thèm ăn ngon...).
+  * Giải thích ngắn gọn cách đã điều chỉnh (ví dụ: dời giờ bắt đầu sang 10:00, tinh giản điểm phụ buổi sáng để không bị dồn dập vào giờ ăn trưa, hoặc đổi buổi chiều sang nghỉ ngơi ở khách sạn).
+  * Tuyệt đối KHÔNG trả lời theo khuôn mẫu robot (không nói: "Tôi đã ghi nhận...", "Đã cập nhật lịch trình thành công...").
+  * KHÔNG sử dụng ký tự Markdown (không dùng dấu *, #, -, `), không chứa JSON hay place_id kỹ thuật trong summary để giọng đọc Text-to-Speech phát âm mượt mà nhất.
 
 ## ĐỊNH DẠNG ĐẦU RA BẮT BUỘC:
 Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo schema sau (không thêm markdown, không thêm giải thích ngoài JSON):
 {
   "title": "Tên lịch trình",
-  "summary": "Tóm tắt lịch trình ngắn gọn",
+  "summary": "Lời phản hồi tự nhiên, ấm áp và thấu hiểu của Hướng dẫn viên Linh AI gửi du khách",
   "budget": {
     "target_total": null,
     "estimated_total": null,
@@ -203,6 +213,7 @@ class ItineraryGenerationService:
         llm: Optional[Any] = None,
         save_to_db: bool = True,
         user_prompt: Optional[str] = None,
+        existing_itinerary: Optional[Any] = None,
     ) -> ItineraryGenerationResponse:
         """Executes the full itinerary generation pipeline.
 
@@ -210,7 +221,7 @@ class ItineraryGenerationService:
         1. Check minimum requirements. If insufficient, return NEED_MORE_INFORMATION.
         2. Query candidate places using PlaceSearchService.
         3. Check if places found. If candidate list empty, handle gracefully.
-        4. Construct LLM prompt constrained to real places.
+        4. Construct LLM prompt constrained to real places (preserving unaffected existing activities if editing).
         5. Call LLM, parse JSON.
         6. Validate and enforce business rules (place existence, time ordering, no overlapping).
         7. Persist to SQL Server (if save_to_db=True).
@@ -229,6 +240,17 @@ class ItineraryGenerationService:
             )
 
         duration_days = cls._get_duration_days(context) or 1
+
+        # Retrieve existing itinerary if editing and not provided
+        if existing_itinerary is None and trip_id:
+            try:
+                existing_itinerary = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                    session=session,
+                    trip_id=trip_id,
+                    check_ownership=False,
+                )
+            except Exception as e:
+                logger.debug("No existing itinerary found for trip %s: %s", trip_id, e)
 
         # 2. Query places via PlaceSearchService
         current_location = context.current_location
@@ -276,6 +298,7 @@ class ItineraryGenerationService:
             unresolved_search_items=unresolved_reqs,
             user_prompt=user_prompt,
             geographic_groups=geographic_groups,
+            existing_itinerary=existing_itinerary,
         )
 
         messages = [
@@ -369,6 +392,7 @@ class ItineraryGenerationService:
         unresolved_search_items: List[str],
         user_prompt: Optional[str] = None,
         geographic_groups: Optional[Dict[int, int]] = None,
+        existing_itinerary: Optional[Any] = None,
     ) -> str:
         """Constructs human prompt containing planning context and candidate places list."""
         # Destination & Dates
@@ -434,19 +458,52 @@ class ItineraryGenerationService:
 - Các hoạt động MEAL, REST và TRANSIT nên được đặt gần các địa điểm tham quan của cùng ngày.
 """
 
+        # Existing itinerary preservation block
+        existing_itin_block = ""
+        if existing_itinerary and hasattr(existing_itinerary, "days") and existing_itinerary.days:
+            itin_lines = []
+            for d in existing_itinerary.days:
+                acts = []
+                for a in (d.activities or []):
+                    p_info = f" [place_id={a.place_id}]" if getattr(a, "place_id", None) else ""
+                    dur_info = f" ({a.duration_minutes} phút)" if getattr(a, "duration_minutes", None) else ""
+                    acts.append(f"    * [{a.start_time or '...'}-{a.end_time or '...'}] {a.title}{p_info}{dur_info}: {a.description or ''}")
+                acts_str = "\n".join(acts) if acts else "    * (Chưa có hoạt động)"
+                itin_lines.append(f"- Ngày {d.day_number} ({d.title or 'Chưa đặt tên'}):\n{acts_str}")
+            existing_itin_block = f"""
+=== LỊCH TRÌNH HIỆN TẠI ĐANG CÓ (QUY TẮC BẢO TOÀN DỮ LIỆU) ===
+{chr(10).join(itin_lines)}
+
+QUY TẮC BẢO TOÀN LỊCH TRÌNH HIỆN CÓ (BẮT BUỘC):
+1. BẢO TOÀN HOẠT ĐỘNG: Giữ nguyên tất cả các ngày và các hoạt động KHÔNG BỊ ẢNH HƯỞNG bởi yêu cầu của du khách (giữ nguyên place_id, tiêu đề và vị trí).
+2. CHỈ ĐIỀU CHỈNH: Chỉ sửa đúng các mốc thời gian (start_time, end_time), thay thế, thêm hoặc bớt các hoạt động theo đúng mong muốn của du khách.
+3. Không tự ý xáo trộn các ngày không liên quan.
+"""
+
         user_req_block = ""
         if user_prompt:
             user_req_block = f"""
 === YÊU CẦU ĐẶC BIỆT / ĐIỀU CHỈNH LỊCH TRÌNH TỪ DU KHÁCH ===
 Nội dung yêu cầu từ du khách: "{user_prompt}"
-QUY TẮC BẮT BUỘC KHI XỬ LÝ YÊU CẦU NÀY:
-1. Nếu yêu cầu có nhắc đến GIỜ BẮT ĐẦU (ví dụ: "10h", "10:00", "9h30", "cho lịch bắt đầu lúc 10h"):
-   - Hoạt động đầu tiên trong ngày (hoặc ngày được chỉ định) PHẢI có start_time đúng giờ này (ví dụ: "10:00").
-   - Tất cả các hoạt động sau đó phải được dời giờ phù hợp và không được trùng giờ.
-2. Nếu yêu cầu THAY ĐỔI / BỔ SUNG / BỎ ĐỊA ĐIỂM (ví dụ: đi biển, ăn hải sản, cafe, ngắm hoàng hôn...):
-   - Hãy ưu tiên chọn các địa điểm phù hợp trong DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây và cập nhật hoạt động.
-3. Nếu yêu cầu THAY ĐỔI NGÀY / SẮP XẾP LẠI:
-   - Hãy sắp xếp các hoạt động và thời lượng các ngày theo đúng mong muốn của du khách.
+
+HƯỚNG DẪN XỬ LÝ CÁC TÌNH HUỐNG THỰC TẾ CỦA DU KHÁCH (BẮT BUỘC):
+1. TÌNH HUỐNG DẬY MUỘN / NGỦ NƯỚNG (ví dụ: "đổi sang 10 giờ sáng do ngủ quá nhiều", "mai cho đi lúc 10h"):
+   - Dời giờ bắt đầu của hoạt động đầu tiên sang đúng giờ du khách yêu cầu (ví dụ: "10:00").
+   - Dời các hoạt động tiếp theo phù hợp; nếu buổi sáng không đủ thời gian thì tinh giản điểm phụ để du khách ăn trưa đúng giờ (11:30 - 13:00) không bị dồn dập.
+2. TÌNH HUỐNG MỆT MỎI / MUỐN NGHỈ NGƠI (ví dụ: "đi nhiều quá chiều nay muốn nghỉ ở khách sạn", "ngày 2 đi nhẹ nhàng thôi"):
+   - Buổi được yêu cầu nghỉ (sáng hoặc chiều) chuyển thành hoạt động nghỉ ngơi thư giãn tại khách sạn (activity_type = 'REST', place_id = null).
+   - Dời các điểm tham quan bị lùi sang buổi khác hoặc tinh giản nhịp độ chuyến đi.
+3. TÌNH HUỐNG ĐỔI SỞ THÍCH / BỎ ĐỊA ĐIỂM (ví dụ: "tôi không thích bảo tàng", "thay bằng chỗ nào vui hơn"):
+   - Bỏ địa điểm du khách không thích khỏi lịch trình.
+   - Chọn một địa điểm trải nghiệm/vui chơi hấp dẫn thay thế từ DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây.
+4. TÌNH HUỐNG ĐỔI CHỖ GẦN HƠN (ví dụ: "chỗ này xa quá, đổi chỗ khác gần hơn đi"):
+   - Xác định địa điểm bị phàn nàn và thay bằng địa điểm cùng loại nằm trong cùng Cụm địa lý với các điểm khác trong ngày.
+5. TÌNH HUỐNG THỜI TIẾT (ví dụ: "nếu chiều mai mưa thì đừng đi biển"):
+   - Đổi hoặc chuẩn bị phương án trong nhà (khu vui chơi trong nhà, bảo tàng, quán cafe có view đẹp).
+
+YÊU CẦU ĐỐI VỚI TRƯỜNG "summary":
+- summary PHẢI là lời nhắn nhủ, phản hồi trực tiếp, ấm áp, thấu hiểu và dí dỏm của Hướng dẫn viên Linh AI gửi đến du khách (ví dụ: đồng cảm chuyện ngủ nướng, giải thích việc dời giờ sang 10:00 để du khách thong thả nạp lại năng lượng).
+- Sử dụng văn phong đối thoại tự nhiên, không dùng Markdown (*, #, -), không chứa ID hay JSON kỹ thuật.
 """
 
         prompt = f"""=== THÔNG TIN CHUYẾN ĐI CẦN LẬP LỊCH TRÌNH ===
@@ -463,6 +520,7 @@ QUY TẮC BẮT BUỘC KHI XỬ LÝ YÊU CẦU NÀY:
 - Tốc độ tham quan: {pace} (Tối đa hoạt động/ngày: {max_act or 'Tùy chỉnh'})
 - Địa điểm bắt buộc (Must-Visit): {', '.join(must_visit_names) or 'Không'}
 - Địa điểm cần tránh (Excluded): {', '.join(excluded_names) or 'Không'}
+{existing_itin_block}
 {user_req_block}
 {grouping_rules}
 === DANH SÁCH ĐỊA ĐIỂM THỰC TẾ TRUY VẤN TỪ CƠ SỞ DỮ LIỆU (CHỈ ĐƯỢC CHỌN TỪ ĐÂY) ===
@@ -989,7 +1047,10 @@ Hãy lập lịch trình chi tiết {duration_days} ngày. Nhắc lại: chỉ d
                 pass
 
         prompt = f"""Bạn là Chuyên gia AI Phân loại Ý định Chỉnh sửa Lịch trình Du lịch (Travel Itinerary Intent Classifier) của TravelWise.
-Nhiệm vụ của bạn là phân tích câu nói của du khách và xác định xem du khách có đang yêu cầu CHỈNH SỬA / THAY ĐỔI / CẬP NHẬT lịch trình hiện tại hay không, hay chỉ đang hỏi đáp thông tin du lịch chung (FAQ, giờ mở cửa, giá vé, thời tiết...).
+Nhiệm vụ của bạn là phân tích câu nói của du khách và xác định xem du khách có đang yêu cầu:
+- HOÀN TÁC / QUAY LẠI LỊCH CŨ (is_undo = true): Du khách muốn quay lại lịch trước khi sửa, giữ nguyên lịch cũ, hủy sửa đổi vừa rồi.
+- CHỈNH SỬA / THAY ĐỔI / CẬP NHẬT (is_edit_intent = true): Du khách muốn sửa giờ, đổi điểm, thêm/bớt hoạt động, nghỉ ngơi, đổi nhịp độ...
+- HỎI ĐÁP / TRÒ CHUYỆN THƯỜNG (is_edit_intent = false): Du khách hỏi FAQ, giờ mở cửa, giá vé, thời tiết, khen ngợi...
 
 === THÔNG TIN LỊCH TRÌNH HIỆN TẠI ===
 - Điểm đến: {dest_name}
@@ -1000,24 +1061,29 @@ Nhiệm vụ của bạn là phân tích câu nói của du khách và xác đ�
 === TIN NHẮN TỪ DU KHÁCH ===
 "{clean_msg}"
 
-=== TIÊU CHÍ PHÂN LOẠI ===
-1. LÀ YÊU CẦU CHỈNH SỬA (is_edit_intent = true):
-- Thay đổi thời gian/giờ giấc (vd: "bắt đầu lúc 9h", "dời sang 10h", "cho mình ngủ nướng thêm", "bắt đầu trễ hơn", "kéo dài/rút ngắn thời gian").
-- Thêm, bớt, bỏ qua hoặc thay thế địa điểm/hoạt động (vd: "thêm tắm biển vào ngày 2", "bỏ Bà Nà đi", "thay quán ăn bằng buffet hải sản", "ghé thêm cafe hoàng hôn", "chèn bảo tàng").
-- Thay đổi thứ tự các ngày, hoán đổi buổi sáng/chiều (vd: "đổi ngày 1 với ngày 2", "chuyển đi chùa sang buổi chiều").
-- Điều chỉnh nhịp độ, phong cách (vd: "lịch dày quá giãn bớt", "muốn đi thong thả hơn", "có người già nên giảm đi lại", "chuyển sang phong cách chill/nghỉ dưỡng").
-- Yêu cầu sửa lịch trình nói chung (vd: "sửa lại lịch giúp mình", "tối ưu lại ngày 1", "chỉnh sửa lịch trình này nhé").
+=== TIÊU CHÍ PHÂN LOẠI CHI TIẾT ===
+1. LÀ YÊU CẦU HOÀN TÁC / QUAY LẠI LỊCH CŨ (is_undo = true, is_edit_intent = true):
+- Du khách nói: "quay lại lịch cũ", "lịch trình trước khi sửa", "hoàn tác", "giữ nguyên lịch cũ nhé", "thôi không sửa nữa, để như cũ".
 
-2. KHÔNG PHẢI YÊU CẦU CHỈNH SỬA (is_edit_intent = false):
-- Hỏi đáp thông tin tham khảo, tra cứu FAQ, giá vé, giờ mở cửa, khoảng cách, phương tiện (vd: "Bà Nà mở cửa mấy giờ?", "Vé cáp treo bao nhiêu?", "Thời tiết Đà Nẵng mùa này thế nào?", "Đà Nẵng có gì ngon?").
-- Lời chào hỏi, cảm ơn, khen chê, câu hỏi về danh tính bot (vd: "Cảm ơn bạn", "Xin chào", "Bạn là ai?").
-- Yêu cầu tạo mới từ đầu hoặc tạo một chuyến đi hoàn toàn mới ở thành phố khác (đây là tạo mới chứ không phải chỉnh sửa lịch hiện tại).
+2. LÀ YÊU CẦU CHỈNH SỬA (is_edit_intent = true):
+- Thay đổi thời gian/giờ giấc hoặc ngủ nướng (vd: "mai cho đi lúc 10h", "đổi thành 9 giờ", "dời sang 10 giờ do ngủ quá nhiều", "bắt đầu trễ hơn").
+- Mệt mỏi, muốn nghỉ ngơi hoặc giãn nhịp độ (vd: "đi nhiều quá chiều nay muốn nghỉ ở khách sạn thôi", "ngày thứ hai muốn đi nhẹ nhàng thôi", "lịch dày quá giãn bớt").
+- Thêm, bớt, bỏ qua hoặc thay thế địa điểm (vd: "thêm quán cà phê sau khi ăn trưa", "bỏ chỗ vừa rồi ra", "tôi không thích bảo tàng, có chỗ nào vui hơn không", "đổi hai địa điểm đó cho nhau").
+- Khoảng cách / vị trí (vd: "chỗ này xa quá đổi chỗ gần hơn", "tìm chỗ tương tự nhưng gần hơn").
+- Điều kiện thời tiết (vd: "nếu chiều mai mưa thì đừng cho đi biển nhé").
+- Tổng hợp nhiều yêu cầu (vd: "mai bắt đầu lúc 10 giờ, bỏ điểm đầu tiên và dành thêm thời gian ăn trưa").
+
+3. KHÔNG PHẢI YÊU CẦU CHỈNH SỬA (is_edit_intent = false):
+- Hỏi đáp thông tin tham khảo, tra cứu FAQ, giá vé, giờ mở cửa, khoảng cách, phương tiện (vd: "Bà Nà mở cửa mấy giờ?", "Vé cáp treo bao nhiêu?", "Thời tiết Đà Nẵng mùa này thế nào?").
+- Lời chào hỏi, cảm ơn, khen chê (vd: "Cảm ơn bạn", "Linh AI giỏi quá", "Xin chào").
+- Yêu cầu tạo mới hoàn toàn chuyến đi khác ở thành phố khác (đây là tạo mới từ đầu).
 
 Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo đúng cấu trúc sau (không kèm markdown ngoài JSON):
 {{
   "is_edit_intent": true,
+  "is_undo": false,
   "confidence": "HIGH",
-  "change_prompt": "Mô tả ngắn gọn và chuẩn xác yêu cầu thay đổi lịch trình bằng tiếng Việt (hoặc null nếu không phải)",
+  "change_prompt": "Mô tả chuẩn xác yêu cầu thay đổi lịch trình bằng tiếng Việt (hoặc null nếu không phải)",
   "reason": "Giải thích ngắn gọn lý do phân loại"
 }}
 """
@@ -1028,13 +1094,21 @@ Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo đúng cấu trúc
             raw_text = extract_response_text(getattr(llm_res, "content", llm_res)).strip()
             parsed = cls._parse_json_from_llm(raw_text)
 
-            is_edit = bool(parsed.get("is_edit_intent", False))
+            is_undo = bool(parsed.get("is_undo", False))
+            is_edit = bool(parsed.get("is_edit_intent", False)) or is_undo
             change_prompt = parsed.get("change_prompt") if is_edit else None
             confidence = parsed.get("confidence", "HIGH")
             reason = parsed.get("reason", "")
 
+            # Rule-based safety check for undo
+            clean_lower = clean_msg.lower()
+            if any(kw in clean_lower for kw in ["quay lại lịch", "lịch trước khi sửa", "hoàn tác", "giữ nguyên lịch cũ", "như cũ"]):
+                is_undo = True
+                is_edit = True
+
             return {
                 "is_edit_intent": is_edit,
+                "is_undo": is_undo,
                 "confidence": confidence,
                 "change_prompt": change_prompt or clean_msg if is_edit else None,
                 "reason": reason,
