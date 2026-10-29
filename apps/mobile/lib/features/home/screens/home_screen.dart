@@ -15,7 +15,7 @@ import '../widgets/category_grid.dart';
 import '../widgets/ai_itinerary_card.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -66,7 +66,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   CustomAppBar(
                     weather: weather.when(
                       loading: () => '...',
-                      error: (_, __) => null,
+                      error: (_, _) => null,
                       data: (value) => value == null
                           ? null
                           : '${value.current.temperature.round()}°C',
@@ -194,7 +194,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+              separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
               itemBuilder: (context, index) {
                 final place = items[index];
                 return _buildSearchResultTile(context, place);
@@ -211,7 +211,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       leading: CircleAvatar(
         radius: 24,
-        backgroundColor: AppColors.primary.withOpacity(0.1),
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
         backgroundImage: place.imageUrl.isNotEmpty
             ? NetworkImage(place.imageUrl)
             : null,
@@ -281,7 +281,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: DestinationCard(
                   title: place.name,
-                  rating: place.rating.toStringAsFixed(1),
+                  rating: place.reviewCount > 0
+                      ? place.rating.toStringAsFixed(1)
+                      : null,
                   subtitle: place.description.isEmpty
                       ? 'Khám phá địa điểm này'
                       : place.description,

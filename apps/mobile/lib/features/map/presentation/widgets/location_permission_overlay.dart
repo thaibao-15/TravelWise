@@ -62,10 +62,10 @@ class LocationPermissionOverlay extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.08),
+                    color: AppColors.warning.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(AppRadius.md),
                     border: Border.all(
-                        color: AppColors.warning.withOpacity(0.3)),
+                        color: AppColors.warning.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,7 +212,7 @@ class _AnimatedGlobeIconState extends State<_AnimatedGlobeIcon>
           gradient: LinearGradient(
             colors: isError
                 ? [
-                    AppColors.warning.withOpacity(0.8),
+                    AppColors.warning.withValues(alpha: 0.8),
                     AppColors.warning,
                   ]
                 : [
@@ -225,7 +225,7 @@ class _AnimatedGlobeIconState extends State<_AnimatedGlobeIcon>
           boxShadow: [
             BoxShadow(
               color: (isError ? AppColors.warning : AppColors.primary)
-                  .withOpacity(0.3),
+                  .withValues(alpha: 0.3),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -269,7 +269,7 @@ class _PrimaryButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.35),
+                color: AppColors.primary.withValues(alpha: 0.35),
                 blurRadius: 14,
                 offset: const Offset(0, 6),
               ),

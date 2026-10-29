@@ -10,11 +10,11 @@ class CategoryGrid extends StatelessWidget {
   final ValueChanged<int?>? onCategorySelected;
 
   const CategoryGrid({
-    Key? key,
+    super.key,
     required this.categories,
     this.selectedCategoryId,
     this.onCategorySelected,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +25,7 @@ class CategoryGrid extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         itemCount: categories.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, index) {
           if (index == 0) {
             return _buildChip(
@@ -73,7 +73,7 @@ class CategoryGrid extends StatelessWidget {
                 ? null
                 : [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),

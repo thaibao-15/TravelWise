@@ -13,7 +13,7 @@ import '../../../../shared/widgets/main_shell.dart';
 /// Login screen that integrates with Riverpod auth state management.
 /// Watches the authProvider for state changes and handles navigation + error display.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -219,7 +219,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               'https://developers.google.com/identity/images/g-logo.png',
                               height: 20,
                               width: 20,
-                              errorBuilder: (_, __, ___) =>
+                              errorBuilder: (_, _, _) =>
                                   const Icon(LucideIcons.globe, size: 20),
                             ),
                             const SizedBox(width: AppSpacing.sm),
@@ -287,8 +287,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.black.withOpacity(0.3),
-              Colors.black.withOpacity(0.7),
+              Colors.black.withValues(alpha: 0.3),
+              Colors.black.withValues(alpha: 0.7),
             ],
           ),
         ),
@@ -306,10 +306,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       vertical: AppSpacing.xs,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(AppRadius.xl),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                       ),
                     ),
                     child: Text(
@@ -326,10 +326,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   vertical: AppSpacing.xs,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(AppRadius.xl),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                   ),
                 ),
                 child: Row(
@@ -354,7 +354,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               Text(
                 'Plan smarter, travel better',
                 style: AppTextStyles.bodyLarge.copyWith(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                 ),
               ),
               const SizedBox(height: AppSpacing.xxl * 2),

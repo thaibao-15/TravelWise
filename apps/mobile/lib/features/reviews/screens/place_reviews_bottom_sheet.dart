@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../auth/presentation/providers/auth_notifier.dart';
 import '../../auth/presentation/providers/auth_state.dart';
+import '../../home/providers/home_provider.dart';
 import '../models/review_model.dart';
 import '../services/review_service.dart';
 import '../widgets/review_filter_chips.dart';
@@ -62,6 +64,9 @@ class _PlaceReviewsBottomSheetState
   String? _errorMessage;
 
   List<PlaceReview> _reviews = [];
+  PlaceReview? _myReview;
+  bool _isLoadingMyReview = true;
+  String? _myReviewError;
   late double _ratingAvg;
   late int _totalReviews;
   Map<int, int> _ratingBreakdown = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0};
@@ -72,6 +77,34 @@ class _PlaceReviewsBottomSheetState
     _ratingAvg = widget.ratingAvg;
     _totalReviews = widget.totalReviews;
     _fetchReviews();
+    _fetchMyReview();
+  }
+
+  Future<void> _fetchMyReview() async {
+    try {
+      final review = await _reviewService.getMyPlaceReview(
+        placeId: widget.placeId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _myReview = review;
+        _isLoadingMyReview = false;
+        _myReviewError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      final isUnauthenticated =
+          error is DioException &&
+          (error.response?.statusCode == 401 ||
+              error.response?.statusCode == 403);
+      setState(() {
+        _myReview = null;
+        _isLoadingMyReview = false;
+        _myReviewError = isUnauthenticated
+            ? null
+            : 'Không thể kiểm tra đánh giá của bạn: $error';
+      });
+    }
   }
 
   Future<void> _fetchReviews() async {
@@ -143,12 +176,15 @@ class _PlaceReviewsBottomSheetState
       context: context,
       placeId: widget.placeId,
       placeName: widget.placeName,
+      reviewToEdit: _myReview,
       onReviewSubmitted: (newReview) {
+        setState(() => _myReview = newReview);
+        invalidatePlaceRatingProviders(ref, widget.placeId);
         // Reload reviews directly from backend API
         _fetchReviews();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🎉 Đăng đánh giá thành công! Cảm ơn bạn.'),
+            content: Text('Đã lưu đánh giá của bạn. Cảm ơn bạn.'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -162,7 +198,9 @@ class _PlaceReviewsBottomSheetState
       placeId: widget.placeId,
       placeName: widget.placeName,
       reviewToEdit: review,
-      onReviewSubmitted: (_) {
+      onReviewSubmitted: (updatedReview) {
+        setState(() => _myReview = updatedReview);
+        invalidatePlaceRatingProviders(ref, widget.placeId);
         _fetchReviews();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -228,17 +266,29 @@ class _PlaceReviewsBottomSheetState
                   ),
                 ),
                 TextButton.icon(
-                  onPressed: _onWriteReviewTap,
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Viết đánh giá'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  onPressed: _isLoadingMyReview || _myReviewError != null
+                      ? null
+                      : _onWriteReviewTap,
+                  icon: Icon(
+                    _myReview == null
+                        ? Icons.rate_review_outlined
+                        : Icons.edit_outlined,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _myReviewError != null
+                        ? 'Thử tải lại'
+                        : _myReview == null
+                        ? 'Viết đánh giá'
+                        : 'Sửa đánh giá',
                   ),
                 ),
+                if (_myReviewError != null)
+                  IconButton(
+                    tooltip: 'Tải lại đánh giá của bạn',
+                    onPressed: _fetchMyReview,
+                    icon: const Icon(Icons.refresh),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.close, color: AppColors.textSecondary),
                   onPressed: () => Navigator.of(context).pop(),
@@ -381,20 +431,17 @@ class _PlaceReviewsBottomSheetState
                       ),
                     )
                   else
-                    ..._reviews.map(
-                      (review) {
-                        final authState = ref.watch(authProvider);
-                        final isOwner = authState is AuthAuthenticated &&
-                            authState.user.id == review.userId;
-                        return ReviewItemCard(
-                          review: review,
-                          onHelpfulToggled: _onHelpfulToggled,
-                          onEdit: isOwner
-                              ? () => _onEditReviewTap(review)
-                              : null,
-                        );
-                      },
-                    ),
+                    ..._reviews.map((review) {
+                      final authState = ref.watch(authProvider);
+                      final isOwner =
+                          authState is AuthAuthenticated &&
+                          authState.user.id == review.userId;
+                      return ReviewItemCard(
+                        review: review,
+                        onHelpfulToggled: _onHelpfulToggled,
+                        onEdit: isOwner ? () => _onEditReviewTap(review) : null,
+                      );
+                    }),
                 ],
               ),
             ),

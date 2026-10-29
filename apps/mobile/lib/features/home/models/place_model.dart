@@ -2,6 +2,7 @@ class Place {
   final int id;
   final String name;
   final String description;
+  final int? categoryId;
   final String? address;
   final double? latitude;
   final double? longitude;
@@ -9,11 +10,13 @@ class Place {
   final int reviewCount;
   final String imageUrl;
   final String? secondaryImageUrl;
+  final double? distanceKm;
 
   const Place({
     required this.id,
     required this.name,
     required this.description,
+    this.categoryId,
     this.address,
     this.latitude,
     this.longitude,
@@ -21,6 +24,7 @@ class Place {
     required this.reviewCount,
     required this.imageUrl,
     this.secondaryImageUrl,
+    this.distanceKm,
   });
 
   factory Place.fromJson(
@@ -47,6 +51,7 @@ class Place {
       id: (json['id'] as num).toInt(),
       name: (json['name'] as String?) ?? 'Địa điểm chưa đặt tên',
       description: (json['description'] as String?)?.trim() ?? '',
+      categoryId: (json['category_id'] as num?)?.toInt(),
       address: json['address'] as String?,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
@@ -54,6 +59,7 @@ class Place {
       reviewCount: (json['review_count'] as num?)?.toInt() ?? 0,
       imageUrl: imageUrls.isEmpty ? '' : imageUrls.first,
       secondaryImageUrl: imageUrls.length > 1 ? imageUrls[1] : null,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
     );
   }
 

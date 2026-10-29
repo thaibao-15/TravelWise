@@ -226,6 +226,46 @@ class TestPlaceReviews(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    def test_get_my_review_for_place(self):
+        create_response = self.client.post(
+            f"/api/v1/places/{self.place_id}/reviews",
+            json={"rating": 4, "comment": "Đánh giá của tôi"},
+            headers=self.headers_user1,
+        )
+        self.assertEqual(create_response.status_code, 201)
+
+        response = self.client.get(
+            f"/api/v1/places/{self.place_id}/reviews/me",
+            headers=self.headers_user1,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], create_response.json()["id"])
+        self.assertEqual(response.json()["user_id"], self.user1_id)
+
+        other_user_response = self.client.get(
+            f"/api/v1/places/{self.place_id}/reviews/me",
+            headers=self.headers_user2,
+        )
+        self.assertEqual(other_user_response.status_code, 200)
+        self.assertIsNone(other_user_response.json())
+
+    def test_get_my_review_for_place_returns_null_when_missing(self):
+        response = self.client.get(
+            f"/api/v1/places/{self.place_id}/reviews/me",
+            headers=self.headers_user1,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json())
+
+    def test_get_my_review_for_place_requires_authentication(self):
+        response = self.client.get(
+            f"/api/v1/places/{self.place_id}/reviews/me",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
     # -------------------------------------------------------------------------
     # 5. Chống đánh giá trùng lặp (Duplicate review -> 409)
     # -------------------------------------------------------------------------

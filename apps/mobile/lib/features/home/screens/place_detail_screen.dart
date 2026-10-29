@@ -5,6 +5,8 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
+import '../../../shared/widgets/main_shell.dart';
+import '../../reviews/widgets/place_reviews_section.dart';
 import '../models/place_model.dart';
 import '../providers/home_provider.dart';
 
@@ -31,13 +33,13 @@ class PlaceDetailScreen extends ConsumerWidget {
   }
 }
 
-class _PlaceDetailContent extends StatelessWidget {
+class _PlaceDetailContent extends ConsumerWidget {
   final Place place;
 
   const _PlaceDetailContent({required this.place});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final imageUrls = [
       place.imageUrl,
       if (place.secondaryImageUrl != null) place.secondaryImageUrl!,
@@ -69,8 +71,10 @@ class _PlaceDetailContent extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: Text(place.name, style: AppTextStyles.h2)),
-                    const SizedBox(width: AppSpacing.sm),
-                    _Rating(rating: place.rating, reviews: place.reviewCount),
+                    if (place.reviewCount > 0) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      _Rating(rating: place.rating, reviews: place.reviewCount),
+                    ],
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -95,11 +99,22 @@ class _PlaceDetailContent extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl),
+                PlaceReviewsSection(
+                  placeId: place.id,
+                  placeName: place.name,
+                  initialRating: place.rating,
+                  initialReviewCount: place.reviewCount,
+                ),
+                const SizedBox(height: AppSpacing.xl),
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      ref.read(exploreMapFocusPlaceProvider.notifier).state =
+                          place;
+                      MainShell.switchToTab(context, 1);
+                    },
                     icon: const Icon(LucideIcons.map),
                     label: const Text('Xem trên bản đồ'),
                     style: ElevatedButton.styleFrom(
@@ -168,7 +183,7 @@ class _ImageGalleryState extends State<_ImageGallery> {
                 ],
               );
             },
-            errorBuilder: (_, __, ___) => _placeholder(),
+            errorBuilder: (_, _, _) => _placeholder(),
           ),
         ),
         if (widget.imageUrls.length > 1)
@@ -188,7 +203,7 @@ class _ImageGalleryState extends State<_ImageGallery> {
                   decoration: BoxDecoration(
                     color: _currentIndex == index
                         ? Colors.white
-                        : Colors.white.withOpacity(0.65),
+                        : Colors.white.withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
