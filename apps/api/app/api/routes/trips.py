@@ -1025,7 +1025,11 @@ def edit_itinerary_for_trip(
         )
 
     effective_prompt = intent_check.get("change_prompt") or request_data.change_prompt
-    if request_data.target_day and f"ngày {request_data.target_day}" not in effective_prompt.lower():
+    if (
+        request_data.target_day
+        and not explicit_days_match
+        and not re.search(r"ngày\s*(?:thứ\s*)?\d+", effective_prompt.lower())
+    ):
         effective_prompt = f"[Áp dụng cho Ngày {request_data.target_day}] {effective_prompt}"
 
     # Lưu snapshot backup trước khi chỉnh sửa (tự tạo TripPreference nếu chưa có)

@@ -41,7 +41,9 @@ class DioClient {
     );
 
     _dio.interceptors.add(_authInterceptor());
-    _dio.interceptors.add(_loggingInterceptor());
+    if (kDebugMode) {
+      _dio.interceptors.add(_loggingInterceptor());
+    }
   }
 
   Dio get dio => _dio;
@@ -67,15 +69,26 @@ class DioClient {
     );
   }
 
-  /// Logging interceptor for debug builds.
+  /// Logging interceptor for debug builds (skips body buffering on streams/bytes).
   Interceptor _loggingInterceptor() {
-    return LogInterceptor(
+    final baseLogger = LogInterceptor(
       request: true,
       requestHeader: false,
       requestBody: true,
       responseHeader: false,
       responseBody: true,
       error: true,
+    );
+    return InterceptorsWrapper(
+      onRequest: baseLogger.onRequest,
+      onResponse: (response, handler) {
+        final rt = response.requestOptions.responseType;
+        if (rt == ResponseType.stream || rt == ResponseType.bytes) {
+          return handler.next(response);
+        }
+        return baseLogger.onResponse(response, handler);
+      },
+      onError: baseLogger.onError,
     );
   }
 }
