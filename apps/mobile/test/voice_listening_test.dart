@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/audio/voice_audio_service.dart';
@@ -12,6 +12,12 @@ import 'package:mobile/features/trips/models/trip_model.dart';
 
 /// Fake recognizer: records calls and lets tests drive STT callbacks.
 class FakeVoiceAudioService implements VoiceAudioService {
+  final ValueNotifier<LipSyncFrame> lipSyncNotifier =
+      ValueNotifier<LipSyncFrame>(LipSyncFrame.idle);
+
+  @override
+  ValueListenable<LipSyncFrame> get lipSyncListenable => lipSyncNotifier;
+
   @override
   void unlockAudio() {}
   int startCount = 0;
@@ -42,7 +48,10 @@ class FakeVoiceAudioService implements VoiceAudioService {
   void stopRecording() => stopCount++;
 
   @override
-  void stopTts() => ttsStopCount++;
+  void stopTts() {
+    ttsStopCount++;
+    lipSyncNotifier.value = LipSyncFrame.idle;
+  }
 
   void Function()? _onQueuePlay;
   void Function()? _onQueueEnded;

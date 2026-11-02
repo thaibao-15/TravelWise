@@ -1,7 +1,14 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+
+import 'lip_sync_frame.dart';
 
 class VoiceAudioService {
+  final ValueNotifier<LipSyncFrame> _lipSyncNotifier =
+      ValueNotifier<LipSyncFrame>(LipSyncFrame.idle);
+
+  ValueListenable<LipSyncFrame> get lipSyncListenable => _lipSyncNotifier;
+
   void initStreamingQueue({
     void Function()? onPlay,
     void Function()? onEnded,
@@ -27,7 +34,10 @@ class VoiceAudioService {
   }
 
   void unlockAudio() {}
-  void stopTts() {}
+
+  void stopTts() {
+    _lipSyncNotifier.value = LipSyncFrame.idle;
+  }
 
   void startRecording({
     required String wsUrl,
