@@ -33,6 +33,7 @@ window.TravelWiseAudio = {
   _onQueueEnded: null,
   _onQueueError: null,
   _audioCtx: null,
+  _maxQueuedItems: 12,
 
   unlockAudio: function() {
     try {
@@ -129,12 +130,18 @@ window.TravelWiseAudio = {
     if (this._isStopped) return;
     var clean = (sentence || '').trim();
     if (!clean) return;
-    this._queue.push({
+    var item = {
       baseUrl: baseUrl,
       text: clean,
       speed: speed || '1.5',
       speakerId: speakerId || 'DaNang-Nu-1-BL'
-    });
+    };
+    if (this._queue.length >= this._maxQueuedItems) {
+      var last = this._queue[this._queue.length - 1];
+      last.text = last.text + ' ' + item.text;
+    } else {
+      this._queue.push(item);
+    }
     if (!this._isPlayingQueue) {
       this._playNextInQueue();
     } else {

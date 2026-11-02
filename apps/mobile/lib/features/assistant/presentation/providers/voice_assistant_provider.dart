@@ -2021,14 +2021,17 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
-  // ── SSE Streaming RAG + Realtime Sentence TTS Queue ─────────────────────
+  // ── SSE Streaming RAG + Realtime Incremental TTS Queue ──────────────────
+
+  static const int _ttsMinChunkChars = 36;
+  static const int _ttsPreferredChunkChars = 69;
+  static const int _ttsMaxChunkChars = 150;
 
   /// Extracts the next speakable text chunk from [buffer], returning
   /// `(chunk, remainder)` or `null` if more tokens are needed.
   ///
-  /// For the very first chunk ([isFirstChunk] == true), splits earlier on
-  /// natural clause pauses (`,`, `;`, `:`, `–`, `—`) once >= 22 characters
-  /// have accumulated so TTS audio starts playing with minimal TTFB.
+  /// Uses punctuation when available, then a word boundary once enough text
+  /// has accumulated. Punctuation is not required to start TTS.
   static ({String chunk, String remainder})? extractNextTtsChunk(
     String buffer, {
     required bool isFirstChunk,
@@ -2049,20 +2052,60 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         continue;
       }
       final candidate = buffer.substring(0, match.start + 1).trim();
-      final minLen = isFirstChunk ? 6 : 12;
-      if (candidate.length >= minLen && !abbrevSuffix.hasMatch(candidate)) {
+      if (candidate.length >= _ttsMinChunkChars &&
+          !abbrevSuffix.hasMatch(candidate)) {
         return (chunk: candidate, remainder: buffer.substring(match.end));
       }
     }
 
-    final clauseMinLen = isFirstChunk ? 22 : 90;
-    if (buffer.length >= clauseMinLen) {
+    if (isFirstChunk && buffer.length >= 22) {
       final clauseRegex = RegExp(r'[,;:–—]\s+');
       for (final match in clauseRegex.allMatches(buffer)) {
         final candidate = buffer.substring(0, match.start + 1).trim();
-        if (candidate.length >= clauseMinLen) {
+        if (candidate.length >= 22) {
           return (chunk: candidate, remainder: buffer.substring(match.end));
         }
+      }
+    }
+
+    final whitespaceIndices = <int>[];
+    for (var index = 0; index < buffer.length; index++) {
+      if (RegExp(r'\s').hasMatch(buffer[index])) {
+        whitespaceIndices.add(index + 1);
+      }
+    }
+
+    if (buffer.length >= _ttsMinChunkChars) {
+      int? cut;
+      for (final index in whitespaceIndices) {
+        if (index >= _ttsPreferredChunkChars && index <= _ttsMaxChunkChars) {
+          cut = index;
+          break;
+        }
+      }
+      cut ??= whitespaceIndices.firstWhere(
+        (index) => index >= _ttsMinChunkChars && index <= _ttsMaxChunkChars,
+        orElse: () => -1,
+      );
+      if (cut == -1) cut = null;
+      if (cut != null) {
+        return (
+          chunk: buffer.substring(0, cut).trim(),
+          remainder: buffer.substring(cut),
+        );
+      }
+    }
+
+    if (buffer.length >= _ttsMaxChunkChars) {
+      final validCuts = whitespaceIndices
+          .where((index) => index <= _ttsMaxChunkChars)
+          .toList();
+      if (validCuts.isNotEmpty) {
+        final cut = validCuts.last;
+        return (
+          chunk: buffer.substring(0, cut).trim(),
+          remainder: buffer.substring(cut),
+        );
       }
     }
 

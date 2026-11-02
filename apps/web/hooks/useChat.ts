@@ -7,7 +7,7 @@ import {
   GeneratedItineraryData,
 } from "@/types/chat";
 import { chatService } from "@/services/chat.service";
-import { ttsService } from "@/services/tts.service";
+import { IncrementalTtsChunker } from "@/services/tts.service";
 import { isCreateItineraryCommand } from "@/lib/utils";
 
 const INITIAL_WELCOME_MESSAGE: ChatMessage = {
@@ -599,10 +599,12 @@ export function useChat() {
 
       let currentStreamContent = "";
       const currentLocation = await getCurrentLocation();
+      const ttsChunker =
+        mode === "voice" && onSentence
+          ? new IncrementalTtsChunker(onSentence)
+          : null;
 
       try {
-        let sentenceBuffer = "";
-
         // Ưu tiên truyền phát dữ liệu thời gian thực (SSE Streaming)
         const finalAnswer = await chatService.askStream(
           trimmed,
@@ -623,22 +625,11 @@ export function useChat() {
                 )
               );
 
-              // Trong chế độ voice: đẩy từng câu vào hàng đợi phát NGAY KHI CÂU ĐÓ KẾT THÚC
-              if (mode === "voice" && onSentence) {
-                sentenceBuffer += token;
-                const match = sentenceBuffer.match(/^(.*?[\.\!\?\n])(\s+|$)/);
-                // Ngưỡng 6 ký tự giúp các câu chào ngắn ("Chào bạn!", "Dạ được chứ!") được phát ngay
-                if (match && match[1].trim().length >= 6) {
-                  onSentence(match[1].trim());
-                  sentenceBuffer = sentenceBuffer.slice(match[0].length);
-                }
-              }
+              // Gửi chunk tại ranh giới từ khi đủ text; dấu câu chỉ là tín hiệu ưu tiên.
+              ttsChunker?.push(token);
             },
             onDone: (data: any) => {
-              if (mode === "voice" && onSentence && sentenceBuffer.trim()) {
-                onSentence(sentenceBuffer.trim());
-                sentenceBuffer = "";
-              }
+              ttsChunker?.flush();
 
               if (data.conversation_id) {
                 setConversationId(data.conversation_id);
@@ -684,8 +675,10 @@ export function useChat() {
           }
         );
 
+        ttsChunker?.flush();
         return finalAnswer;
       } catch (streamErr) {
+        ttsChunker?.cancel();
         console.warn("Stream API error, falling back to askAI:", streamErr);
 
         try {

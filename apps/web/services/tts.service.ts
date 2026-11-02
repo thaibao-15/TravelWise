@@ -5,6 +5,128 @@
 
 const audioCache = new Map<string, string>();
 
+export interface IncrementalTtsChunkingConfig {
+  minChars: number;
+  preferredChars: number;
+  maxChars: number;
+  maxWaitMs: number;
+  maxQueuedChunks: number;
+}
+
+/**
+ * Starting values for incremental TTS. They are intentionally configurable so
+ * latency/quality benchmarks can tune them without changing the chunker.
+ */
+export const incrementalTtsConfig: IncrementalTtsChunkingConfig = {
+  minChars: 48,
+  preferredChars: 96,
+  maxChars: 180,
+  maxWaitMs: 350,
+  maxQueuedChunks: 12,
+};
+
+export class IncrementalTtsChunker {
+  private buffer = "";
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
+
+  constructor(
+    private readonly onChunk: (chunk: string) => void,
+    private readonly config: IncrementalTtsChunkingConfig = incrementalTtsConfig,
+  ) {}
+
+  push(token: string): void {
+    if (this.stopped || !token) return;
+
+    this.buffer += token;
+    this.drain(false);
+    this.scheduleFlush();
+  }
+
+  flush(): void {
+    if (this.stopped) return;
+    this.clearTimer();
+    this.drain(true);
+  }
+
+  cancel(): void {
+    this.stopped = true;
+    this.buffer = "";
+    this.clearTimer();
+  }
+
+  private drain(force: boolean): void {
+    while (this.buffer) {
+      const cut = this.findCut(force);
+      if (cut === null) return;
+
+      const chunk = this.buffer.slice(0, cut).trim();
+      this.buffer = this.buffer.slice(cut);
+      if (chunk) this.onChunk(chunk);
+    }
+  }
+
+  private findCut(force: boolean): number | null {
+    const length = this.buffer.length;
+    if (!length) return null;
+
+    const whitespace: number[] = [];
+    for (let index = 0; index < this.buffer.length; index += 1) {
+      if (/\s/u.test(this.buffer[index])) whitespace.push(index + 1);
+    }
+    const usableWhitespace = whitespace.filter((index) => index > 0 && index < length);
+    const punctuation: number[] = [];
+    for (let index = 0; index < this.buffer.length; index += 1) {
+      if (
+        /[.!?\n]/u.test(this.buffer[index]) &&
+        index + 1 >= this.config.minChars
+      ) {
+        punctuation.push(index + 1);
+      }
+    }
+
+    // Punctuation improves prosody when available, but is never required.
+    const punctuationCut = punctuation.find((index) => index <= this.config.maxChars);
+    if (punctuationCut !== undefined) return punctuationCut;
+
+    if (length < this.config.minChars && !force) return null;
+    if (force && length < this.config.minChars) return length;
+
+    const preferredCut = usableWhitespace.find(
+      (index) => index >= this.config.preferredChars && index <= this.config.maxChars,
+    );
+    if (preferredCut !== undefined) return preferredCut;
+
+    const firstValidCut = usableWhitespace.find(
+      (index) => index >= this.config.minChars && index <= this.config.maxChars,
+    );
+    if (firstValidCut !== undefined) return firstValidCut;
+
+    if (length >= this.config.maxChars || force) {
+      const lastCut = usableWhitespace.filter((index) => index <= this.config.maxChars).pop();
+      return lastCut ?? (force && length >= this.config.minChars ? length : null);
+    }
+
+    return null;
+  }
+
+  private scheduleFlush(): void {
+    if (!this.buffer || this.timer !== null || this.stopped) return;
+
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.drain(true);
+    }, this.config.maxWaitMs);
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+}
+
 // Pre-cached Vietnamese voice
 let cachedViVoice: SpeechSynthesisVoice | null = null;
 
@@ -360,9 +482,13 @@ export class StreamingTTSQueue {
     const clean = ttsService.cleanText(sentence);
     if (!clean) return;
 
-    this.queue.push(clean);
-    // Kích hoạt tải trước câu này ngay lập tức dưới nền
-    ttsService.prefetchSingle(clean).catch(() => {});
+    if (this.queue.length >= incrementalTtsConfig.maxQueuedChunks) {
+      const lastIndex = this.queue.length - 1;
+      this.queue[lastIndex] = `${this.queue[lastIndex]} ${clean}`;
+    } else {
+      this.queue.push(clean);
+    }
+    this.prefetchQueuedChunks();
 
     if (!this.isPlaying) {
       this.playNext();
@@ -389,6 +515,7 @@ export class StreamingTTSQueue {
 
     this.isPlaying = true;
     const sentence = this.queue.shift()!;
+    this.prefetchQueuedChunks();
 
     try {
       // 1. Dùng cache blob nếu có (0ms), ngược lại dùng streamUrl trực tiếp để phát chunk đầu tiên ngay (< 300ms)
@@ -421,6 +548,7 @@ export class StreamingTTSQueue {
       audio.onerror = (e) => {
         if (!this.isStopped) {
           console.warn("Streaming audio error on chunk:", e);
+          this.onErrorCallback?.(new Error("Không thể phát audio TTS."));
           this.playNext();
         }
       };
@@ -429,9 +557,18 @@ export class StreamingTTSQueue {
     } catch (err) {
       if (!this.isStopped) {
         console.warn("Play streaming chunk error:", err);
+        this.onErrorCallback?.(err);
         this.playNext();
       }
     }
+  }
+
+  private prefetchQueuedChunks(): void {
+    this.queue.slice(0, 2).forEach((chunk) => {
+      ttsService.prefetchSingle(chunk).catch((err) => {
+        if (!this.isStopped) this.onErrorCallback?.(err);
+      });
+    });
   }
 
   stop() {
@@ -444,4 +581,3 @@ export class StreamingTTSQueue {
     }
   }
 }
-
