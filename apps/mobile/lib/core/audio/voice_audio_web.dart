@@ -2,23 +2,61 @@
 import 'dart:async';
 import 'dart:html' as html;
 import 'dart:js_util' as js_util;
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+
+import 'lip_sync_frame.dart';
 
 class VoiceAudioService {
+  final ValueNotifier<LipSyncFrame> _lipSyncNotifier =
+      ValueNotifier<LipSyncFrame>(LipSyncFrame.idle);
+  bool _lipSyncBound = false;
+
+  ValueListenable<LipSyncFrame> get lipSyncListenable => _lipSyncNotifier;
+
   VoiceAudioService() {
     _ensureAudioHelper();
     _ensureStreamHelper();
+    _bindLipSyncCallback();
+  }
+
+  void _bindLipSyncCallback() {
+    if (_lipSyncBound) return;
+    try {
+      final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
+      if (twAudio == null) return;
+      final cb = js_util.allowInterop((
+        dynamic open,
+        dynamic wide,
+        dynamic energy,
+        dynamic active,
+      ) {
+        final o = (open is num) ? open.toDouble() : LipSyncFrame.restOpen;
+        final w = (wide is num) ? wide.toDouble() : 0.0;
+        final e = (energy is num) ? energy.toDouble() : 0.0;
+        final isAct = active == true || active == 1;
+        _lipSyncNotifier.value = LipSyncFrame(
+          mouthOpen: o.clamp(0.0, 1.0),
+          mouthWide: w.clamp(-1.0, 1.0),
+          energy: e.clamp(0.0, 1.0),
+          active: isAct,
+        );
+      });
+      js_util.callMethod(twAudio, 'setLipSyncCallback', [cb]);
+      _lipSyncBound = true;
+    } catch (_) {}
   }
 
   void _ensureAudioHelper() {
     try {
       final existing = js_util.getProperty(html.window, 'TravelWiseAudio');
-      if (existing != null && js_util.getProperty(existing, '_v') == 2) return;
+      if (existing != null && js_util.getProperty(existing, '_v') == 3) return;
+      _lipSyncBound = false;
       final script = html.ScriptElement()
         ..type = 'text/javascript'
         ..text = r'''
 window.TravelWiseAudio = {
-  _v: 2,
+  _v: 3,
   _currentAudio: null,
   _currentUrl: null,
   _audioCache: {},
@@ -33,6 +71,19 @@ window.TravelWiseAudio = {
   _onQueueEnded: null,
   _onQueueError: null,
   _audioCtx: null,
+  _analyser: null,
+  _freqBuf: null,
+  _timeBuf: null,
+  _lipSyncCb: null,
+  _lipSyncRaf: null,
+  _activeText: '',
+  _speechStartPerf: 0,
+  _lastSignalPerf: 0,
+  _peakRms: 0.14,
+
+  setLipSyncCallback: function(cb) {
+    this._lipSyncCb = cb || null;
+  },
 
   unlockAudio: function() {
     try {
@@ -51,6 +102,152 @@ window.TravelWiseAudio = {
         source.start(0);
       }
     } catch (_) {}
+  },
+
+  _ensureAnalyser: function() {
+    if (!this._audioCtx) {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      this._audioCtx = new AudioCtx();
+    }
+    if (!this._analyser) {
+      this._analyser = this._audioCtx.createAnalyser();
+      this._analyser.fftSize = 256;
+      this._analyser.smoothingTimeConstant = 0.42;
+      this._freqBuf = new Uint8Array(this._analyser.frequencyBinCount);
+      this._timeBuf = new Uint8Array(this._analyser.fftSize);
+    }
+    return this._analyser;
+  },
+
+  _connectAudioForLipSync: function(audioEl) {
+    try {
+      if (!this._audioCtx || this._audioCtx.state !== 'running') return false;
+      var analyser = this._ensureAnalyser();
+      if (!analyser) return false;
+      var src = this._audioCtx.createMediaElementSource(audioEl);
+      src.connect(analyser);
+      analyser.connect(this._audioCtx.destination);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  _sampleTextViseme: function(text, elapsedSec) {
+    var clean = (text || '').trim();
+    if (!clean) {
+      var w = 0.5 + 0.5 * Math.sin(elapsedSec * 22.0);
+      return { open: 0.14 + w * 0.68, wide: 0.25 * Math.sin(elapsedSec * 9.0), energy: w * 0.8 };
+    }
+    var tokens = clean.match(/[a-zA-ZÀ-ỹ0-9]+|[,.;:!?–—]/g) || [clean];
+    var cursor = 0;
+    var beats = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var tok = tokens[i];
+      if (tok.length === 1 && ',.;:!?–—'.indexOf(tok) !== -1) {
+        var pd = (tok === ',' || tok === ';' || tok === ':') ? 0.16 : 0.28;
+        beats.push({ s: cursor, d: pd, o: 0.18, w: 0.0, pause: true, labial: false });
+        cursor += pd;
+      } else {
+        var dur = 0.155 + Math.min(6, tok.length) * 0.012;
+        var o = 0.62, wd = 0.10;
+        if (/[aáàảãạăắằẳẵặâấầẩẫậơớờởỡợ]/i.test(tok)) { o = 0.88; wd = 0.25; }
+        else if (/[oôuư]/i.test(tok)) { o = 0.74; wd = -0.70; }
+        else if (/[iíìỉĩịyýỳỷỹỵeéèẻẽẹêếềểễệ]/i.test(tok)) { o = 0.56; wd = 0.74; }
+        var lab = /(^[mbp]|[mp]$)/i.test(tok);
+        beats.push({ s: cursor, d: dur, o: o, w: wd, pause: false, labial: lab });
+        cursor += dur;
+      }
+    }
+    var t = cursor > 0 ? (elapsedSec % cursor) : 0;
+    var active = beats[beats.length - 1];
+    for (var j = 0; j < beats.length; j++) {
+      if (t >= beats[j].s && t < beats[j].s + beats[j].d) { active = beats[j]; break; }
+    }
+    if (!active || active.pause) return { open: 0.20, wide: 0.0, energy: 0.05 };
+    var ph = Math.max(0, Math.min(1, (t - active.s) / active.d));
+    var curve = Math.sin(ph * Math.PI);
+    var floor = active.labial ? 0.02 : 0.14;
+    return { open: floor + (active.o - floor) * curve, wide: active.w * curve, energy: curve * 0.85 };
+  },
+
+  _startLipSyncLoop: function(text, hasAnalyser) {
+    var self = this;
+    self._stopLipSyncLoop(false);
+    self._activeText = text || '';
+    self._speechStartPerf = performance.now();
+    self._lastSignalPerf = hasAnalyser ? performance.now() : 0;
+
+    var tick = function() {
+      if (self._isStopped) {
+        self._stopLipSyncLoop(true);
+        return;
+      }
+      var now = performance.now();
+      var elapsedSec = (now - self._speechStartPerf) / 1000.0;
+      var open = 0.28, wide = 0.0, energy = 0.0;
+      var usedPcm = false;
+
+      if (hasAnalyser && self._analyser && self._currentAudio && !self._currentAudio.paused && !self._currentAudio.ended) {
+        self._analyser.getByteTimeDomainData(self._timeBuf);
+        self._analyser.getByteFrequencyData(self._freqBuf);
+        var sumSq = 0;
+        for (var i = 0; i < self._timeBuf.length; i++) {
+          var v = (self._timeBuf[i] - 128) / 128.0;
+          sumSq += v * v;
+        }
+        var rms = Math.sqrt(sumSq / self._timeBuf.length);
+        var f1 = 0, f2 = 0;
+        for (var b = 2; b <= 5; b++) f1 += self._freqBuf[b];
+        for (var k = 8; k <= 18; k++) f2 += self._freqBuf[k];
+        f1 /= 4.0;
+        f2 /= 11.0;
+
+        if (rms > 0.007) {
+          self._lastSignalPerf = now;
+          self._peakRms = Math.max(0.065, self._peakRms * 0.996, rms);
+          var norm = Math.min(1.0, (rms - 0.007) / (self._peakRms * 0.80));
+          energy = norm;
+          if (rms < 0.020) {
+            open = 0.04 + (rms / 0.020) * 0.18;
+          } else {
+            open = 0.26 + Math.pow(norm, 0.70) * 0.74;
+          }
+          wide = Math.max(-0.9, Math.min(0.9, ((f2 - f1 * 0.76) / (f1 + f2 + 14.0)) * 2.5));
+          usedPcm = true;
+        } else if (now - self._lastSignalPerf < 240) {
+          var gapMs = now - self._lastSignalPerf;
+          open = gapMs < 135 ? 0.05 : 0.22;
+          wide = 0.0;
+          energy = 0.0;
+          usedPcm = true;
+        }
+      }
+
+      if (!usedPcm) {
+        var fb = self._sampleTextViseme(self._activeText, elapsedSec);
+        open = fb.open;
+        wide = fb.wide;
+        energy = fb.energy;
+      }
+
+      if (self._lipSyncCb) {
+        try { self._lipSyncCb(open, wide, energy, true); } catch (_) {}
+      }
+      self._lipSyncRaf = requestAnimationFrame(tick);
+    };
+    self._lipSyncRaf = requestAnimationFrame(tick);
+  },
+
+  _stopLipSyncLoop: function(emitIdle) {
+    if (this._lipSyncRaf) {
+      cancelAnimationFrame(this._lipSyncRaf);
+      this._lipSyncRaf = null;
+    }
+    if (emitIdle && this._lipSyncCb) {
+      try { this._lipSyncCb(0.28, 0.0, 0.0, false); } catch (_) {}
+    }
   },
 
   _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
@@ -145,6 +342,7 @@ window.TravelWiseAudio = {
   markStreamDone: function() {
     this._isStreamDone = true;
     if (this._queue.length === 0 && !this._isPlayingQueue) {
+      this._stopLipSyncLoop(true);
       if (this._onQueueEnded) {
         var cb = this._onQueueEnded;
         this._onQueueEnded = null;
@@ -171,6 +369,7 @@ window.TravelWiseAudio = {
             if (advanceCalled) return;
             advanceCalled = true;
             window.__twActiveUtterance = null;
+            self._stopLipSyncLoop(true);
             if (!self._isStopped && self._playSessionId === sessionId) {
               self._playNextInQueue();
             }
@@ -182,6 +381,7 @@ window.TravelWiseAudio = {
             self._hasStartedQueue = true;
             if (self._onQueuePlay) self._onQueuePlay();
           }
+          self._startLipSyncLoop(item.text, false);
           u.onend = function() {
             clearTimeout(speechWatchdog);
             advance();
@@ -205,24 +405,34 @@ window.TravelWiseAudio = {
       audio.preload = 'auto';
       audio.playbackRate = 1.0;
       self._currentAudio = audio;
+      var hasAnalyser = self._connectAudioForLipSync(audio);
       audio.onplay = function() {
         if (self._isStopped || self._playSessionId !== sessionId) return;
+        self._startLipSyncLoop(item.text, hasAnalyser);
         if (!self._hasStartedQueue) {
           self._hasStartedQueue = true;
           if (self._onQueuePlay) self._onQueuePlay();
         }
       };
       audio.onended = function() {
+        self._stopLipSyncLoop(self._queue.length === 0);
         if (!self._isStopped && self._playSessionId === sessionId) {
           self._playNextInQueue();
         }
       };
-      audio.onerror = function() { fallbackSpeech(); };
+      audio.onerror = function() {
+        self._stopLipSyncLoop(true);
+        fallbackSpeech();
+      };
       var p = audio.play();
       if (p !== undefined) {
-        p.catch(function() { fallbackSpeech(); });
+        p.catch(function() {
+          self._stopLipSyncLoop(true);
+          fallbackSpeech();
+        });
       }
     } catch (_) {
+      self._stopLipSyncLoop(true);
       if (!self._isStopped && self._playSessionId === sessionId) {
         self._playNextInQueue();
       }
@@ -235,6 +445,7 @@ window.TravelWiseAudio = {
     if (self._queue.length === 0) {
       self._isPlayingQueue = false;
       self._currentAudio = null;
+      self._stopLipSyncLoop(true);
       if (self._isStreamDone && self._onQueueEnded) {
         var cb = self._onQueueEnded;
         self._onQueueEnded = null;
@@ -278,20 +489,36 @@ window.TravelWiseAudio = {
   },
 
   playWavBytes: function(byteArray, onPlayCallback, onEndedCallback, onErrorCallback) {
-    this.stop();
+    var self = this;
+    self.stop();
+    self._isStopped = false;
     try {
       var blob = new Blob([new Uint8Array(byteArray)], { type: 'audio/mpeg' });
-      this._currentUrl = URL.createObjectURL(blob);
-      var audio = new Audio(this._currentUrl);
-      this._currentAudio = audio;
-      audio.onplay = function() { if (onPlayCallback) onPlayCallback(); };
-      audio.onended = function() { if (onEndedCallback) onEndedCallback(); };
-      audio.onerror = function(e) { if (onErrorCallback) onErrorCallback('Lỗi audio'); };
+      self._currentUrl = URL.createObjectURL(blob);
+      var audio = new Audio(self._currentUrl);
+      self._currentAudio = audio;
+      var hasAnalyser = self._connectAudioForLipSync(audio);
+      audio.onplay = function() {
+        self._startLipSyncLoop('', hasAnalyser);
+        if (onPlayCallback) onPlayCallback();
+      };
+      audio.onended = function() {
+        self._stopLipSyncLoop(true);
+        if (onEndedCallback) onEndedCallback();
+      };
+      audio.onerror = function() {
+        self._stopLipSyncLoop(true);
+        if (onErrorCallback) onErrorCallback('Lỗi audio');
+      };
       var p = audio.play();
       if (p !== undefined) {
-        p.catch(function(e) { if (onErrorCallback) onErrorCallback(e.toString()); });
+        p.catch(function(e) {
+          self._stopLipSyncLoop(true);
+          if (onErrorCallback) onErrorCallback(e.toString());
+        });
       }
     } catch (err) {
+      self._stopLipSyncLoop(true);
       if (onErrorCallback) onErrorCallback(err.toString());
     }
   },
@@ -301,6 +528,7 @@ window.TravelWiseAudio = {
     this._isPlayingQueue = false;
     this._playSessionId += 1;
     this._queue = [];
+    this._stopLipSyncLoop(true);
     if (this._currentAudio) {
       try {
         this._currentAudio.pause();
@@ -317,11 +545,24 @@ window.TravelWiseAudio = {
     }
   }
 };
+if (!window.__twAudioGestureBound) {
+  window.__twAudioGestureBound = true;
+  var _twUnlockOnce = function() {
+    if (window.TravelWiseAudio) window.TravelWiseAudio.unlockAudio();
+    window.removeEventListener('pointerdown', _twUnlockOnce, true);
+    window.removeEventListener('touchstart', _twUnlockOnce, true);
+    window.removeEventListener('keydown', _twUnlockOnce, true);
+  };
+  window.addEventListener('pointerdown', _twUnlockOnce, true);
+  window.addEventListener('touchstart', _twUnlockOnce, true);
+  window.addEventListener('keydown', _twUnlockOnce, true);
+}
 ''';
       html.document.head?.append(script);
       try {
         js_util.callMethod(html.window, 'eval', [script.text ?? '']);
       } catch (_) {}
+      _bindLipSyncCallback();
     } catch (_) {}
   }
 
@@ -418,6 +659,7 @@ window.TravelWiseStream = {
   }) {
     try {
       _ensureAudioHelper();
+      _bindLipSyncCallback();
       final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
       if (twAudio == null) return;
 
@@ -425,9 +667,11 @@ window.TravelWiseStream = {
         if (onPlay != null) onPlay();
       });
       final onEndedJs = js_util.allowInterop(() {
+        _lipSyncNotifier.value = LipSyncFrame.idle;
         if (onEnded != null) onEnded();
       });
       final onErrorJs = js_util.allowInterop((err) {
+        _lipSyncNotifier.value = LipSyncFrame.idle;
         if (onError != null) onError(err?.toString() ?? 'Lỗi phát stream TTS');
       });
 
@@ -447,6 +691,7 @@ window.TravelWiseStream = {
   }) {
     try {
       _ensureAudioHelper();
+      _bindLipSyncCallback();
       final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
       if (twAudio == null) return;
       js_util.callMethod(twAudio, 'enqueueSentence', [
@@ -476,6 +721,7 @@ window.TravelWiseStream = {
   }) {
     try {
       _ensureAudioHelper();
+      _bindLipSyncCallback();
       final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
       if (twAudio == null) {
         if (onError != null) onError('TravelWiseAudio helper missing');
@@ -486,9 +732,11 @@ window.TravelWiseStream = {
         if (onPlay != null) onPlay();
       });
       final onEndedJs = js_util.allowInterop(() {
+        _lipSyncNotifier.value = LipSyncFrame.idle;
         if (onEnded != null) onEnded();
       });
       final onErrorJs = js_util.allowInterop((err) {
+        _lipSyncNotifier.value = LipSyncFrame.idle;
         if (onError != null) onError(err?.toString() ?? 'Lỗi phát âm thanh');
       });
 
@@ -506,6 +754,7 @@ window.TravelWiseStream = {
   void unlockAudio() {
     try {
       _ensureAudioHelper();
+      _bindLipSyncCallback();
       final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
       if (twAudio != null) {
         js_util.callMethod(twAudio, 'unlockAudio', []);
@@ -514,6 +763,7 @@ window.TravelWiseStream = {
   }
 
   void stopTts() {
+    _lipSyncNotifier.value = LipSyncFrame.idle;
     try {
       _ensureAudioHelper();
       final twAudio = js_util.getProperty(html.window, 'TravelWiseAudio');
