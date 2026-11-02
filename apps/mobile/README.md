@@ -48,11 +48,11 @@ Dựa trên mã nguồn thực tế tại `apps/mobile/lib/`, trạng thái tri�
 | Phân hệ tính năng | Mô tả chức năng | Trạng thái triển khai thực tế |
 |---|---|---|
 | **Đăng ký & Đăng nhập (`auth`)** | Đăng ký tài khoản mới (`full_name`, `email`, `password`), đăng nhập nhận JWT token, lưu trữ bảo mật và lấy thông tin hồ sơ người dùng hiện tại (`/api/v1/auth/me`). | **Đã hoàn thiện tích hợp API** (theo mô hình Clean Architecture + Riverpod). Nút "Tiếp tục với Google" và "Quên mật khẩu?" hiện mới dừng ở mức giao diện (UI placeholder). |
-| **Trợ lý AI & Voice (`assistant`)** | Trò chuyện văn bản và giọng nói với **Linh AI** (`TravelAssistantScreen`). Hỗ trợ nhận diện giọng nói thời gian thực (STT), hỏi đáp RAG (`/api/v1/rag/ask`) và phát giọng đọc AI (TTS qua `/api/v1/tts`). | **Đã tích hợp API cho Chat & Voice trên Flutter Web** (`voice_audio_web.dart` + JS Bridge). Trên nền tảng Native (Android/iOS), module thu âm/phát âm thanh hiện đang dùng bản stub (`voice_audio_stub.dart`). Một số thẻ trên màn hình như thông tin thời tiết header (`28°C`) và thẻ `Cà phê Trình Biển` là dữ liệu tĩnh. |
+| **Trợ lý AI & Voice (`assistant`)** | Trò chuyện văn bản và giọng nói với **Linh AI / Avatar 3D (`AvatarSample_A`)** (`TravelAssistantScreen`). Tích hợp nhân vật 3D tương tác, nhận diện giọng nói thời gian thực (STT), SSE Stream RAG hỏi đáp AI (`/api/v1/rag/ask-stream`), phát giọng đọc TTS luồng thời gian thực kèm nhép môi 60fps Morph Targets, hỗ trợ tạo & chỉnh sửa lịch trình chuyến đi trực tiếp qua giọng nói. | **Đã hoàn thiện & Tích hợp sâu trên Flutter Web & Android**: Đã tích hợp nhân vật 3D glTF/VRM render 60fps, SSE chunk streaming TTS, Web Audio formants lip-sync, barge-in ngắt lời, flow tạo & sửa lịch trình bằng voice. Trên Native Android/iOS, module thu/phát âm thanh đang dùng stub bridge trong khi mô hình 3D, chat và state management chạy đa nền tảng 100%. |
 | **Bản đồ & Định vị GPS (`map`)** | Hiển thị bản đồ tương tác (`FlutterMap` với lớp nền ArcGIS World Street Map), kiểm tra/yêu cầu quyền vị trí có hộp thoại giải thích (in-app rationale), lấy tọa độ GPS độ chính xác cao (`Geolocator`), hiển thị vòng tròn sai số và thẻ tọa độ chi tiết. | **Đã hoàn thiện tích hợp GPS & Bản đồ**. Chức năng tìm kiếm địa điểm trên bản đồ (`MapSearchBar`) hiện chưa kết nối với endpoint tìm kiếm của backend. |
 | **Trang chủ (`home`)** | Hiển thị lời chào, thanh tìm kiếm, gợi ý nhanh (chips), danh sách điểm đến thịnh hành, lưới danh mục, thẻ gợi ý lịch trình AI và địa điểm gần bạn. | **Giao diện tĩnh / Dữ liệu mẫu (Mock UI)**. Các thẻ hiển thị dữ liệu cứng nhằm minh họa bố cục thiết kế. |
 | **Khám phá (`explore`)** | Tìm kiếm, lọc theo danh mục (Category Chips, Filter Row), xem điểm đến nổi bật (`FeaturedCard`) và danh sách địa điểm quanh bạn (`PlaceCard`). | **Giao diện tĩnh / Dữ liệu mẫu (Mock UI)**. Danh sách địa điểm hiện được khởi tạo cục bộ trong `ExploreScreen`. |
-| **Quản lý chuyến đi (`trips`)** | Xem danh sách chuyến đi, lọc theo trạng thái (`all`, `upcoming`, `planning`, `draft`, `completed`), tìm kiếm cục bộ theo tên/điểm đến, xem chi tiết lịch trình từng ngày (`TripDetailScreen`) theo dòng thời gian (`ItineraryTimeline`). | **Giao diện tương tác trên dữ liệu mẫu (`mockTripsList`)**. Đã có bộ lọc, tìm kiếm trên bộ nhớ và chuyển đổi ngày (`selectedDayProvider`), nhưng chưa gọi API `/api/v1/trips` từ backend. |
+| **Quản lý chuyến đi (`trips`)** | Xem danh sách chuyến đi, lọc theo trạng thái, xem chi tiết lịch trình từng ngày (`TripDetailScreen`) theo dòng thời gian (`ItineraryTimeline`), tạo chuyến đi mới từ đề xuất hội thoại AI và **chỉnh sửa lịch trình trực tiếp bằng giọng nói** (`direct trip voice edit`). | **Đã tích hợp API & Voice Editing**: Đã kết nối tạo lịch trình qua backend (`TripRepository.generateTrip`, `/api/v1/trips/generate`), xem preview thẻ lịch trình thời gian thực (`TripPreviewCard`), lưu vào cơ sở dữ liệu và chỉnh sửa hoạt động từng ngày trực tiếp bằng giọng nói trên `TripDetailScreen`. |
 | **Thông tin thời tiết (`weather`)** | Cung cấp thông tin thời tiết theo tọa độ hoặc địa điểm. | **Tích hợp gián tiếp qua RAG Backend**. Mobile chưa có màn hình Weather độc lập gọi trực tiếp `/api/v1/weather`, nhưng câu hỏi thời tiết gửi qua `POST /api/v1/rag/ask` được backend tự động trích xuất ngữ cảnh từ Open-Meteo. |
 | **Hồ sơ cá nhân (`profile`)** | Quản lý thông tin tài khoản người dùng trên thanh điều hướng chính. | **Đang lên kế hoạch (Placeholder)**. Tab thứ 5 trong `MainShell` hiện hiển thị màn hình giữ chỗ `ProfilePlaceholderScreen`. |
 
@@ -85,6 +85,9 @@ Bảng dưới đây liệt kê chính xác các thư viện và công nghệ đ
 | Thành phần | Công nghệ / Thư viện | Phiên bản (`pubspec.yaml`) | Trách nhiệm trong dự án |
 |---|---|---|---|
 | **Framework & SDK** | Flutter & Dart SDK | Dart `>=3.10.0 <4.0.0` | Nền tảng phát triển ứng dụng đa nền tảng |
+| **Đồ họa 3D & Vector** | `vector_math` | `^2.1.4` | Tính toán ma trận 4x4, Quaternion, phép chiếu phối cảnh 3D và biến dạng Morph Target |
+| **Định dạng 3D Avatar** | glTF 2.0 Binary / VRM | Chuẩn ISO/IEC 12113 | Model 3D `AvatarSample_A` & `linh_avatar` tích hợp xương humanoid và blend shapes |
+| **Phân tích âm thanh & Nhép môi** | Web Audio AnalyserNode | W3C Standard | Phân tích năng lượng RMS & formants F1/F2 âm thanh thật ở 60fps điều khiển khẩu hình miệng |
 | **UI & Design System** | Material 3 (`useMaterial3: true`) | Theo Flutter SDK | Hệ thống widget cốt lõi và bố cục giao diện |
 | **Typography** | `google_fonts` | `^9.0.0` | Cung cấp phông chữ **Inter** toàn cục (`AppTextStyles`) |
 | **Biểu tượng (Icons)** | `lucide_flutter` & `cupertino_icons` | `^1.0.0` / `^1.0.8` | Bộ icon hiện đại cho Auth, Trips, Explore và hệ thống |
@@ -493,7 +496,7 @@ Bảng dưới đây đối chiếu toàn bộ các endpoint từ tài liệu v�
 | **Auth** | `POST /api/v1/auth/login` | Đăng nhập và nhận JWT `access_token` | **Đã tích hợp & Xác minh** | `auth_remote_datasource.dart` (`login`) |
 | **Auth** | `GET /api/v1/auth/me` | Lấy thông tin người dùng hiện tại từ Bearer token | **Đã tích hợp & Xác minh** | `auth_remote_datasource.dart` (`getCurrentUser`) |
 | **AI / RAG** | `POST /api/v1/rag/ask` | Hỏi đáp du lịch thông minh với RAG & lịch sử hội thoại (`mode: "chat"` hoặc `"voice"`) | **Đã tích hợp & Xác minh** | `voice_assistant_provider.dart` (`sendMessage`) |
-| **AI / RAG** | `POST /api/v1/rag/ask-stream` | Hỏi đáp AI phản hồi theo luồng SSE (Server-Sent Events) | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
+| **AI / RAG** | `POST /api/v1/rag/ask-stream` | Hỏi đáp AI phản hồi theo luồng SSE (Server-Sent Events) | **Đã tích hợp & Tối ưu hóa** | `voice_assistant_provider.dart` (`askStream` native fetch SSE) |
 | **AI / RAG** | `POST /api/v1/rag/search` | Tìm kiếm ngữ nghĩa trực tiếp trên Chroma Vector DB | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
 | **Voice (STT)** | `WS /api/v1/stt/ws` | Truyền luồng âm thanh PCM 16kHz thời gian thực tới Blaze AI STT và nhận transcript | **Đã tích hợp (Flutter Web)** | `voice_assistant_provider.dart` (`_startStt`) & `web/index.html` |
 | **Voice (STT)** | `GET /api/v1/stt/status` | Kiểm tra trạng thái cấu hình Blaze STT | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
@@ -504,9 +507,9 @@ Bảng dưới đây đối chiếu toàn bộ các endpoint từ tài liệu v�
 | **Trips** | `GET /api/v1/trips` | Lấy danh sách chuyến đi của người dùng | **Chưa tích hợp trên Mobile** *(Đang dùng `mockTripsList`)* | — |
 | **Trips** | `GET /api/v1/trips/{trip_id}` | Lấy thông tin tổng quan chuyến đi | **Chưa tích hợp trên Mobile** *(Đang dùng `mockTrip`)* | — |
 | **Trips** | `GET /api/v1/trips/{trip_id}/itinerary` | Lấy chi tiết lịch trình các ngày và hoạt động | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
-| **Trips** | `POST /api/v1/trips/generate` | Sinh lịch trình AI trực tiếp từ ngữ cảnh hoặc hội thoại | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
+| **Trips** | `POST /api/v1/trips/generate` | Sinh lịch trình AI trực tiếp từ ngữ cảnh hoặc hội thoại | **Đã tích hợp** | `trip_repository.dart` (`generateTrip`) |
 | **Trips** | `POST /api/v1/trips/{trip_id}/itinerary/generate` | Sinh lịch trình AI cho một chuyến đi đã tồn tại | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
-| **Trips** | `POST /api/v1/trips/{trip_id}/itinerary/edit` | Chỉnh sửa lịch trình bằng câu lệnh ngôn ngữ tự nhiên | **Chưa tích hợp trên Mobile** *(Backend có sẵn)* | — |
+| **Trips** | `POST /api/v1/trips/{trip_id}/itinerary/edit` | Chỉnh sửa lịch trình bằng câu lệnh ngôn ngữ tự nhiên / giọng nói | **Đã tích hợp & Voice Control** | `trip_repository.dart` & `voice_assistant_provider.dart` (`editCurrentOrSavedTrip`) |
 | **Places** | `GET /api/v1/places/`, `/search`, `/{place_id}` | Danh sách, tìm kiếm và xem chi tiết địa điểm | **Chưa tích hợp trên Mobile** *(Màn hình `ExploreScreen` dùng dữ liệu mẫu)* | — |
 | **Weather** | `GET /api/v1/weather`, `/place/{place_id}` | Dự báo thời tiết hiện tại, theo giờ và 7–16 ngày từ Open-Meteo | **Chưa gọi trực tiếp** *(Được kích hoạt gián tiếp khi hỏi thời tiết qua `/api/v1/rag/ask`)* | — |
 
@@ -553,6 +556,38 @@ Luồng xác thực trong `features/auth/` được thiết kế chặt chẽ qu
 ## 10. Kiến Trúc Trợ Lý AI & Tương Tác Giọng Nói (AI Assistant and Voice Architecture)
 
 Tính năng Trợ lý ảo **Linh AI** (`features/assistant/`) là một trong những điểm nhấn kỹ thuật quan trọng nhất của TravelWise, kết hợp giữa giao diện điều khiển trạng thái trực quan (`VoiceOrb`, `WaveformBars`) và luồng xử lý âm thanh — ngôn ngữ tự nhiên.
+
+### 10.0. Tích Hợp Nhân Vật 3D AI (`AvatarSample_A` & `Ai3dAvatar`)
+
+Điểm đột phá giao diện của phân hệ Mobile là việc tích hợp nhân vật 3D AI thực thụ thay thế cho hình ảnh 2D tĩnh, biến màn hình trợ lý thành hướng dẫn viên du lịch tương tác sống động:
+
+1. **Model 3D sử dụng (`AvatarSample_A`):**
+   - Model chính: [AvatarSample_A.glb](assets/models/AvatarSample_A.glb) (`198,884` bytes) cùng phiên bản VRM gốc [AvatarSample_A.vrm](assets/models/AvatarSample_A.vrm) (`18.4MB`, chuẩn VRM 1.0 `VRMC_vrm` với 54 xương humanoid và 57 morph targets).
+   - Ngoại hình đặc trưng: Tóc ngắn bob màu hạt dẻ rẽ ngôi giữa nhiều tầng, áo khoác hoodie oversized màu xanh than trẻ trung, mắt to tròn long lanh với điểm nhấn **ngôi sao 4 cánh màu vàng kim** trong con ngươi.
+   - Cơ chế tự động fallback thông minh: Tự động ưu tiên nạp `AvatarSample_A.glb` -> `AvatarSample_A.vrm` -> `linh_avatar.glb` -> `model.vrm` từ thư mục cục bộ `assets/models/`.
+2. **Kiến trúc Engine 3D Offline & Miễn Phí (`glb_model.dart` + `glb_3d_painter.dart`):**
+   - Bộ phân giải nhị phân glTF 2.0 Binary tự viết trong Dart (`GlbModel.fromBytes`), không phụ thuộc thư viện bên ngoài.
+   - Rasterizer đồ họa 3D tăng tốc phần cứng (`Canvas.drawVertices` / `drawPath`) kết hợp thuật toán sắp xếp chiều sâu Z-Sort (Painter's Algorithm), camera phối cảnh góc rộng (Perspective Projection) và hệ thống chiếu sáng Studio 3 điểm (Key Light, Fill Light, Rim Light viền tóc).
+   - Tương tác cảm ứng / chuột: Người dùng có thể chạm và vuốt để xoay góc nhìn camera 360 độ (Orbit Yaw / Pitch) cùng nút bấm *"Đặt lại góc nhìn"* để hồi phục vị trí ban đầu.
+3. **Đồng bộ trạng thái nhân vật theo 5 trạng thái Voice AI:**
+   - **Idle:** Tư thế đứng thư giãn, nhịp thở lồng ngực tự nhiên (`chestBreath`), đầu đung đưa vi mô và tự động chớp mắt ngẫu nhiên (chu kỳ 2.8s – 6s, thời lượng 180ms).
+   - **Listening:** Nghiêng đầu và rướn nhẹ về phía trước (`headPitch = -0.065`), tay nâng nhẹ lắng nghe người dùng.
+   - **Thinking / Processing:** Đầu ngước lên và nghiêng góc suy tư (`headPitch = +0.085`, `headYaw = -0.12`), mắt nhìn xa xăm, tay đặt ở tư thế trầm ngâm.
+   - **Speaking:** Gật đầu nhấn mạnh câu nói, tay cử động luân phiên diễn cảm, môi nhép theo phổ âm thanh thời gian thực.
+   - **Error:** Điềm tĩnh trở về tư thế nghỉ.
+4. **Nhép môi thời gian thực 60fps (Real-Time Morph Target Lip-Sync):**
+   - Kết nối trực tiếp với luồng `LipSyncFrame` từ Web Audio `AnalyserNode` trích xuất năng lượng RMS và dải formant `F1/F2`.
+   - Điều khiển trực tiếp 5 kênh Blend Shapes của khuôn mặt 3D: `viseme_aa` (mở vòm họng), `viseme_oh` (chu môi O/U), `viseme_ee` (dẹt mép E/I), `blink` (khép mí mắt) và `smile` (nụ cười chào đón).
+   - **Nguyên tắc nghiêm ngặt:** Khi âm thanh tắt hoặc AI ngừng nói (`active: false`), khẩu hình môi lập tức trở về `0.0`. Tuyệt đối không giả lập cử động miệng khi chưa phát audio.
+
+### 10.2.1. Tối ưu hóa độ trễ Voice AI & Luồng phát TTS sớm (Latency Optimizations)
+
+Nhằm loại bỏ hiện tượng đơ trễ khi AI sinh câu trả lời dài, hệ thống Voice AI đã được tối ưu toàn diện:
+- **Server-Sent Events (SSE) Streaming:** Sử dụng `askStream` gọi `POST /api/v1/rag/ask-stream` nhận từng token văn bản thời gian thực ngay khi Gemini sinh ra.
+- **Ngắt câu sớm (Early Clause Chunking):** Hàm `extractNextTtsChunk` phân tách ngay mệnh đề hoặc câu hoàn chỉnh đầu tiên (dựa trên dấu phẩy, chấm, hỏi, chấm than...) để gửi tới `enqueueSentence` của Blaze TTS mà **không cần chờ đợi toàn bộ đoạn văn hoàn tất**. Người dùng nghe được tiếng AI nói chỉ sau ~600-800ms.
+- **Hàng đợi phát âm thanh luồng (Streaming Audio Queue):** `VoiceAudioService` quản lý danh sách các đoạn audio MP3, tự động tải trước (prefetch) câu tiếp theo và phát nối tiếp liền mạch không ngắt quãng.
+- **Barge-In (Ngắt lời AI tức thì):** Khi AI đang nói, nếu người dùng bấm micro hoặc nói chen ngang, hệ thống kích hoạt `bargeIn()` ngay lập tức: phá hủy kết nối SSE, gọi `stopTts()` ngắt luồng audio đang phát, hủy các timer an toàn và chuyển ngay sang trạng thái lắng nghe (`listening`).
+- **Chỉnh sửa lịch trình trực tiếp bằng giọng nói (`direct trip voice edit`):** Người dùng có thể mở `TripDetailScreen` và ra lệnh giọng nói (ví dụ: *"Đổi địa điểm ăn tối sang quán hải sản Bé Mặn"*), hệ thống tự động nhận diện `targetDay` và gửi request cập nhật lịch trình tức thì.
 
 ### 10.1. Phân định rõ môi trường thực thi (Web vs. Native)
 
@@ -950,13 +985,17 @@ git push origin feature/ten-tinh-nang-ngan-gon
 Nhằm giúp các thành viên mới và hội đồng đánh giá nắm bắt chính xác hiện trạng kỹ thuật của dự án, bảng dưới đây tổng hợp các hạng mục theo mức độ hoàn thiện:
 
 ### 18.1. Đã hoàn thiện (Implemented)
+- **Tích hợp nhân vật 3D AI Voice (`Ai3dAvatar` / `AvatarSample_A`):** Render 3D glTF/VRM thời gian thực, tự động thích ứng cảm ứng/chuột xoay camera, chuyển động cơ thể theo 5 trạng thái (`Idle`, `Listening`, `Thinking`, `Speaking`, `Error`).
+- **Nhép môi 60fps Morph Targets (Real-Time Lip-Sync):** Điều khiển vòm họng và cử động miệng chuẩn xác theo phổ âm thanh thật từ Blaze TTS (`LipSyncFrame`), tự động khép miệng khi im lặng.
+- **Tối ưu hóa độ trễ phản hồi Voice AI (Low-Latency Voice AI):** Streaming SSE qua `askStream`, ngắt câu sớm để phát TTS luồng, hàng đợi âm thanh nối tiếp mượt mà, hỗ trợ ngắt lời tức thì (barge-in).
+- **Tạo & Chỉnh sửa lịch trình bằng giọng nói:** Nhận diện lệnh tạo chuyến đi từ hội thoại AI, xem trước thẻ lịch trình thời gian thực (`TripPreviewCard`), lưu vào cơ sở dữ liệu (`/api/v1/trips/generate`) và chỉnh sửa từng ngày bằng giọng nói trực tiếp trên `TripDetailScreen`.
 - Luồng Đăng ký, Đăng nhập và lấy thông tin người dùng (`/api/v1/auth/*`) theo kiến trúc Clean Architecture + Riverpod + lưu trữ mã hóa JWT (`FlutterSecureStorage`).
-- Giao diện và bộ điều khiển trạng thái Trợ lý ảo **Linh AI** (`TravelAssistantScreen`, `VoiceOrb`, `WaveformBars`, `ConversationDrawer`).
-- Luồng Hỏi đáp RAG (`POST /api/v1/rag/ask`) hỗ trợ duy trì ngữ cảnh cuộc trò chuyện (`conversation_id`) và phân biệt chế độ `chat` / `voice`.
-- Tích hợp thu âm STT thời gian thực qua WebSocket (`/api/v1/stt/ws`) và phát giọng nói TTS (`/api/v1/tts`) trên nền tảng **Flutter Web**.
+- Giao diện và bộ điều khiển trạng thái Trợ lý ảo **Linh AI / Avatar 3D** (`TravelAssistantScreen`, `VoiceOrb`, `WaveformBars`, `ConversationDrawer`).
+- Luồng Hỏi đáp RAG (`POST /api/v1/rag/ask`, `POST /api/v1/rag/ask-stream`) hỗ trợ duy trì ngữ cảnh cuộc trò chuyện (`conversation_id`) và phân biệt chế độ `chat` / `voice`.
+- Tích hợp thu âm STT thời gian thực qua WebSocket (`/api/v1/stt/ws`) và phát giọng nói TTS luồng (`/api/v1/tts`) trên nền tảng **Flutter Web**.
 - Bản đồ tương tác (`FlutterMap`) kèm quy trình kiểm tra/xin quyền và định vị GPS độ chính xác cao (`Geolocator`).
 - Bộ khung giao diện hoàn chỉnh cho Trang chủ (`HomeScreen`), Khám phá (`ExploreScreen`), Danh sách chuyến đi (`TripsScreen`) và Chi tiết lịch trình (`TripDetailScreen`).
-
+- Bộ kiểm thử tự động toàn diện: Đạt **21/21 test cases passed 100%** (`test/ai_3d_avatar_test.dart` và `test/voice_listening_test.dart`).
 ### 18.2. Đang hoàn thiện một phần (Partially Implemented)
 - **Tích hợp âm thanh đa nền tảng (`core/audio/`):** Đã hoạt động trên Web (`voice_audio_web.dart`), nhưng trên Android/iOS hiện đang dừng ở bản giữ chỗ (`voice_audio_stub.dart`).
 - **Tích hợp GPS với hội thoại AI:** Mobile đã có `LocationService` lấy được tọa độ GPS trên `MapScreen`, và Backend `/api/v1/rag/ask` đã hỗ trợ trường `current_location`, nhưng `VoiceAssistantNotifier.sendMessage()` hiện chưa đính kèm tọa độ từ `locationProvider` vào payload gửi lên RAG.
