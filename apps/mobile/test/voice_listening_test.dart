@@ -71,8 +71,8 @@ class FakeVoiceAudioService implements VoiceAudioService {
   void enqueueSentence({
     required String baseUrl,
     required String sentence,
-    String speed = '1.5',
-    String speakerId = 'DaNang-Nu-1-BL',
+    String speed = '1.0',
+    String speakerId = 'HN-Nam-2-BL',
   }) {
     enqueuedSentences.add(sentence);
   }
@@ -516,9 +516,9 @@ void main() {
   });
 
   test(
-    'extractNextTtsChunk splits first clause early and protects decimals/abbreviations',
+    'extractNextTtsChunk prefers complete phrases and protects decimals/abbreviations',
     () {
-      // 1. First chunk splits on natural comma pause once >= 22 chars
+      // Prefer a complete sentence instead of making a short clip at a comma.
       const opening =
           'Đà Nẵng mùa này thời tiết rất đẹp, nắng dịu nhẹ và ít mưa.';
       final first = VoiceAssistantNotifier.extractNextTtsChunk(
@@ -526,10 +526,10 @@ void main() {
         isFirstChunk: true,
       );
       expect(first, isNotNull);
-      expect(first!.chunk, 'Đà Nẵng mùa này thời tiết rất đẹp,');
-      expect(first.remainder, 'nắng dịu nhẹ và ít mưa.');
+      expect(first!.chunk, opening);
+      expect(first.remainder, isEmpty);
 
-      // 2. Subsequent chunks wait for full sentence boundary instead of short commas
+      // Short partial clauses wait for more context instead of starting TTS.
       final secondMidStream = VoiceAssistantNotifier.extractNextTtsChunk(
         'nắng dịu nhẹ, gió mát ',
         isFirstChunk: false,
@@ -545,13 +545,13 @@ void main() {
         isNull,
       );
       final cityChunk = VoiceAssistantNotifier.extractNextTtsChunk(
-        'Bạn nên ghé thăm TP. Hồ Chí Minh vào tháng ba. Thời tiết rất đẹp!',
+        'Bạn nên ghé thăm TP. Hồ Chí Minh vào tháng ba vì thời tiết thường rất đẹp quanh năm. Thời tiết rất đẹp!',
         isFirstChunk: true,
       );
       expect(cityChunk, isNotNull);
       expect(
         cityChunk!.chunk,
-        'Bạn nên ghé thăm TP. Hồ Chí Minh vào tháng ba.',
+        'Bạn nên ghé thăm TP. Hồ Chí Minh vào tháng ba vì thời tiết thường rất đẹp quanh năm.',
       );
     },
   );

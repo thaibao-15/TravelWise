@@ -42,7 +42,7 @@ class VoiceProfileBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             const Text(
-              'Giọng nói: Nữ Đà Nẵng (DaNang-Nu-1-BL) • 1.5x',
+              'Giọng nói: Nam Hà Nội (HN-Nam-2-BL) • 1.0x',
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -54,7 +54,7 @@ class VoiceProfileBar extends StatelessWidget {
             _EqBars(),
             const SizedBox(width: 6),
             const Text(
-              '48kHz',
+              '24kHz',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,

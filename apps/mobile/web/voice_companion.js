@@ -36,19 +36,20 @@
 
       _buildStreamUrl: function(baseUrl, text, speed, speakerId) {
         var cleanBase = (baseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-        var spd = speed || '1.5';
-        var spk = speakerId || 'DaNang-Nu-1-BL';
+        var spd = speed || '1.0';
+        var spk = speakerId || 'HN-Nam-2-BL';
         return cleanBase + '/api/v1/tts/stream?text=' + encodeURIComponent(text) +
                '&speed=' + encodeURIComponent(spd) +
-               '&speaker_id=' + encodeURIComponent(spk);
+               '&speaker_id=' + encodeURIComponent(spk) +
+               '&voice=' + encodeURIComponent(spk);
       },
 
       prefetchSingle: function(baseUrl, sentence, speed, speakerId) {
         var self = this;
         var clean = (sentence || '').trim();
         if (!clean) return Promise.resolve('');
-        var spd = speed || '1.5';
-        var spk = speakerId || 'DaNang-Nu-1-BL';
+        var spd = speed || '1.0';
+        var spk = speakerId || 'HN-Nam-2-BL';
         var cacheKey = clean + '|' + spd + '|' + spk;
 
         if (self._audioCache[cacheKey]) {
@@ -207,8 +208,8 @@
         this._queue.push({
           baseUrl: baseUrl,
           text: clean,
-          speed: speed || '1.5',
-          speakerId: speakerId || 'DaNang-Nu-1-BL'
+          speed: speed || '1.0',
+          speakerId: speakerId || 'HN-Nam-2-BL'
         });
 
         // Never prefetch the first sentence when queue is idle so <audio> streams

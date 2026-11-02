@@ -283,8 +283,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   final VoiceListeningConfig _config;
 
-  static const String _defaultTtsSpeed = '1.5';
-  static const String _defaultSpeakerId = 'DaNang-Nu-1-BL';
+  static const String _defaultTtsSpeed = '1.0';
+  static const String _defaultSpeakerId = 'HN-Nam-2-BL';
 
   Timer? _silenceTimer;
   Timer? _noSpeechTimer;
@@ -2023,9 +2023,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   // ── SSE Streaming RAG + Realtime Incremental TTS Queue ──────────────────
 
-  static const int _ttsMinChunkChars = 36;
-  static const int _ttsPreferredChunkChars = 69;
-  static const int _ttsMaxChunkChars = 150;
+  static const int _ttsMinChunkChars = 56;
+  static const int _ttsPreferredChunkChars = 120;
+  static const int _ttsMaxChunkChars = 220;
 
   /// Extracts the next speakable text chunk from [buffer], returning
   /// `(chunk, remainder)` or `null` if more tokens are needed.
@@ -2058,16 +2058,6 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
     }
 
-    if (isFirstChunk && buffer.length >= 22) {
-      final clauseRegex = RegExp(r'[,;:–—]\s+');
-      for (final match in clauseRegex.allMatches(buffer)) {
-        final candidate = buffer.substring(0, match.start + 1).trim();
-        if (candidate.length >= 22) {
-          return (chunk: candidate, remainder: buffer.substring(match.end));
-        }
-      }
-    }
-
     final whitespaceIndices = <int>[];
     for (var index = 0; index < buffer.length; index++) {
       if (RegExp(r'\s').hasMatch(buffer[index])) {
@@ -2075,30 +2065,25 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
     }
 
-    if (buffer.length >= _ttsMinChunkChars) {
-      int? cut;
-      for (final index in whitespaceIndices) {
-        if (index >= _ttsPreferredChunkChars && index <= _ttsMaxChunkChars) {
-          cut = index;
-          break;
-        }
-      }
-      cut ??= whitespaceIndices.firstWhere(
-        (index) => index >= _ttsMinChunkChars && index <= _ttsMaxChunkChars,
-        orElse: () => -1,
+    final preferredCut = whitespaceIndices.cast<int?>().firstWhere(
+      (index) =>
+          index != null &&
+          index >= _ttsPreferredChunkChars &&
+          index <= _ttsMaxChunkChars,
+      orElse: () => null,
+    );
+    if (preferredCut != null) {
+      return (
+        chunk: buffer.substring(0, preferredCut).trim(),
+        remainder: buffer.substring(preferredCut),
       );
-      if (cut == -1) cut = null;
-      if (cut != null) {
-        return (
-          chunk: buffer.substring(0, cut).trim(),
-          remainder: buffer.substring(cut),
-        );
-      }
     }
 
     if (buffer.length >= _ttsMaxChunkChars) {
       final validCuts = whitespaceIndices
-          .where((index) => index <= _ttsMaxChunkChars)
+          .where(
+            (index) => index >= _ttsMinChunkChars && index <= _ttsMaxChunkChars,
+          )
           .toList();
       if (validCuts.isNotEmpty) {
         final cut = validCuts.last;

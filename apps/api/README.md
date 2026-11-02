@@ -77,12 +77,15 @@ LLM_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-api-key-here
 GEMINI_MODEL=gemini-3.5-flash-lite
 
-# 4. Blaze AI Realtime TTS (Voice Companion)
+# 4. Blaze AI Realtime TTS V1 (Voice Companion)
 BLAZE_API_KEY=your-blaze-api-key-here
-BLAZE_TTS_WS_URL=wss://api.blaze.vn/v1/tts/realtime
-BLAZE_TTS_SPEAKER_ID=DaNang-Nu-1-BL
-BLAZE_TTS_MODEL=2.0-realtime
+BLAZE_TTS_WS_URL=wss://api.blaze.vn/v1/audio/speech/realtime
+BLAZE_TTS_SPEAKER_ID=HN-Nam-2-BL
+BLAZE_TTS_MODEL=blaze-tts-2-realtime
+BLAZE_TTS_SPEED=1.0
+BLAZE_TTS_LANGUAGE=vi
 BLAZE_TTS_AUDIO_FORMAT=mp3
+BLAZE_TTS_SAMPLE_RATE=24000
 
 # 5. Chroma Vector DB
 CHROMA_PERSIST_DIRECTORY=data/chroma
@@ -324,15 +327,24 @@ Kiểm tra cấu hình và tình trạng kết nối Blaze AI Realtime WebSocket
 ```json
 {
   "is_configured": true,
-  "speaker_id": "DaNang-Nu-1-BL",
-  "model": "2.0-realtime",
+  "speaker_id": "HN-Nam-2-BL",
+  "voice": "HN-Nam-2-BL",
+  "model": "blaze-tts-2-realtime",
   "audio_format": "mp3",
-  "ws_url": "wss://api.blaze.vn/v1/tts/realtime"
+  "sample_rate": 24000,
+  "speed": 1.0,
+  "language": "vi",
+  "ws_url": "wss://api.blaze.vn/v1/audio/speech/realtime"
 }
 ```
 
 #### `GET /api/v1/tts/stream?text=...`
 Tạo và stream trực tiếp dữ liệu âm thanh MP3 với độ trễ tối thiểu (hỗ trợ HEAD request preflight).
+
+#### `WS /api/v1/tts/ws`
+Endpoint WebSocket proxy hai chiều cho Voice Agent và ứng dụng tương tác thời gian thực:
+- **Client → Server**: `speech.create` (từng câu), `input_text.append` & `input_text.flush` (chế độ gom token LLM `mode=stream`), `session.update`, `session.close`.
+- **Server → Client**: `session.created`, `speech.started`, `speech.audio.started`, binary audio frames, `speech.audio.done`, `speech.done`, `error`, `session.closed`.
 
 #### `POST /api/v1/stt/transcribe`
 Tải file audio (`.wav`, `.mp3`, `.m4a`) để chuyển đổi thành văn bản tiếng Việt.

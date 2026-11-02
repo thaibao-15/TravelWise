@@ -598,6 +598,7 @@ export function useChat() {
       setIsLoading(true);
 
       let currentStreamContent = "";
+      let lastStreamUiUpdate = 0;
       const currentLocation = await getCurrentLocation();
       const ttsChunker =
         mode === "voice" && onSentence
@@ -617,13 +618,17 @@ export function useChat() {
             },
             onToken: (token) => {
               currentStreamContent += token;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMsgId
-                    ? { ...msg, content: currentStreamContent }
-                    : msg
-                )
-              );
+              const now = Date.now();
+              if (now - lastStreamUiUpdate >= 50) {
+                lastStreamUiUpdate = now;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId
+                      ? { ...msg, content: currentStreamContent }
+                      : msg
+                  )
+                );
+              }
 
               // Gửi chunk tại ranh giới từ khi đủ text; dấu câu chỉ là tín hiệu ưu tiên.
               ttsChunker?.push(token);

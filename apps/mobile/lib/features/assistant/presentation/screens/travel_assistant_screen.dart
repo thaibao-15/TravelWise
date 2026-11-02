@@ -1728,7 +1728,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Giọng đọc: Nữ Đà Nẵng (DaNang-Nu-1-BL)',
+                          'Giọng đọc: Nam Hà Nội (HN-Nam-2-BL)',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1737,7 +1737,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Mô hình: Blaze AI 2.0-realtime • Tốc độ: 1.5x',
+                          'Mô hình: Blaze AI blaze-tts-2-realtime • Tốc độ: 1.0x',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: Color(0xFF15803D),

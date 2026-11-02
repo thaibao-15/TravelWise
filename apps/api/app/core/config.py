@@ -13,11 +13,14 @@ To migrate to PostgreSQL later:
   3. No code changes required outside of this file.
 """
 
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote_plus
 
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+API_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -80,14 +83,14 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Blaze AI - Text to Speech Configuration (Realtime WebSocket & Stream)
     # -------------------------------------------------------------------------
-    BLAZE_TTS_WS_URL: str = "wss://api.blaze.vn/v1/tts/realtime"
+    BLAZE_TTS_WS_URL: str = "wss://api.blaze.vn/v1/audio/speech/realtime"
     BLAZE_TTS_API_URL: str = "https://api.blaze.vn/v1/tts"
-    BLAZE_TTS_SPEAKER_ID: str = "DaNang-Nu-1-BL"
-    BLAZE_TTS_MODEL: str = "2.0-realtime"
-    BLAZE_TTS_SPEED: str = "1.5"
-    BLAZE_TTS_AUDIO_QUALITY: int = 64
+    BLAZE_TTS_SPEAKER_ID: str = "HN-Nam-2-BL"
+    BLAZE_TTS_MODEL: str = "blaze-tts-2-realtime"
+    BLAZE_TTS_SPEED: str = "1.0"
     BLAZE_TTS_AUDIO_FORMAT: str = "mp3"
-    BLAZE_TTS_NORMALIZATION: str = "basic"
+    BLAZE_TTS_SAMPLE_RATE: int = 24000
+    BLAZE_TTS_LANGUAGE: str = "vi"
 
     # -------------------------------------------------------------------------
     # Weather Configuration
@@ -153,7 +156,7 @@ class Settings(BaseSettings):
         return f"mssql+pyodbc:///?odbc_connect={quote_plus(odbc_params)}"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=API_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=True,

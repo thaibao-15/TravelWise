@@ -606,11 +606,10 @@ sequenceDiagram
     AI-->>API: Câu trả lời văn bản
     API-->>Notifier: 200 OK {"conversation_id": id, "message": {"content": "..."}}
 
-    Notifier->>Notifier: Làm sạch Markdown (_cleanTextForTts)
-    Notifier->>API: POST /api/v1/tts {"text": cleanText, "speaker_id": "HN-Nam-1-BL", "speed": "1"}
-    API->>AI: Tổng hợp giọng nói Blaze TTS
-    AI-->>API: Luồng âm thanh
-    API-->>Notifier: 200 OK (Uint8List audio bytes)
+    Notifier->>API: GET /api/v1/tts/stream?text=...&speaker_id=HN-Nam-2-BL&speed=1.0
+    API->>AI: Tổng hợp giọng nói Blaze TTS Realtime (blaze-tts-2-realtime)
+    AI-->>API: Luồng âm thanh MP3
+    API-->>Notifier: 200 OK (Audio stream)
     Notifier->>JS: playWavBytes(bytes)
     JS-->>Notifier: onPlay() -> Chuyển trạng thái VoiceState.speaking
     JS->>User: Phát âm thanh qua HTML5 Audio

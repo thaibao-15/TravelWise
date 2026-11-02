@@ -1,8 +1,9 @@
 import asyncio
+import json
 import os
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -22,10 +23,14 @@ class TestTTSRealtimeRoutesAndService(unittest.TestCase):
         data = response.json()
         self.assertIn("is_configured", data)
         self.assertIn("speaker_id", data)
-        self.assertEqual(data["model"], "2.0-realtime")
+        self.assertEqual(data["model"], "blaze-tts-2-realtime")
         self.assertEqual(data["audio_format"], "mp3")
         self.assertIn("ws_url", data)
         self.assertTrue(data["ws_url"].startswith("wss://"))
+        self.assertIn("voice", data)
+        self.assertIn("sample_rate", data)
+        self.assertIn("speed", data)
+        self.assertIn("language", data)
 
     def test_clean_text_markdown_stripping(self):
         """Kiểm tra hàm làm sạch văn bản loại bỏ markdown, link, code block."""
@@ -60,9 +65,36 @@ print('hello')
             service.validate_configuration()
         self.assertEqual(ctx.exception.status_code, 401)
 
+    def test_error_from_event_parsing(self):
+        """Kiểm tra xử lý cấu trúc phản hồi lỗi theo đặc tả Blaze TTS Realtime."""
+        error_event = {
+            "type": "error",
+            "error": {
+                "message": "Insufficient credits",
+                "type": "insufficient_credits_error",
+                "code": None,
+            },
+        }
+        err = BlazeTTSService.error_from_event(error_event)
+        self.assertEqual(err.status_code, 402)
+        self.assertEqual(err.error_type, "insufficient_credits_error")
+        self.assertIn("Insufficient credits", err.message)
+
+        invalid_event = {
+            "type": "error",
+            "error": {
+                "message": "`voice` is required: set it in the URL, session.update or the event.",
+                "type": "invalid_request_error",
+                "code": None,
+            },
+        }
+        err2 = BlazeTTSService.error_from_event(invalid_event)
+        self.assertEqual(err2.status_code, 400)
+        self.assertEqual(err2.error_type, "invalid_request_error")
+
     def test_tts_stream_get_endpoint_mocked(self):
         """Kiểm tra GET /api/v1/tts/stream trả về audio/mpeg dạng stream."""
-        async def mock_stream_speech(self_inst, text):
+        async def mock_stream_speech(self_inst, text, overrides=None):
             yield b"\xff\xfb\x90\x44"  # MP3 frame header simulation
             yield b"\x00\x00\x00\x00"
 
@@ -74,7 +106,7 @@ print('hello')
 
     def test_tts_post_endpoint_mocked(self):
         """Kiểm tra POST /api/v1/tts trả về audio/mpeg dạng stream."""
-        async def mock_stream_speech(self_inst, text):
+        async def mock_stream_speech(self_inst, text, overrides=None):
             yield b"MOCK_MP3_STREAM_CHUNKS"
 
         with patch.object(BlazeTTSService, "stream_speech", mock_stream_speech):
@@ -85,6 +117,14 @@ print('hello')
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers["content-type"], "audio/mpeg")
             self.assertEqual(response.content, b"MOCK_MP3_STREAM_CHUNKS")
+
+    def test_websocket_tts_proxy_no_key(self):
+        """Kiểm tra WebSocket /api/v1/tts/ws trả về lỗi nếu không có API key."""
+        with patch.object(settings, "BLAZE_API_KEY", ""):
+            with self.client.websocket_connect("/api/v1/tts/ws") as ws:
+                data = ws.receive_json()
+                self.assertEqual(data.get("type"), "error")
+                self.assertEqual(data.get("error", {}).get("type"), "unauthorized")
 
     def test_live_realtime_websocket_if_configured(self):
         """Kiểm tra kết nối trực tiếp Blaze Realtime WebSocket (chạy khi có BLAZE_API_KEY)."""
@@ -107,7 +147,10 @@ print('hello')
             total_bytes = sum(len(c) for c in chunks)
             return len(chunks), total_bytes, ttfb, total_time
 
-        chunk_count, total_bytes, ttfb, total_time = asyncio.run(run_live_test())
+        try:
+            chunk_count, total_bytes, ttfb, total_time = asyncio.run(run_live_test())
+        except BlazeTTSError as exc:
+            self.skipTest(f"Blaze TTS live unavailable: {exc.message}")
 
         self.assertGreater(chunk_count, 0, "Must receive at least 1 audio chunk.")
         self.assertGreater(total_bytes, 1000, "Audio data must be > 1000 bytes.")

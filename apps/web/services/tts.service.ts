@@ -1,6 +1,6 @@
 /**
- * Text-to-Speech (TTS) Service using TravelWise FastAPI /api/v1/tts endpoint
- * and Web Speech API (zero-latency instant browser speech).
+ * Text-to-Speech service using the TravelWise FastAPI proxy.
+ * The proxy connects to Blaze TTS Realtime V1; the browser never receives the API key.
  */
 
 const audioCache = new Map<string, string>();
@@ -18,10 +18,10 @@ export interface IncrementalTtsChunkingConfig {
  * latency/quality benchmarks can tune them without changing the chunker.
  */
 export const incrementalTtsConfig: IncrementalTtsChunkingConfig = {
-  minChars: 48,
-  preferredChars: 96,
-  maxChars: 180,
-  maxWaitMs: 350,
+  minChars: 56,
+  preferredChars: 120,
+  maxChars: 220,
+  maxWaitMs: 400,
   maxQueuedChunks: 12,
 };
 
@@ -55,8 +55,9 @@ export class IncrementalTtsChunker {
     this.clearTimer();
   }
 
-  private drain(force: boolean): void {
+  private drain(force: boolean, allowShortTail = true): void {
     while (this.buffer) {
+      if (!allowShortTail && this.buffer.length < this.config.minChars) return;
       const cut = this.findCut(force);
       if (cut === null) return;
 
@@ -97,13 +98,10 @@ export class IncrementalTtsChunker {
     );
     if (preferredCut !== undefined) return preferredCut;
 
-    const firstValidCut = usableWhitespace.find(
-      (index) => index >= this.config.minChars && index <= this.config.maxChars,
-    );
-    if (firstValidCut !== undefined) return firstValidCut;
-
     if (length >= this.config.maxChars || force) {
-      const lastCut = usableWhitespace.filter((index) => index <= this.config.maxChars).pop();
+      const lastCut = usableWhitespace
+        .filter((index) => index >= this.config.minChars && index <= this.config.maxChars)
+        .pop();
       return lastCut ?? (force && length >= this.config.minChars ? length : null);
     }
 
@@ -115,7 +113,9 @@ export class IncrementalTtsChunker {
 
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.drain(true);
+      // Avoid sending tiny fragments just because token delivery paused briefly.
+      // The stream's final flush still speaks any short tail.
+      this.drain(this.buffer.length >= this.config.minChars, false);
     }, this.config.maxWaitMs);
   }
 
