@@ -179,6 +179,7 @@ async def stream_and_speak_rag_response(
     first_chunk_recorded = False
     sentence_queue: asyncio.Queue[Optional[asyncio.Queue[Optional[rtc.AudioFrame]]]] = asyncio.Queue()
     sentence_idx = 0
+    stream_failed = False
 
     def enqueue_sentence(s_text: str) -> None:
         nonlocal sentence_idx
@@ -318,9 +319,29 @@ async def stream_and_speak_rag_response(
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
                 coordinator.update_conversation_id(new_conv_id)
+                if room:
+                    await send_room_data(room, {
+                        "type": "conversation",
+                        "conversation_id": new_conv_id,
+                    })
+                    await send_room_data(room, {
+                        "type": "metadata",
+                        "conversation_id": new_conv_id,
+                        "planning_context": ev.get("planning_context"),
+                        "planning_status": ev.get("planning_status"),
+                        "is_ready_to_generate": ev.get("is_ready_to_generate"),
+                        "planning_action": ev.get("planning_action"),
+                        "media": ev.get("media", []),
+                    })
 
             elif ev_type == "error":
                 logger.error("Lỗi từ RAG stream event: %s", ev.get("message"))
+                stream_failed = True
+                if room:
+                    await send_room_data(room, {
+                        "type": "error",
+                        "message": "Không thể kết nối dịch vụ AI. Vui lòng thử lại.",
+                    })
                 break
 
         # Push any remaining sentence in buffer
@@ -361,7 +382,7 @@ async def stream_and_speak_rag_response(
         await sentence_queue.put(None)
         await tts_task
 
-        if coordinator.is_turn_valid(turn_id):
+        if coordinator.is_turn_valid(turn_id) and not stream_failed:
             full_answer = " ".join(full_answer_parts).strip()
             coordinator.record_tts_complete(turn_id, full_answer)
 
@@ -378,9 +399,13 @@ async def stream_and_speak_rag_response(
                     "state": "ready",
                     "text": None,
                 })
-        else:
+        elif coordinator.is_turn_valid(turn_id):
             if room:
-                await send_room_data(room, {"type": "state", "state": "ready", "text": None})
+                await send_room_data(room, {
+                    "type": "state",
+                    "state": "ready",
+                    "text": None,
+                })
 
 
 async def process_user_audio_with_rag(
@@ -406,9 +431,46 @@ async def process_user_audio_with_rag(
         conversation_id=initial_conversation_id,
         user_id=user_id,
     )
+    event_loop = asyncio.get_running_loop()
+    control_tasks: set[asyncio.Task] = set()
+
+    def schedule_control_task(coro) -> None:
+        if event_loop.is_closed():
+            coro.close()
+            return
+        task = event_loop.create_task(coro)
+        control_tasks.add(task)
+        task.add_done_callback(control_tasks.discard)
+
+    @room.on("data_received")
+    def on_control_data(*args) -> None:
+        if not args:
+            return
+        packet = args[0]
+        raw_data = getattr(packet, "data", packet)
+        if not isinstance(raw_data, bytes):
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if (
+            isinstance(payload, dict)
+            and payload.get("type") == "command"
+            and payload.get("command") == "stop_speaking"
+        ):
+            logger.info("🛑 Nhận lệnh dừng đọc vật lý từ %s.", participant.identity)
+            interrupt_agent_audio("Physical stop button")
+            schedule_control_task(
+                send_room_data(room, {"type": "state", "state": "ready"})
+            )
 
     audio_stream = rtc.AudioStream(track)
     stt_stream = blaze_stt.stream()
+
+    def interrupt_agent_audio(reason: str) -> None:
+        coordinator.handle_interruption(reason=reason)
+        audio_source.clear_queue()
 
     # Keep the start-of-speech window short so barge-in stops TTS at the first
     # detected speech instead of waiting for a complete word.
@@ -446,8 +508,8 @@ async def process_user_audio_with_rag(
                             "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang nói (prob=%.2f)!",
                             probability,
                         )
-                        coordinator.handle_interruption(
-                            reason=f"User started speaking (prob={probability:.2f})"
+                        interrupt_agent_audio(
+                            f"User started speaking (prob={probability:.2f})"
                         )
                         # Notify frontend that AI was interrupted and is listening again
                         await send_room_data(room, {"type": "state", "state": "ready"})
@@ -468,6 +530,13 @@ async def process_user_audio_with_rag(
                 if speech_event.type == stt.SpeechEventType.INTERIM_TRANSCRIPT:
                     transcript = speech_event.alternatives[0].text
                     logger.debug("⏳ [Blaze STT Interim] %s: %s", participant.identity, transcript)
+                    if transcript.strip():
+                        await send_room_data(room, {
+                            "type": "transcript",
+                            "role": "user",
+                            "text": transcript,
+                            "is_final": False,
+                        })
 
                 elif speech_event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
                     transcript = speech_event.alternatives[0].text.strip()
@@ -520,6 +589,10 @@ async def process_user_audio_with_rag(
     finally:
         for t in tasks:
             t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for t in list(control_tasks):
+            t.cancel()
+        await asyncio.gather(*control_tasks, return_exceptions=True)
         await stt_stream.aclose()
         await vad_stream.aclose()
         logger.info("🛑 Đã đóng phiên hội thoại giọng nói cho: %s", participant.identity)

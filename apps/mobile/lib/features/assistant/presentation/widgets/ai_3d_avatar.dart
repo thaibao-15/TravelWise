@@ -75,7 +75,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ref.read(avatar3dStateProvider.notifier).setLoaded(
+            ref
+                .read(avatar3dStateProvider.notifier)
+                .setLoaded(
                   modelName: _cachedModel!.name,
                   hasMorphTargets: _cachedModel!.hasMorphTargets,
                   hasSkeleton: _cachedModel!.hasSkeleton,
@@ -110,7 +112,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       }
 
       if (byteData == null) {
-        throw Exception('Không tìm thấy tệp 3D (.glb / .vrm) khả dụng trong assets/models.');
+        throw Exception(
+          'Không tìm thấy tệp 3D (.glb / .vrm) khả dụng trong assets/models.',
+        );
       }
 
       final bytes = byteData.buffer.asUint8List(
@@ -129,7 +133,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ref.read(avatar3dStateProvider.notifier).setLoaded(
+            ref
+                .read(avatar3dStateProvider.notifier)
+                .setLoaded(
                   modelName: chosenPath.split('/').last,
                   hasMorphTargets: model.hasMorphTargets,
                   hasSkeleton: model.hasSkeleton,
@@ -175,12 +181,13 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
               else if (_loadedModel != null)
                 GestureDetector(
                   onPanUpdate: (details) {
-                    final deltaX = details.delta.dx / constraints.maxWidth * 2.8;
-                    final deltaY = details.delta.dy / constraints.maxHeight * 2.0;
-                    ref.read(avatar3dStateProvider.notifier).addOrbitDelta(
-                          deltaYaw: deltaX,
-                          deltaPitch: -deltaY,
-                        );
+                    final deltaX =
+                        details.delta.dx / constraints.maxWidth * 2.8;
+                    final deltaY =
+                        details.delta.dy / constraints.maxHeight * 2.0;
+                    ref
+                        .read(avatar3dStateProvider.notifier)
+                        .addOrbitDelta(deltaYaw: deltaX, deltaPitch: -deltaY);
                   },
                   child: AnimatedBuilder(
                     animation: Listenable.merge([
@@ -189,14 +196,20 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                         widget.lipSyncListenable!,
                     ]),
                     builder: (context, child) {
-                      final elapsed = _tickerController.lastElapsedDuration?.inMicroseconds ?? 0;
+                      final elapsed =
+                          _tickerController
+                              .lastElapsedDuration
+                              ?.inMicroseconds ??
+                          0;
                       final seconds = elapsed / 1000000.0;
-                      final lipSync = widget.lipSyncListenable?.value ?? LipSyncFrame.idle;
+                      final lipSync =
+                          widget.lipSyncListenable?.value ?? LipSyncFrame.idle;
 
                       final frame = _animationService.computeFrame(
                         elapsedSeconds: seconds,
                         voiceState: widget.voiceState,
                         lipSync: lipSync,
+                        speechText: widget.speechText,
                       );
 
                       return CustomPaint(
@@ -235,20 +248,33 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                     },
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.center_focus_strong, color: Colors.white, size: 13),
+                          Icon(
+                            Icons.center_focus_strong,
+                            color: Colors.white,
+                            size: 13,
+                          ),
                           SizedBox(width: 4),
                           Text(
                             'Đặt lại góc nhìn',
-                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -370,10 +396,7 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
           Container(
             width: 7,
             height: 7,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
@@ -424,7 +447,11 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.view_in_ar_rounded, size: 36, color: Color(0xFFEF4444)),
+              const Icon(
+                Icons.view_in_ar_rounded,
+                size: 36,
+                color: Color(0xFFEF4444),
+              ),
               const SizedBox(height: 8),
               Text(
                 'Lỗi hiển thị model 3D: $error',

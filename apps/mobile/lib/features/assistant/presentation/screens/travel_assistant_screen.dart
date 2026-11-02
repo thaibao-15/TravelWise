@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../map/presentation/screens/map_screen.dart';
 import 'assistant_chat_screen.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +24,6 @@ class TravelAssistantScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<TravelAssistantScreen> createState() =>
-     
       _TravelAssistantScreenState();
 }
 
@@ -88,6 +89,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
         }
         notifier.cancelListening();
         notifier.stopAudio();
+        unawaited(notifier.leaveLiveKitVoice());
       }
     });
 
@@ -102,21 +104,6 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       } else {
         if (_rippleController.isAnimating) _rippleController.stop();
       }
-
-      if (next.error != null &&
-          next.error!.isNotEmpty &&
-          next.error != prev?.error &&
-          mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(next.error!),
-              backgroundColor: AppColors.error,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-      }
     });
 
     return Scaffold(
@@ -128,6 +115,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           children: [
             // ── 1. Top Header Bar ───────────────────────────────────────────
             _buildTopAppBar(context, state, notifier),
+
+            if (state.error != null && state.error!.isNotEmpty)
+              _buildVoiceErrorBanner(state.error!),
 
             // ── 2. Nội dung chính: Tối ưu vừa vặn màn hình (Single-Screen) ──
             Expanded(
@@ -159,6 +149,39 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceErrorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 20,
+            color: Color(0xFFB91C1C),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF991B1B),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -837,51 +860,6 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                   ),
                 ],
               ),
-            ),
-          ] else if (isSpeaking) ...[
-            const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _StopSpeakingButton(onPressed: notifier.stopSpeaking),
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: notifier.bargeIn,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFF0284C7).withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(
-                          Icons.mic_rounded,
-                          size: 14,
-                          color: Color(0xFF0284C7),
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Nói luôn (Barge-in)',
-                          style: TextStyle(
-                            color: Color(0xFF0284C7),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ),
           ] else if (isThinking) ...[
             Row(
@@ -1913,70 +1891,6 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               },
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StopSpeakingButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _StopSpeakingButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(24),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFEF4444).withValues(alpha: 0.35),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(2.5),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Dừng đọc AI',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(
-                  Icons.close_rounded,
-                  color: Colors.white70,
-                  size: 16,
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

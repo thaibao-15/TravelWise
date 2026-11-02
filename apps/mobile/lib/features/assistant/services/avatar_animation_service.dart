@@ -48,19 +48,19 @@ class AvatarFrameState {
   });
 
   Map<String, double> get morphWeights => {
-        'viseme_aa': visemeAa,
-        'viseme_oh': visemeOh,
-        'viseme_ee': visemeEe,
-        'blink': blinkWeight,
-        'smile': smileWeight,
-        // VRM & ARKit standard aliases
-        'A': visemeAa,
-        'O': visemeOh,
-        'E': visemeEe,
-        'Blink': blinkWeight,
-        'Joy': smileWeight,
-        'mouthOpen': visemeAa,
-      };
+    'viseme_aa': visemeAa,
+    'viseme_oh': visemeOh,
+    'viseme_ee': visemeEe,
+    'blink': blinkWeight,
+    'smile': smileWeight,
+    // VRM & ARKit standard aliases
+    'A': visemeAa,
+    'O': visemeOh,
+    'E': visemeEe,
+    'Blink': blinkWeight,
+    'Joy': smileWeight,
+    'mouthOpen': visemeAa,
+  };
 }
 
 /// Service that translates Voice AI state and real-time audio LipSyncFrame into
@@ -74,6 +74,10 @@ class AvatarAnimationService {
   double _smoothAa = 0.0;
   double _smoothOh = 0.0;
   double _smoothEe = 0.0;
+  VoiceState? _lastVoiceState;
+  double? _speakingStartSeconds;
+  double? _speakingEndSeconds;
+  String _lastSpeechText = '';
 
   void reset() {
     _blinkTimer = 0.0;
@@ -82,6 +86,10 @@ class AvatarAnimationService {
     _smoothAa = 0.0;
     _smoothOh = 0.0;
     _smoothEe = 0.0;
+    _lastVoiceState = null;
+    _speakingStartSeconds = null;
+    _speakingEndSeconds = null;
+    _lastSpeechText = '';
   }
 
   /// Computes frame animation targets.
@@ -92,7 +100,21 @@ class AvatarAnimationService {
     required double elapsedSeconds,
     required VoiceState voiceState,
     required LipSyncFrame lipSync,
+    required String speechText,
   }) {
+    if (_lastVoiceState != voiceState) {
+      if (_lastVoiceState == VoiceState.speaking &&
+          voiceState != VoiceState.speaking) {
+        _speakingEndSeconds = elapsedSeconds;
+      }
+      _lastVoiceState = voiceState;
+      if (voiceState == VoiceState.speaking) {
+        _speakingStartSeconds = elapsedSeconds;
+        _speakingEndSeconds = null;
+      }
+    }
+    if (speechText.trim().isNotEmpty) _lastSpeechText = speechText;
+
     // 1. Natural autonomous blinking (every 3..6s, 180ms duration)
     _blinkTimer += 0.0166;
     if (_blinkTimer >= _nextBlinkTime) {
@@ -153,7 +175,8 @@ class AvatarAnimationService {
 
       case VoiceState.speaking:
         // Expressive conversational nodding and hand gestures
-        headPitch = math.sin(elapsedSeconds * 4.2) * 0.045 +
+        headPitch =
+            math.sin(elapsedSeconds * 4.2) * 0.045 +
             math.sin(elapsedSeconds * 1.8) * 0.025;
         headYaw = math.sin(elapsedSeconds * 2.4) * 0.055;
         headRoll = math.cos(elapsedSeconds * 2.0) * 0.028;
@@ -180,10 +203,28 @@ class AvatarAnimationService {
     double targetOh = 0.0;
     double targetEe = 0.0;
 
-    if (voiceState == VoiceState.speaking && lipSync.active && lipSync.energy > 0.02) {
-      // Map audio open & wide parameters cleanly into phonetic morph targets
-      final open = lipSync.mouthOpen.clamp(0.0, 1.0);
-      final wide = lipSync.mouthWide.clamp(0.0, 1.0);
+    final isInSpeakingGracePeriod =
+        _speakingEndSeconds != null &&
+        elapsedSeconds - _speakingEndSeconds! < 1.0;
+    final shouldAnimateMouth =
+        voiceState == VoiceState.speaking || isInSpeakingGracePeriod;
+
+    if (shouldAnimateMouth) {
+      final hasAudioLipSync = lipSync.active && lipSync.energy > 0.02;
+      final speakingElapsed =
+          elapsedSeconds - (_speakingStartSeconds ?? elapsedSeconds);
+      final fallbackText = speechText.trim().isNotEmpty
+          ? speechText
+          : _lastSpeechText;
+      final fallback = speakingElapsed < 2.5
+          ? (0.0, 0.0)
+          : _fallbackViseme(fallbackText, speakingElapsed - 1.5);
+      final open = hasAudioLipSync
+          ? lipSync.mouthOpen.clamp(0.0, 1.0)
+          : fallback.$1;
+      final wide = hasAudioLipSync
+          ? lipSync.mouthWide.clamp(-1.0, 1.0)
+          : fallback.$2;
 
       if (wide > 0.58) {
         // High F2 formant -> wide spread vowel ("E", "I", "Ê")
@@ -227,6 +268,24 @@ class AvatarAnimationService {
     );
   }
 
+  (double, double) _fallbackViseme(String text, double elapsedSeconds) {
+    final characters = text.trim().toLowerCase().runes.toList();
+    if (characters.isEmpty) {
+      final pulse = 0.5 + 0.5 * math.sin(elapsedSeconds * 18.0);
+      return (0.28 + pulse * 0.42, 0.0);
+    }
+
+    final index = (elapsedSeconds * 9.0).floor() % characters.length;
+    final character = String.fromCharCode(characters[index]);
+
+    if (',.;:!?'.contains(character)) return (0.08, 0.0);
+    if (character.trim().isEmpty) return (0.10, 0.0);
+    if ('oôơuư'.contains(character)) return (0.68, -0.75);
+    if ('eêiịy'.contains(character)) return (0.56, 0.75);
+    if ('aăâ'.contains(character)) return (0.86, 0.12);
+    return (0.42, 0.0);
+  }
+
   /// Applies skeletal bone rotations directly onto [model]'s nodes.
   void applyPosingToNodes(GlbModel model, AvatarFrameState frame) {
     for (final node in model.nodes) {
@@ -239,11 +298,17 @@ class AvatarAnimationService {
         node.translation.y = frame.chestBreath;
       } else if (node.name == 'LeftUpperArm') {
         final baseQ = Quaternion(0.0, 0.0, -0.10, 0.995);
-        final gesture = Quaternion.axisAngle(Vector3(1, 0, 0), frame.leftArmPitch);
+        final gesture = Quaternion.axisAngle(
+          Vector3(1, 0, 0),
+          frame.leftArmPitch,
+        );
         node.rotation.setFrom(baseQ * gesture);
       } else if (node.name == 'RightUpperArm') {
         final baseQ = Quaternion(0.0, 0.0, 0.10, 0.995);
-        final gesture = Quaternion.axisAngle(Vector3(1, 0, 0), frame.rightArmPitch);
+        final gesture = Quaternion.axisAngle(
+          Vector3(1, 0, 0),
+          frame.rightArmPitch,
+        );
         node.rotation.setFrom(baseQ * gesture);
       }
     }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import asyncio
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -209,6 +210,15 @@ class TravelWiseRAGClient:
             total_ms = (time.perf_counter() - start_time) * 1000
             logger.info("🏁 [RAG Stream Done] Hoàn tất stream trong %.1fms", total_ms)
 
+        except asyncio.CancelledError:
+            logger.info("RAG stream bị hủy bởi interruption hoặc kết thúc phiên.")
+            raise
         except (httpx.TimeoutException, httpx.RequestError) as exc:
-            logger.error("Lỗi kết nối RAG stream: %s", exc)
+            logger.error(
+                "Lỗi kết nối RAG stream: type=%s message=%r endpoint=%s conv_id=%s",
+                type(exc).__name__,
+                str(exc) or repr(exc),
+                endpoint,
+                conversation_id,
+            )
             yield {"type": "error", "message": "Lỗi kết nối đến dịch vụ RAG."}

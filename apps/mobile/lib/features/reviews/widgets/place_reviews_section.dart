@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/colors.dart';
+import '../../../core/error/user_facing_error.dart';
 import '../../../core/constants/spacing.dart';
 import '../../auth/presentation/providers/auth_notifier.dart';
 import '../../auth/presentation/providers/auth_state.dart';
@@ -77,7 +78,10 @@ class _PlaceReviewsSectionState extends ConsumerState<PlaceReviewsSection> {
         _myReview = null;
         _myReviewError = isUnauthenticated
             ? null
-            : 'Không thể kiểm tra đánh giá của bạn: $error';
+            : userFacingServerError(
+                error,
+                fallback: 'Không thể kiểm tra đánh giá của bạn.',
+              );
         _isLoadingMyReview = false;
       });
     }
@@ -118,7 +122,10 @@ class _PlaceReviewsSectionState extends ConsumerState<PlaceReviewsSection> {
       setState(() {
         _isLoading = false;
         _isLoadingMore = false;
-        _errorMessage = 'Không thể tải đánh giá: $error';
+        _errorMessage = userFacingServerError(
+          error,
+          fallback: 'Không thể tải đánh giá. Vui lòng thử lại sau.',
+        );
       });
     }
   }
@@ -192,7 +199,12 @@ class _PlaceReviewsSectionState extends ConsumerState<PlaceReviewsSection> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Không thể xóa đánh giá: $error'),
+          content: Text(
+            userFacingServerError(
+              error,
+              fallback: 'Không thể xóa đánh giá. Vui lòng thử lại.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -220,7 +232,12 @@ class _PlaceReviewsSectionState extends ConsumerState<PlaceReviewsSection> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Không thể cập nhật lượt hữu ích: $error'),
+          content: Text(
+            userFacingServerError(
+              error,
+              fallback: 'Không thể cập nhật lượt hữu ích.',
+            ),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
