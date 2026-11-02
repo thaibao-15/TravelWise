@@ -173,6 +173,7 @@ async def stream_and_speak_rag_response(
         })
 
     delimiters = re.compile(r"([.!?\n]+(?:\s+|$))")
+    early_tts_word_limit = 5
     buffer = ""
     full_answer_parts: List[str] = []
     first_chunk_recorded = False
@@ -297,6 +298,22 @@ async def stream_and_speak_rag_response(
                             })
                         # Push to queue for playback worker
                         enqueue_sentence(sentence)
+                elif len(buffer.split()) >= early_tts_word_limit:
+                    # Start speaking a short phrase before punctuation arrives,
+                    # while avoiding one TTS request per generated token.
+                    words = buffer.split()
+                    sentence = " ".join(words[:early_tts_word_limit]).strip()
+                    buffer = " ".join(words[early_tts_word_limit:])
+                    if sentence:
+                        full_answer_parts.append(sentence)
+                        if room:
+                            await send_room_data(room, {
+                                "type": "transcript",
+                                "role": "assistant",
+                                "text": " ".join(full_answer_parts),
+                                "is_final": False,
+                            })
+                        enqueue_sentence(sentence)
 
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
@@ -393,11 +410,12 @@ async def process_user_audio_with_rag(
     audio_stream = rtc.AudioStream(track)
     stt_stream = blaze_stt.stream()
 
-    # Silero VAD configured to reject coughs/clicks (<250ms) and acoustic echo (<0.55)
+    # Keep the start-of-speech window short so barge-in stops TTS at the first
+    # detected speech instead of waiting for a complete word.
     vad_model = silero.VAD.load(
-        min_speech_duration=0.25,
-        min_silence_duration=0.6,
-        activation_threshold=0.55,
+        min_speech_duration=0.05,
+        min_silence_duration=0.3,
+        activation_threshold=0.5,
     )
     vad_stream = vad_model.stream()
 
@@ -420,14 +438,16 @@ async def process_user_audio_with_rag(
         try:
             async for vad_event in vad_stream:
                 if vad_event.type == vad.VADEventType.START_OF_SPEECH:
-                    # User started speaking. If Agent is currently playing audio, trigger interruption only on strong voice!
-                    if coordinator.is_agent_speaking and getattr(vad_event, "probability", 1.0) >= 0.85:
+                    # Interrupt on the first reliable speech signal while the
+                    # agent is speaking; do not wait for a final STT transcript.
+                    probability = getattr(vad_event, "probability", 1.0)
+                    if coordinator.is_agent_speaking and probability >= 0.5:
                         logger.info(
                             "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang nói (prob=%.2f)!",
-                            vad_event.probability,
+                            probability,
                         )
                         coordinator.handle_interruption(
-                            reason=f"User started speaking (prob={vad_event.probability:.2f})"
+                            reason=f"User started speaking (prob={probability:.2f})"
                         )
                         # Notify frontend that AI was interrupted and is listening again
                         await send_room_data(room, {"type": "state", "state": "ready"})
@@ -564,27 +584,69 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # 6. Listen for user audio tracks and attach RAG pipeline
     user_audio_tasks = []
+    handled_track_ids: set[str] = set()
+    participant_left = asyncio.Event()
+
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant: rtc.RemoteParticipant):
+        if not ctx.room.remote_participants:
+            logger.info(
+                "👋 Người dùng đã rời phòng '%s'; kết thúc job để phiên mới được tạo sạch.",
+                ctx.room.name,
+            )
+            participant_left.set()
+
+    def attach_user_audio(
+        track: rtc.Track,
+        participant: rtc.RemoteParticipant,
+    ) -> None:
+        if track.kind != rtc.TrackKind.KIND_AUDIO or track.sid in handled_track_ids:
+            return
+
+        handled_track_ids.add(track.sid)
+        logger.info(
+            "🎵 Nhận được Audio Track từ %s (Track ID: %s)",
+            participant.identity,
+            track.sid,
+        )
+        user_id = extract_user_id(participant)
+        conv_id = extract_conversation_id(
+            ctx.room.name,
+            participant.metadata,
+        ) or initial_conversation_id
+        task = asyncio.create_task(
+            process_user_audio_with_rag(
+                track=track,
+                participant=participant,
+                room=ctx.room,
+                blaze_stt=blaze_stt,
+                blaze_tts=blaze_tts,
+                rag_client=rag_client,
+                audio_source=audio_source,
+                initial_conversation_id=conv_id,
+                user_id=user_id,
+            )
+        )
+        user_audio_tasks.append(task)
 
     @ctx.room.on("track_subscribed")
-    def on_track_subscribed(track: rtc.Track, pub: rtc.TrackPublication, participant: rtc.RemoteParticipant):
-        if track.kind == rtc.TrackKind.KIND_AUDIO:
-            logger.info("🎵 Nhận được Audio Track từ %s (Track ID: %s)", participant.identity, track.sid)
-            user_id = extract_user_id(participant)
-            conv_id = extract_conversation_id(ctx.room.name, participant.metadata) or initial_conversation_id
-            task = asyncio.create_task(
-                process_user_audio_with_rag(
-                    track=track,
-                    participant=participant,
-                    room=ctx.room,
-                    blaze_stt=blaze_stt,
-                    blaze_tts=blaze_tts,
-                    rag_client=rag_client,
-                    audio_source=audio_source,
-                    initial_conversation_id=conv_id,
-                    user_id=user_id,
-                )
-            )
-            user_audio_tasks.append(task)
+    def on_track_subscribed(
+        track: rtc.Track,
+        pub: rtc.TrackPublication,
+        participant: rtc.RemoteParticipant,
+    ):
+        attach_user_audio(track, participant)
+
+    # The user may have published before the handler above was registered.
+    # Attach already-subscribed audio tracks so the first utterance is not lost.
+    for participant in ctx.room.remote_participants.values():
+        for publication in participant.track_publications.values():
+            if publication.kind != rtc.TrackKind.KIND_AUDIO:
+                continue
+            if publication.track is not None:
+                attach_user_audio(publication.track, participant)
+            elif not publication.subscribed:
+                await publication.set_subscribed(True)
 
     # 7. Play welcome voice and publish greeting transcript
     async def play_welcome_voice():
@@ -617,17 +679,20 @@ async def entrypoint(ctx: JobContext) -> None:
                 await audio_source.capture_frame(frame)
                 await asyncio.sleep(0.02)
 
-    asyncio.create_task(play_welcome_voice())
+    welcome_task = asyncio.create_task(play_welcome_voice(), name="Welcome.voice")
 
     # 8. Wait for participant and keep room alive
     try:
         participant = await ctx.wait_for_participant()
         logger.info("👤 Người dùng đã kết nối vào phòng: %s (%s)", participant.identity, participant.name)
-        while ctx.room.isconnected():
+        while ctx.room.isconnected() and not participant_left.is_set():
             await asyncio.sleep(1.0)
     except asyncio.CancelledError:
         logger.info("Job bị hủy hoặc phòng đã đóng.")
     finally:
+        welcome_task.cancel()
+        await asyncio.gather(welcome_task, return_exceptions=True)
         for t in user_audio_tasks:
             t.cancel()
+        await asyncio.gather(*user_audio_tasks, return_exceptions=True)
         logger.info("🏁 Phiên làm việc phòng '%s' kết thúc.", ctx.room.name)
