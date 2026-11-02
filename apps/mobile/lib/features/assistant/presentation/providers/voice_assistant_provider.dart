@@ -7,7 +7,7 @@ import 'dart:developer' as developer;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -299,6 +299,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   /// Uses browser Fetch ReadableStream on Web so SSE tokens arrive immediately
   /// without XMLHttpRequest full-response buffering. Overridable in tests.
   bool get useNativeFetchStream => kIsWeb;
+
+  /// Real-time 60fps audio lip-sync stream for the Linh AI portrait.
+  ValueListenable<LipSyncFrame> get lipSyncListenable =>
+      _audioService.lipSyncListenable;
 
   /// Id of the current recognizer connection; stale callbacks are dropped.
 

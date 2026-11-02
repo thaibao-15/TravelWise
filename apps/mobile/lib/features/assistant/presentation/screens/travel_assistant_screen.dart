@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_state.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
 import '../providers/voice_assistant_provider.dart';
+import '../widgets/ai_3d_avatar.dart';
 import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
@@ -21,6 +22,7 @@ class TravelAssistantScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<TravelAssistantScreen> createState() =>
+     
       _TravelAssistantScreenState();
 }
 
@@ -380,101 +382,16 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           alignment: Alignment.topCenter,
           clipBehavior: Clip.none,
           children: [
-            // Khung ảnh nền chân dung Linh AI
+            // Khung nhân vật 3D AI Linh (Trung tâm màn hình Voice AI)
             Positioned(
               top: 0,
               bottom: 40,
               left: 12,
               right: 12,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.asset(
-                      'assets/images/linh_ai.jpg',
-                      fit: BoxFit.cover,
-                      cacheWidth: 640,
-                      alignment: const Alignment(0, -0.2),
-                      errorBuilder: (ctx, err, stack) => Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.support_agent_rounded,
-                            size: 90,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Lớp Gradient mờ mềm mại ở chân ảnh
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              Colors.transparent,
-                              const Color(0xFFF6F8FB).withValues(alpha: 0.2),
-                              const Color(0xFFF6F8FB).withValues(alpha: 0.85),
-                            ],
-                            stops: const [0.0, 0.6, 0.85, 1.0],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Tag tên "Linh AI" đính trên áo
-                    Positioned(
-                      top: 14,
-                      left: 14,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Linh AI • Giọng Nữ Đà Nẵng',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: Ai3dAvatar(
+                voiceState: state.voiceState,
+                speechText: latestAiSpeech,
+                lipSyncListenable: notifier.lipSyncListenable,
               ),
             ),
 

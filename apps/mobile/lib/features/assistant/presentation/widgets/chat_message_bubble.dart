@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
-import '../models/chat_media.dart';
 import '../providers/voice_assistant_provider.dart';
 import 'chat_media_gallery.dart';
 import 'package:mobile/features/trips/widgets/trip_itinerary_card.dart';
