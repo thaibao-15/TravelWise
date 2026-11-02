@@ -2,6 +2,7 @@
 
     <!-- Network access for the API and remote place images -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Location permissions for GPS -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
