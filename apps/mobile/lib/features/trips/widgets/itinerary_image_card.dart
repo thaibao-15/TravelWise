@@ -3,6 +3,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
 import '../models/trip_model.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 
 class ItineraryImageCard extends StatelessWidget {
   final ItineraryActivity activity;
@@ -27,8 +28,8 @@ class ItineraryImageCard extends StatelessWidget {
                   topLeft: Radius.circular(16),
                   topRight: Radius.circular(16),
                 ),
-                child: Image.network(
-                  activity.imageUrl!,
+                child: AppNetworkImage(
+                  imageUrl: activity.imageUrl,
                   height: 128,
                   width: double.infinity,
                   fit: BoxFit.cover,
@@ -41,7 +42,7 @@ class ItineraryImageCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(

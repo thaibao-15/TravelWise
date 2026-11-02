@@ -1,9 +1,32 @@
-.venv/
+# Python bytecode and caches
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Environment and local secrets
 .env
 .env.*
 !.env.example
-*.egg-info/
-dist/
+
+# Packaging/build output
 build/
+dist/
+*.egg-info/
+
+# Local runtime data and logs
+logs/
+*.log
+data/
+tmp/
+temp/

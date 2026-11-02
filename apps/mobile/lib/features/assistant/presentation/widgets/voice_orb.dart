@@ -121,7 +121,7 @@ class _VoiceOrbState extends State<VoiceOrb>
               // ── Outer soft glow ──────────────────────────────────────────
               AnimatedBuilder(
                 animation: _glowController,
-                builder: (_, __) {
+                builder: (_, _) {
                   final opacity = 0.08 + _glowController.value * 0.10;
                   return Container(
                     width: 200,
@@ -143,7 +143,7 @@ class _VoiceOrbState extends State<VoiceOrb>
               // ── Ripple ring 1 ─────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _rippleController,
-                builder: (_, __) {
+                builder: (_, _) {
                   final t = _rippleController.value;
                   final size = 130 + t * 60.0;
                   return Opacity(
@@ -164,7 +164,7 @@ class _VoiceOrbState extends State<VoiceOrb>
               // ── Ripple ring 2 (offset phase) ──────────────────────────────
               AnimatedBuilder(
                 animation: _rippleController,
-                builder: (_, __) {
+                builder: (_, _) {
                   final t = (_rippleController.value + 0.5) % 1.0;
                   final size = 130 + t * 60.0;
                   return Opacity(
@@ -185,7 +185,7 @@ class _VoiceOrbState extends State<VoiceOrb>
               // ── Gradient ring ─────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _glowController,
-                builder: (_, __) {
+                builder: (_, _) {
                   final angle =
                       _glowController.value * 2 * math.pi;
                   return Container(

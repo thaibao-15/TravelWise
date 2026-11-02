@@ -63,7 +63,7 @@ class _CurrentLocationMarkerState extends State<CurrentLocationMarker>
                     height: widget.size * 0.85,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.primary.withOpacity(0.35),
+                      color: AppColors.primary.withValues(alpha: 0.35),
                     ),
                   ),
                 ),
@@ -80,12 +80,12 @@ class _CurrentLocationMarkerState extends State<CurrentLocationMarker>
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.4),
+                  color: AppColors.primary.withValues(alpha: 0.4),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.12),
+                  color: Colors.black.withValues(alpha: 0.12),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),

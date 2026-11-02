@@ -76,7 +76,7 @@ class TripListCard extends StatelessWidget {
             height: 160,
             width: double.infinity,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+            errorBuilder: (_, _, _) => Container(
               height: 160,
               width: double.infinity,
               color: AppColors.primary.withValues(alpha: 0.15),

@@ -27,7 +27,9 @@ class CreateTripSheet extends ConsumerStatefulWidget {
 
 class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _cityController = TextEditingController(text: 'Đà Nẵng');
+  final TextEditingController _cityController = TextEditingController(
+    text: 'Đà Nẵng',
+  );
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
 
@@ -37,6 +39,7 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
   final Set<String> _selectedInterests = {'Ẩm thực', 'Biển'};
   bool _isSubmitting = false;
   String? _errorMessage;
+  Trip? _pendingTrip;
 
   static const List<String> _popularCities = [
     'Đà Nẵng',
@@ -84,7 +87,8 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
     final city = _cityController.text.trim();
     if (city.isEmpty) {
       setState(() {
-        _errorMessage = 'Vui lòng nhập điểm đến du lịch (ví dụ: Đà Nẵng, Phú Quốc...).';
+        _errorMessage =
+            'Vui lòng nhập điểm đến du lịch (ví dụ: Đà Nẵng, Phú Quốc...).';
       });
       return;
     }
@@ -99,7 +103,9 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
 
       // 1. Build trip name
       final rawName = _nameController.text.trim();
-      final tripName = rawName.isNotEmpty ? rawName : 'Khám phá $city $_daysCount ngày';
+      final tripName = rawName.isNotEmpty
+          ? rawName
+          : 'Khám phá $city $_daysCount ngày';
 
       // 2. Build preferences prompt for AI itinerary generator
       final promptParts = <String>[];
@@ -114,29 +120,40 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
       }
       final userPrompt = promptParts.join('. ');
 
-      // 3. Create trip entity in SQL Server
-      final created = await repo.createTrip(
-        destinationCity: city,
-        name: tripName,
-        durationDays: _daysCount,
-      );
+      // Reuse a draft if generation failed previously so retrying does not
+      // create another empty trip record.
+      final created =
+          _pendingTrip ??
+          await repo.createTrip(
+            destinationCity: city,
+            name: tripName,
+            durationDays: _daysCount,
+          );
 
       if (created == null) {
         throw Exception('Máy chủ không thể tạo bản ghi chuyến đi.');
       }
+      _pendingTrip = created;
 
-      // 4. Generate AI itinerary with real places and persistence
-      Trip? detailedTrip;
-      try {
-        detailedTrip = await repo.generateItineraryForTrip(
-          created.id,
-          userPrompt: userPrompt,
-          saveToDb: true,
+      final detailedTrip = await repo.generateItineraryForTrip(
+        created.id,
+        userPrompt: userPrompt,
+        saveToDb: true,
+        context: {
+          'trip': {
+            'trip_id': int.tryParse(created.id),
+            'name': tripName,
+            'destination': {'city': city, 'country': 'Việt Nam'},
+            'dates': {'duration_days': _daysCount},
+          },
+        },
+      );
+      if (detailedTrip == null || detailedTrip.days.isEmpty) {
+        throw Exception(
+          'Chưa nhận được lịch trình chi tiết từ máy chủ. Vui lòng thử lại.',
         );
-      } catch (genErr) {
-        // Fallback to reload trip detail if generation finished but returned network anomaly
-        detailedTrip = await repo.getTripItinerary(created.id) ?? created;
       }
+      _pendingTrip = null;
 
       // 5. Invalidate trips list cache for immediate refresh
       ref.invalidate(tripsListProvider);
@@ -147,10 +164,8 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
       // 6. Navigate to detail screen
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => TripDetailScreen(
-            tripId: created.id,
-            initialTrip: detailedTrip ?? created,
-          ),
+          builder: (_) =>
+              TripDetailScreen(tripId: created.id, initialTrip: detailedTrip),
         ),
       );
     } catch (e) {
@@ -202,14 +217,21 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.auto_awesome, color: AppColors.primary, size: 20),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Tạo lịch trình du lịch AI', style: AppTextStyles.h3),
+                      Text(
+                        'Tạo lịch trình du lịch AI',
+                        style: AppTextStyles.h3,
+                      ),
                       const SizedBox(height: 2),
                       const Text(
                         'Điền thông tin để AI thiết kế lịch trình tối ưu thực tế',
@@ -223,7 +245,9 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => Navigator.pop(context),
                 ),
               ],
             ),
@@ -247,11 +271,17 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                         decoration: BoxDecoration(
                           color: AppColors.error.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppColors.error.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                            const Icon(
+                              Icons.error_outline,
+                              color: AppColors.error,
+                              size: 18,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -275,10 +305,20 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                     TextField(
                       controller: _cityController,
                       decoration: InputDecoration(
-                        hintText: 'Nhập tên thành phố (ví dụ: Đà Nẵng, Phú Quốc...)',
-                        prefixIcon: const Icon(LucideIcons.mapPin, color: AppColors.primary, size: 18),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        hintText:
+                            'Nhập tên thành phố (ví dụ: Đà Nẵng, Phú Quốc...)',
+                        prefixIcon: const Icon(
+                          LucideIcons.mapPin,
+                          color: AppColors.primary,
+                          size: 18,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                       ),
                       onChanged: (_) {
                         if (_errorMessage != null) {
@@ -294,12 +334,31 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       spacing: 6,
                       runSpacing: 6,
                       children: _popularCities.map((c) {
-                        final isSelected = _cityController.text.trim().toLowerCase() == c.toLowerCase();
+                        final isSelected =
+                            _cityController.text.trim().toLowerCase() ==
+                            c.toLowerCase();
                         return ActionChip(
-                          label: Text(c, style: TextStyle(fontSize: 11.5, color: isSelected ? Colors.white : AppColors.textPrimary)),
-                          backgroundColor: isSelected ? AppColors.primary : AppColors.surface,
-                          side: BorderSide(color: isSelected ? AppColors.primary : AppColors.border),
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          label: Text(
+                            c,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          backgroundColor: isSelected
+                              ? AppColors.primary
+                              : AppColors.surface,
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                           onPressed: () {
                             setState(() {
                               _cityController.text = c;
@@ -319,9 +378,18 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       controller: _nameController,
                       decoration: InputDecoration(
                         hintText: 'Ví dụ: Nghỉ dưỡng cuối tuần Đà Nẵng',
-                        prefixIcon: const Icon(LucideIcons.tag, color: AppColors.textSecondary, size: 18),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        prefixIcon: const Icon(
+                          LucideIcons.tag,
+                          color: AppColors.textSecondary,
+                          size: 18,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                       ),
                     ),
 
@@ -331,7 +399,10 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                     _buildSectionTitle('Thời gian chuyến đi', isRequired: true),
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.background,
                         borderRadius: BorderRadius.circular(14),
@@ -339,15 +410,25 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(LucideIcons.calendarDays, color: AppColors.primary, size: 20),
+                          const Icon(
+                            LucideIcons.calendarDays,
+                            color: AppColors.primary,
+                            size: 20,
+                          ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Số ngày du lịch', style: AppTextStyles.label),
+                                Text(
+                                  'Số ngày du lịch',
+                                  style: AppTextStyles.label,
+                                ),
                                 Text(
                                   'Dự kiến $_daysCount ngày (${_daysCount - 1} đêm)',
-                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -367,7 +448,10 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             child: Text(
                               '$_daysCount',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           IconButton.outlined(
@@ -401,10 +485,24 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
 
                         return FilterChip(
                           selected: isSelected,
-                          label: Text('$icon $label', style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
-                          selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                          label: Text(
+                            '$icon $label',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                          selectedColor: AppColors.primary.withValues(
+                            alpha: 0.15,
+                          ),
                           checkmarkColor: AppColors.primary,
-                          side: BorderSide(color: isSelected ? AppColors.primary : AppColors.border),
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
+                          ),
                           onSelected: (val) {
                             setState(() {
                               if (val) {
@@ -428,12 +526,25 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       children: _budgets.map((b) {
                         final isSelected = _selectedBudget == b;
                         return ChoiceChip(
-                          label: Text(b, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : AppColors.textPrimary)),
+                          label: Text(
+                            b,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
                           selected: isSelected,
                           selectedColor: AppColors.primary,
                           backgroundColor: AppColors.surface,
-                          side: BorderSide(color: isSelected ? AppColors.primary : AppColors.border),
-                          onSelected: (_) => setState(() => _selectedBudget = b),
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
+                          ),
+                          onSelected: (_) =>
+                              setState(() => _selectedBudget = b),
                         );
                       }).toList(),
                     ),
@@ -448,11 +559,23 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       children: _paces.map((p) {
                         final isSelected = _selectedPace == p;
                         return ChoiceChip(
-                          label: Text(p, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : AppColors.textPrimary)),
+                          label: Text(
+                            p,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
                           selected: isSelected,
                           selectedColor: const Color(0xFF059669),
                           backgroundColor: AppColors.surface,
-                          side: BorderSide(color: isSelected ? const Color(0xFF059669) : AppColors.border),
+                          side: BorderSide(
+                            color: isSelected
+                                ? const Color(0xFF059669)
+                                : AppColors.border,
+                          ),
                           onSelected: (_) => setState(() => _selectedPace = p),
                         );
                       }).toList(),
@@ -467,9 +590,15 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                       controller: _noteController,
                       maxLines: 2,
                       decoration: InputDecoration(
-                        hintText: 'Ví dụ: Có người lớn tuổi, ưu tiên hải sản tươi sống...',
-                        hintStyle: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                        hintText:
+                            'Ví dụ: Có người lớn tuổi, ưu tiên hải sản tươi sống...',
+                        hintStyle: const TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                         contentPadding: const EdgeInsets.all(12),
                       ),
                     ),
@@ -506,7 +635,10 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
                   _isSubmitting
                       ? 'AI đang thiết kế lịch trình thực tế...'
                       : 'Tạo lịch trình bằng AI ngay',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
@@ -530,11 +662,20 @@ class _CreateTripSheetState extends ConsumerState<CreateTripSheet> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
-          child: Text(title, style: AppTextStyles.label.copyWith(fontSize: 13.5)),
+          child: Text(
+            title,
+            style: AppTextStyles.label.copyWith(fontSize: 13.5),
+          ),
         ),
         if (isRequired) ...[
           const SizedBox(width: 4),
-          const Text('*', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+          const Text(
+            '*',
+            style: TextStyle(
+              color: AppColors.error,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ],
     );

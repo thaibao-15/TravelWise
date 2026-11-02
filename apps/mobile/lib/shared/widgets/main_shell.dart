@@ -1,5 +1,7 @@
+import 'package:flutter/rendering.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../widgets/bottom_nav_bar.dart';
 import '../../features/home/screens/home_screen.dart';
@@ -8,12 +10,11 @@ import '../../features/assistant/presentation/screens/travel_assistant_screen.da
 import '../../features/trips/screens/trips_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 
-class MainShell extends StatefulWidget {
-  const MainShell({
-    super.key,
-    this.pages,
-    this.initialIndex = 0,
-  });
+/// Provider lưu trữ tab index hiện tại của MainShell để các màn hình con nhận diện khi được kích hoạt.
+final mainTabProvider = StateProvider<int>((ref) => 0);
+
+class MainShell extends ConsumerStatefulWidget {
+  const MainShell({super.key, this.pages, this.initialIndex = 0});
 
   /// Optional pages override for widget tests.
   final List<Widget>? pages;
@@ -91,11 +92,12 @@ class MainShell extends StatefulWidget {
   }
 
   @override
-  State<MainShell> createState() => MainShellState();
+  ConsumerState<MainShell> createState() => MainShellState();
 }
 
-class MainShellState extends State<MainShell> {
+class MainShellState extends ConsumerState<MainShell> {
   late int _currentIndex;
+  bool _isNavBarVisible = true;
 
   int get currentIndex => _currentIndex;
 
@@ -117,6 +119,11 @@ class MainShellState extends State<MainShell> {
         : widget.initialIndex.clamp(0, _pages.length - 1).toInt();
 
     MainShell._activeState = this;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(mainTabProvider.notifier).state = _currentIndex;
+      }
+    });
   }
 
   @override
@@ -140,11 +147,89 @@ class MainShellState extends State<MainShell> {
 
     setState(() {
       _currentIndex = index;
+      _isNavBarVisible = true;
     });
+    ref.read(mainTabProvider.notifier).state = index;
   }
 
   void _onBottomNavTap(int index) {
     setTab(index);
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    // 1. Chỉ lắng nghe cuộn theo trục dọc (vertical). Bỏ qua hoàn toàn các cuộn ngang (horizontal carousels/chips)
+    if (notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    // 2. Không ẩn khi đang ở tab Trợ lý AI (tab 2 - màn hình compact cố định)
+    if (_currentIndex == 2) {
+      if (!_isNavBarVisible) {
+        setState(() => _isNavBarVisible = true);
+      }
+      return false;
+    }
+
+    final ScrollMetrics metrics = notification.metrics;
+
+    // 3. Nếu trang có chiều dài cuộn quá ngắn (không đáng kể) -> luôn hiển thị
+    if (metrics.maxScrollExtent <= 50) {
+      if (!_isNavBarVisible) {
+        setState(() => _isNavBarVisible = true);
+      }
+      return false;
+    }
+
+    // 4. Nếu đang ở gần đầu trang (offset <= 15) -> luôn luôn hiển thị
+    if (metrics.pixels <= 15) {
+      if (!_isNavBarVisible) {
+        setState(() => _isNavBarVisible = true);
+      }
+      return false;
+    }
+
+    // 5. Nếu chạm tới gần cuối trang (chạm đáy) -> hiển thị lại thanh bar để người dùng điều hướng
+    if (metrics.pixels >= metrics.maxScrollExtent - 20) {
+      if (!_isNavBarVisible) {
+        setState(() => _isNavBarVisible = true);
+      }
+      return false;
+    }
+
+    // 6. Xử lý cả Web chuột/trackpad lẫn Mobile cử chỉ vuốt
+    // 6a. Chuột lăn / Trackpad (Web / Desktop) hoặc scroll update
+    if (notification is ScrollUpdateNotification) {
+      final double delta = notification.scrollDelta ?? 0.0;
+      // Ngưỡng 2.5 để phân biệt hướng cuộn rõ ràng và tránh rung lắc
+      if (delta > 2.5) {
+        // Cuộn xuống (Scroll Down) -> Ẩn thanh bottom nav
+        if (_isNavBarVisible) {
+          setState(() => _isNavBarVisible = false);
+        }
+      } else if (delta < -2.5) {
+        // Cuộn lên (Scroll Up) -> Hiện thanh bottom nav
+        if (!_isNavBarVisible) {
+          setState(() => _isNavBarVisible = true);
+        }
+      }
+    }
+
+    // 6b. Thao tác ngón tay kéo vuốt trên Mobile (UserScrollNotification)
+    if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.reverse) {
+        // Vuốt lên kéo trang xuống -> Ẩn
+        if (_isNavBarVisible) {
+          setState(() => _isNavBarVisible = false);
+        }
+      } else if (notification.direction == ScrollDirection.forward) {
+        // Vuốt xuống kéo trang lên -> Hiện
+        if (!_isNavBarVisible) {
+          setState(() => _isNavBarVisible = true);
+        }
+      }
+    }
+
+    return false;
   }
 
   @override
@@ -153,13 +238,29 @@ class MainShellState extends State<MainShell> {
       extendBody: true,
       body: _pages.isEmpty
           ? const Center(child: Text('No pages available'))
-          : IndexedStack(
-              index: _currentIndex,
-              children: _pages,
+          : NotificationListener<ScrollNotification>(
+              onNotification: _handleScrollNotification,
+              child: IndexedStack(
+                index: _currentIndex,
+                children: _pages,
+              ),
             ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: _currentIndex,
-        onTap: _onBottomNavTap,
+      bottomNavigationBar: AnimatedSlide(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+        offset: _isNavBarVisible ? Offset.zero : const Offset(0, 1.5),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          opacity: _isNavBarVisible ? 1.0 : 0.0,
+          child: IgnorePointer(
+            ignoring: !_isNavBarVisible,
+            child: CustomBottomNavBar(
+              currentIndex: _currentIndex,
+              onTap: _onBottomNavTap,
+            ),
+          ),
+        ),
       ),
     );
   }

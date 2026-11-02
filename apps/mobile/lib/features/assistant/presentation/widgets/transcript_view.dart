@@ -125,7 +125,7 @@ class _AnimatedDotsState extends State<_AnimatedDots>
                   width: 5,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.5 + t * 0.5),
+                    color: AppColors.primary.withValues(alpha: 0.5 + t * 0.5),
                     shape: BoxShape.circle,
                   ),
                 ),

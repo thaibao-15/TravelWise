@@ -4,7 +4,7 @@ import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
 
 class SuggestionChips extends StatelessWidget {
-  const SuggestionChips({Key? key}) : super(key: key);
+  const SuggestionChips({super.key});
 
   @override
   Widget build(BuildContext context) {

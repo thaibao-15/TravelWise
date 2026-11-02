@@ -15,15 +15,16 @@ from app.api.routes.users import router as users_router
 from app.api.routes.user_profile import router as user_profile_router
 from app.api.routes.weather import router as weather_router
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="TravelWise API",
     description="TravelWise — Du lịch thông minh",
     version="0.1.0",
 )
 
-# CORS configuration for local development
-app.add_middleware(
-    CORSMiddleware,
+# Keep CORS outside FastAPI's error middleware so unhandled 500 responses
+# still include CORS headers and browsers can display the actual API error.
+app = CORSMiddleware(
+    app=fastapi_app,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
@@ -42,4 +43,4 @@ app.include_router(trips_router)
 app.include_router(stt_router)
 app.include_router(tts_router)
 app.include_router(livekit_router)
-app.include_router(weather_router)
+app.include_router(weather_router)

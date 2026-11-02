@@ -18,7 +18,7 @@ class TripDaySelector extends ConsumerWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final day = days[index];
           final isActive = day.dayIndex == selectedDay;
@@ -35,7 +35,7 @@ class TripDaySelector extends ConsumerWidget {
                 boxShadow: isActive
                     ? [
                         BoxShadow(
-                          color: AppColors.primary.withOpacity(0.3),
+                          color: AppColors.primary.withValues(alpha: 0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         )

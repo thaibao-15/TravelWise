@@ -7,7 +7,7 @@ import '../../trips/widgets/create_trip_sheet.dart';
 import 'timeline_item.dart';
 
 class AiItineraryCard extends StatelessWidget {
-  const AiItineraryCard({Key? key}) : super(key: key);
+  const AiItineraryCard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -15,14 +15,14 @@ class AiItineraryCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.primary.withOpacity(0.05),
-            AppColors.primary.withOpacity(0.15),
+            AppColors.primary.withValues(alpha: 0.05),
+            AppColors.primary.withValues(alpha: 0.15),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
       ),
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(

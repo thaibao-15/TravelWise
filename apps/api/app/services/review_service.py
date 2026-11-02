@@ -162,6 +162,36 @@ class ReviewService:
         )
 
     @staticmethod
+    def get_user_review_for_place(
+        session: Session,
+        user_id: int,
+        place_id: int,
+    ) -> Optional[PlaceReviewResponse]:
+        """Lấy đánh giá hiện có của người dùng cho một địa điểm."""
+        place = session.get(Place, place_id)
+        if not place or place.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy địa điểm với ID {place_id}",
+            )
+
+        review = session.exec(
+            select(PlaceReview.id).where(
+                PlaceReview.place_id == place_id,
+                PlaceReview.user_id == user_id,
+                PlaceReview.is_deleted == False,  # noqa: E712
+            )
+        ).first()
+        if review is None:
+            return None
+
+        return ReviewService.get_review_by_id(
+            session,
+            review,
+            current_user_id=user_id,
+        )
+
+    @staticmethod
     def list_reviews_for_place(
         session: Session,
         place_id: int,

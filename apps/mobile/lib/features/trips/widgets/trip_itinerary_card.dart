@@ -5,7 +5,11 @@ import 'package:mobile/core/constants/colors.dart';
 import 'package:mobile/features/assistant/presentation/providers/voice_assistant_provider.dart';
 import 'package:mobile/features/map/presentation/screens/map_screen.dart';
 import 'package:mobile/features/trips/models/trip_model.dart';
+import 'package:mobile/shared/widgets/app_network_image.dart';
 import 'package:mobile/features/trips/screens/trip_detail_screen.dart';
+
+import 'package:mobile/features/assistant/presentation/models/chat_media.dart';
+import 'package:mobile/features/assistant/presentation/widgets/fullscreen_media_viewer.dart';
 
 /// Reusable Trip Itinerary Card displayed within Chat AI messages and assistant screens.
 /// Conforms to TravelWise Design System and showcases real API response details.
@@ -20,6 +24,41 @@ class TripItineraryCard extends ConsumerWidget {
     this.isCompact = false,
     this.onSave,
   });
+
+  String? _resolveActivityImageUrl(ItineraryActivity act, String destination) {
+    if (act.imageUrl != null && act.imageUrl!.isNotEmpty) {
+      return act.imageUrl;
+    }
+    final title = (act.placeName ?? act.title).toLowerCase();
+    if (title.contains('cầu vàng') || title.contains('golden bridge')) {
+      return 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('bà nà') || title.contains('ba na')) {
+      return 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('cầu rồng') || title.contains('dragon bridge')) {
+      return 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('mỹ khê') || title.contains('my khe') || title.contains('biển')) {
+      return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('ngũ hành sơn') || title.contains('non nước')) {
+      return 'https://images.unsplash.com/photo-1621255855018-9366e6097fc0?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('linh ứng') || title.contains('sơn trà')) {
+      return 'https://images.unsplash.com/photo-1628172911295-a0bc3c42845c?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('hội an') || title.contains('chùa cầu')) {
+      return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('phú quốc') || title.contains('bãi sao')) {
+      return 'https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=400&q=80';
+    }
+    if (title.contains('đà lạt') || title.contains('xuân hương')) {
+      return 'https://images.unsplash.com/photo-1626587979672-0050e828d506?auto=format&fit=crop&w=400&q=80';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -184,43 +223,112 @@ class TripItineraryCard extends ConsumerWidget {
                         children: [
                           ...trip.days.take(isCompact ? 2 : 3).map((day) {
                             final acts = day.activities.take(2).map((a) => a.title).join(' · ');
+                            final actsWithImg = day.activities
+                                .map((a) => (act: a, img: _resolveActivityImageUrl(a, trip.destination)))
+                                .where((e) => e.img != null)
+                                .take(2)
+                                .toList();
+
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      'N${day.dayIndex}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primary,
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'N${day.dayIndex}',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          acts.isNotEmpty ? acts : day.title,
+                                          style: const TextStyle(
+                                            fontSize: 11.5,
+                                            color: AppColors.textPrimary,
+                                            height: 1.35,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // Compact destination image pills for itinerary activities
+                                  if (actsWithImg.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 32, top: 4),
+                                      child: Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: actsWithImg.map((item) {
+                                          return GestureDetector(
+                                            onTap: () {
+                                              FullscreenMediaViewer.open(
+                                                context,
+                                                mediaList: [
+                                                  ChatMedia(
+                                                    id: 'itin_act_${item.act.id}',
+                                                    type: ChatMediaType.image,
+                                                    url: item.img!,
+                                                    title: item.act.title,
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.only(right: 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(color: AppColors.border),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  AppNetworkImage(
+                                                    imageUrl: item.img,
+                                                    width: 26,
+                                                    height: 26,
+                                                    fit: BoxFit.cover,
+                                                    borderRadius: BorderRadius.circular(16),
+                                                  ),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    item.act.title,
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: AppColors.textPrimary,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      acts.isNotEmpty ? acts : day.title,
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        color: AppColors.textPrimary,
-                                        height: 1.35,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
                                 ],
                               ),
                             );
                           }),
+
                           if (trip.days.length > (isCompact ? 2 : 3))
                             Padding(
                               padding: const EdgeInsets.only(top: 4, left: 4),

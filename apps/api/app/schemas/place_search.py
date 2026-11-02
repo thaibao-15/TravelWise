@@ -30,6 +30,7 @@ class SearchPlaceItem(BaseModel):
     match_reasons: List[str] = Field(default_factory=list)
     score: float = 0.0
     data_completeness: str = "PARTIAL"  # "FULL" | "PARTIAL" | "MINIMAL"
+    image_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

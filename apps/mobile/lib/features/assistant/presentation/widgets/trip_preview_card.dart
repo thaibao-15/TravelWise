@@ -24,9 +24,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
 
   void _showAiEditSheet(BuildContext context, VoiceAssistantNotifier notifier) {
     final editCtrl = TextEditingController();
-    final effectiveTripId = widget.trip.id.isNotEmpty
-        ? widget.trip.id
-        : ref.read(voiceAssistantProvider).savedTripId;
+    final targetDay = _selectedDayIndex;
 
     showModalBottomSheet(
       context: context,
@@ -56,7 +54,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      color: AppColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -137,14 +135,11 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                     final text = editCtrl.text.trim();
                     if (text.isEmpty) return;
                     Navigator.pop(ctx);
-                    if (effectiveTripId != null && effectiveTripId.isNotEmpty) {
-                      notifier.editSavedTrip(
-                        tripId: effectiveTripId,
-                        instruction: text,
-                      );
-                    } else {
-                      notifier.sendMessage(text);
-                    }
+                    notifier.editCurrentOrSavedTrip(
+                      instruction: text,
+                      targetDay: targetDay,
+                      fallbackTrip: widget.trip,
+                    );
                   },
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
                   label: const Text('Cập nhật lịch trình với AI'),
@@ -171,8 +166,8 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         text,
         style: const TextStyle(fontSize: 11.5, color: AppColors.primary),
       ),
-      backgroundColor: AppColors.primary.withOpacity(0.08),
-      side: BorderSide(color: AppColors.primary.withOpacity(0.25)),
+      backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       onPressed: () => ctrl.text = text,
     );
@@ -199,7 +194,9 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
     final isSaving = state.planningState == TripPlanningState.saving;
-    final isSaved = state.planningState == TripPlanningState.saved;
+    final isRevising = state.planningState == TripPlanningState.revising;
+    final isSaved = state.planningState == TripPlanningState.saved ||
+        widget.trip.status == 'CONFIRMED';
 
     final trip = widget.trip;
     final validActivities = trip.days
@@ -215,7 +212,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -264,7 +261,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
                 const SizedBox(height: 16),
 
                 // ── Actions: Save / View Map / Dismiss ────────────────────────
-                _buildActionButtons(context, notifier, isSaving, isSaved),
+                _buildActionButtons(context, notifier, isSaving, isSaved, isRevising),
               ],
             ),
           ),
@@ -327,7 +324,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -530,9 +527,9 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.background.withOpacity(0.6),
+          color: AppColors.background.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border.withOpacity(0.6)),
+          border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -632,6 +629,7 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
     VoiceAssistantNotifier notifier,
     bool isSaving,
     bool isSaved,
+    bool isRevising,
   ) {
     final effectiveTripId = widget.trip.id.isNotEmpty
         ? widget.trip.id
@@ -717,22 +715,28 @@ class _TripPreviewCardState extends ConsumerState<TripPreviewCard> {
             Expanded(
               flex: 3,
               child: OutlinedButton.icon(
-                onPressed: () => _showAiEditSheet(context, notifier),
-                icon: const Icon(
-                  Icons.auto_fix_high_rounded,
-                  size: 15,
-                  color: AppColors.primary,
-                ),
-                label: const Text(
-                  'Sửa với AI',
-                  style: TextStyle(
+                onPressed: isRevising ? null : () => _showAiEditSheet(context, notifier),
+                icon: isRevising
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.auto_fix_high_rounded,
+                        size: 15,
+                        color: AppColors.primary,
+                      ),
+                label: Text(
+                  isRevising ? 'Đang sửa...' : 'Sửa với AI',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primary,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
+                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),

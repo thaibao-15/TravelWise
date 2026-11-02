@@ -9,7 +9,6 @@ import 'package:mobile/features/profile/domain/repositories/profile_repository.d
 import 'package:mobile/features/profile/presentation/providers/profile_provider.dart';
 import 'package:mobile/features/profile/presentation/screens/profile_screen.dart';
 import 'package:mobile/shared/widgets/bottom_nav_bar.dart';
-import 'package:mobile/shared/widgets/main_shell.dart';
 
 class FakeProfileRepository implements ProfileRepository {
   final ProfileEntity fakeProfile;

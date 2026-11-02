@@ -3,7 +3,7 @@ import '../../../shared/widgets/custom_app_bar.dart';
 
 /// Legacy header section now standardized with CustomAppBar.
 class HeaderSection extends StatelessWidget {
-  const HeaderSection({Key? key}) : super(key: key);
+  const HeaderSection({super.key});
 
   @override
   Widget build(BuildContext context) {

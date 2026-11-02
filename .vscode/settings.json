@@ -7,7 +7,7 @@
         "/^Set-Location apps\\\\api; uv sync$/": {
             "approve": true,
             "matchCommandLine": true
-        }
-    },
-    "window.zoomPerWindow": true
+        },
+        "dart": true
+    }
 }

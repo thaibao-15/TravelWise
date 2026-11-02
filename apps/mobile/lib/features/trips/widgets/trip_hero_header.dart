@@ -6,6 +6,7 @@ import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../models/trip_model.dart';
+import '../../../../shared/widgets/app_network_image.dart';
 import 'trip_stats_card.dart';
 
 class TripHeroHeader extends StatelessWidget {
@@ -33,7 +34,7 @@ class TripHeroHeader extends StatelessWidget {
           width: double.infinity,
           decoration: BoxDecoration(
             image: DecorationImage(
-              image: NetworkImage(trip.coverImage),
+              image: AppNetworkImage.provider(trip.coverImage),
               fit: BoxFit.cover,
             ),
             borderRadius: const BorderRadius.only(
@@ -47,8 +48,8 @@ class TripHeroHeader extends StatelessWidget {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  Colors.black.withOpacity(0.82),
-                  Colors.black.withOpacity(0.15),
+                  Colors.black.withValues(alpha: 0.82),
+                  Colors.black.withValues(alpha: 0.15),
                 ],
               ),
               borderRadius: const BorderRadius.only(
@@ -104,7 +105,7 @@ class TripHeroHeader extends StatelessWidget {
                   Text(
                     '$startStr — $endStr · $days ngày · ${trip.travelers} du khách',
                     style: AppTextStyles.bodyMedium.copyWith(
-                      color: Colors.white.withOpacity(0.85),
+                      color: Colors.white.withValues(alpha: 0.85),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -129,7 +130,7 @@ class TripHeroHeader extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.2),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 20),
@@ -142,9 +143,9 @@ class TripHeroHeader extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.25),
+          color: color.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(9999),
-          border: Border.all(color: color.withOpacity(0.6)),
+          border: Border.all(color: color.withValues(alpha: 0.6)),
         ),
         child: Text(
           text,

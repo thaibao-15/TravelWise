@@ -9,11 +9,11 @@ class TimelineItem extends StatelessWidget {
   final bool isLast;
 
   const TimelineItem({
-    Key? key,
+    super.key,
     required this.time,
     required this.title,
     this.isLast = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +43,7 @@ class TimelineItem extends StatelessWidget {
               Container(
                 width: 2,
                 height: 24,
-                color: AppColors.primary.withOpacity(0.3),
+                color: AppColors.primary.withValues(alpha: 0.3),
               ),
           ],
         ),
