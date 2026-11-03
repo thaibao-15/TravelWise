@@ -50,13 +50,13 @@ class VoiceAudioService {
   void _ensureAudioHelper() {
     try {
       final existing = js_util.getProperty(html.window, 'TravelWiseAudio');
-      if (existing != null && js_util.getProperty(existing, '_v') == 3) return;
+      if (existing != null && js_util.getProperty(existing, '_v') == 4) return;
       _lipSyncBound = false;
       final script = html.ScriptElement()
         ..type = 'text/javascript'
         ..text = r'''
 window.TravelWiseAudio = {
-  _v: 3,
+  _v: 4,
   _currentAudio: null,
   _currentUrl: null,
   _audioCache: {},
@@ -466,24 +466,9 @@ window.TravelWiseAudio = {
       return;
     }
 
-    var inFlight = self._inFlightPrefetch[cacheKey];
-    if (inFlight) {
-      inFlight.then(function(blobUrl) {
-        self._playAudioUrl(
-          blobUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
-          item,
-          sessionId
-        );
-      }).catch(function() {
-        self._playAudioUrl(
-          self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
-          item,
-          sessionId
-        );
-      });
-      return;
-    }
-
+    // Direct Stream Playback:
+    // Play immediately via HTTP chunked stream without waiting for full blob download!
+    // Native HTML5 Audio element starts outputting sound on the first chunk (< 200ms).
     var streamUrl = self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
     self._playAudioUrl(streamUrl, item, sessionId);
   },

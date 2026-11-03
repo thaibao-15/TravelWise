@@ -13,6 +13,7 @@ import '../widgets/ai_3d_avatar.dart';
 import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
+import '../widgets/avatar_voice_settings_sheet.dart';
 
 /// Màn hình Trợ lý du lịch TravelWise (Linh AI) - Thiết kế Compact không cần cuộn dọc.
 /// Tối ưu trải nghiệm trò chuyện giọng nói, xem lộ trình và tương tác tức thì.
@@ -263,6 +264,30 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               GestureDetector(
+                onTap: () => AvatarVoiceSettingsSheet.show(context),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    size: 19,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
                 onTap: notifier.toggleLanguage,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -372,6 +397,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 voiceState: state.voiceState,
                 speechText: latestAiSpeech,
                 lipSyncListenable: notifier.lipSyncListenable,
+                onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
               ),
             ),
 
@@ -1820,7 +1846,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               ),
             ),
             const SizedBox(height: 16),
-            const VoiceProfileBar(),
+            VoiceProfileBar(
+              onTap: () => AvatarVoiceSettingsSheet.show(context),
+            ),
             const SizedBox(height: 16),
             const LocationSuggestions(),
           ],
