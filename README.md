@@ -5,7 +5,7 @@
 Dự án được cấu trúc dạng monorepo gồm 3 ứng dụng chính trong thư mục `apps`:
 - **API (Backend)**: FastAPI + SQLModel + SQL Server + Chroma Vector DB + Google Gemini.
 - **Web**: Next.js (TypeScript, Bun / Node.js).
-- **Mobile**: Flutter (Android, iOS, Web).
+- **Mobile**: Flutter (Android, iOS, Web) với trợ lý ảo 3D AI tương tác (`AvatarSample_A` / `Linh AI`) nhép môi thời gian thực theo giọng đọc Blaze TTS.
 
 ---
 

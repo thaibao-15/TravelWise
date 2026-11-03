@@ -1,9 +1,51 @@
 import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Available 3D Avatar models in assets
+class Avatar3dOption {
+  final String id;
+  final String name;
+  final String subtitle;
+  final String assetPath;
+  final String tag;
+  final String iconEmoji;
+
+  const Avatar3dOption({
+    required this.id,
+    required this.name,
+    required this.subtitle,
+    required this.assetPath,
+    required this.tag,
+    this.iconEmoji = '💃',
+  });
+}
+
+/// Pre-configured 3D avatars available in assets/models
+const List<Avatar3dOption> kAvailableAvatars = [
+  Avatar3dOption(
+    id: 'avatar_sample_a',
+    name: 'Linh (Anime 3D)',
+    subtitle: 'Năng động, cử động nhép môi tự nhiên theo âm thanh',
+    assetPath: 'assets/models/AvatarSample_A.glb',
+    tag: 'Khuyên dùng',
+    iconEmoji: '✨',
+  ),
+  Avatar3dOption(
+    id: 'linh_classic',
+    name: 'Linh Classic',
+    subtitle: 'Thanh lịch, trang nhã, phong cách truyền thống',
+    assetPath: 'assets/models/linh_avatar.glb',
+    tag: 'Cổ điển',
+    iconEmoji: '🌸',
+  ),
+];
+
 /// Presentation state for the 3D AI Tour Guide Avatar
 class Avatar3dState {
-  /// Name or relative path of the loaded 3D model
+  /// Asset path of the currently selected 3D model
+  final String selectedModelPath;
+
+  /// Display name of the loaded 3D model
   final String modelName;
   final bool isLoading;
   final String? error;
@@ -20,7 +62,8 @@ class Avatar3dState {
   final bool hasSkeleton;
 
   const Avatar3dState({
-    this.modelName = 'Linh AI (3D Tour Guide)',
+    this.selectedModelPath = 'assets/models/AvatarSample_A.glb',
+    this.modelName = 'Linh (Anime 3D)',
     this.isLoading = false,
     this.error,
     this.userOrbitYaw = 0.0,
@@ -31,6 +74,7 @@ class Avatar3dState {
   });
 
   Avatar3dState copyWith({
+    String? selectedModelPath,
     String? modelName,
     bool? isLoading,
     String? error,
@@ -41,6 +85,7 @@ class Avatar3dState {
     bool? hasSkeleton,
   }) {
     return Avatar3dState(
+      selectedModelPath: selectedModelPath ?? this.selectedModelPath,
       modelName: modelName ?? this.modelName,
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -55,6 +100,17 @@ class Avatar3dState {
 
 class Avatar3dNotifier extends StateNotifier<Avatar3dState> {
   Avatar3dNotifier() : super(const Avatar3dState());
+
+  /// Switch the active 3D model asset path
+  void selectAvatarModel(String assetPath, {String? modelName}) {
+    if (state.selectedModelPath == assetPath && !state.isLoading) return;
+    state = state.copyWith(
+      selectedModelPath: assetPath,
+      modelName: modelName ?? assetPath.split('/').last,
+      isLoading: true,
+      error: null,
+    );
+  }
 
   void setLoaded({
     required String modelName,

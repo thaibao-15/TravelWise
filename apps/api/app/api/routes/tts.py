@@ -146,3 +146,53 @@ async def synthesize_text_to_speech(request: TTSRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Đã xảy ra lỗi nội bộ khi tạo âm thanh giọng đọc.",
         )
+
+class VoiceItem(BaseModel):
+    voice_id: str = Field(..., description="ID giọng đọc (ví dụ: 'HCM-Nar-Nu-SaleThuyVy')")
+    name: str = Field(..., description="Tên giọng đọc")
+    type: Optional[str] = Field(None, description="Phân loại giọng đọc (ví dụ: 'Narration')")
+    gender: Optional[str] = Field(None, description="Giới tính ('Female', 'Male')")
+    language: Optional[str] = Field(None, description="Ngôn ngữ (ví dụ: 'vi')")
+    audio_speed: Optional[float] = Field(None, description="Tốc độ đọc mặc định")
+    province: Optional[str] = Field(None, description="Tỉnh thành hoặc vùng miền")
+    is_public: Optional[bool] = Field(None, description="Trạng thái công khai")
+    languages: Optional[list[str]] = Field(None, description="Danh sách ngôn ngữ hỗ trợ")
+    description: Optional[str] = Field(None, description="Mô tả chi tiết")
+    age_group: Optional[str] = Field(None, description="Nhóm độ tuổi")
+    model: Optional[str] = Field(None, description="Mô hình TTS tương ứng")
+
+
+@router.get(
+    "/voices",
+    response_model=list[VoiceItem],
+    summary="Lấy danh sách giọng đọc Text-to-Speech từ Blaze AI",
+    description="Truy vấn danh sách các giọng nói Text-to-Speech khả dụng từ https://api.blaze.vn/v1/audio/voices bằng BLAZE_API_KEY trong .env.",
+    responses={
+        200: {"description": "Danh sách các giọng đọc Text-to-Speech."},
+        401: {"description": "Chưa cấu hình BLAZE_API_KEY hoặc token không hợp lệ."},
+        502: {"description": "Dịch vụ Blaze AI không khả dụng."},
+    },
+)
+async def get_tts_voices(
+    language: Optional[str] = Query(None, description="Lọc theo ngôn ngữ (ví dụ: 'vi')"),
+    gender: Optional[str] = Query(None, description="Lọc theo giới tính ('Female', 'Male')"),
+    province: Optional[str] = Query(None, description="Lọc theo tỉnh thành/vùng miền (ví dụ: 'Hồ Chí Minh', 'Đà Nẵng')"),
+    refresh: bool = Query(False, description="Làm mới cache và lấy dữ liệu mới nhất từ máy chủ Blaze AI"),
+) -> list[VoiceItem]:
+    try:
+        raw_voices = await BlazeTTSService.get_voices(
+            language=language,
+            gender=gender,
+            province=province,
+            force_refresh=refresh,
+        )
+        return [VoiceItem(**v) for v in raw_voices]
+    except BlazeTTSError as e:
+        logger.error("Error fetching Blaze voices: %s (status=%d)", e.message, e.status_code)
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        logger.error("Unexpected error in get_tts_voices: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Đã xảy ra lỗi nội bộ khi lấy danh sách giọng nói.",
+        )

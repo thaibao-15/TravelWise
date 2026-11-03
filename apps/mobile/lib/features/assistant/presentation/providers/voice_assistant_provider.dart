@@ -125,6 +125,10 @@ class VoiceAssistantState {
 
   final Map<String, dynamic>? planningContext;
 
+  final String speakerId;
+
+  final String ttsSpeed;
+
   const VoiceAssistantState({
     this.voiceState = VoiceState.idle,
 
@@ -157,6 +161,8 @@ class VoiceAssistantState {
     this.planningContextSummary,
 
     this.planningContext,
+    this.speakerId = 'DaNang-Nu-1-BL',
+    this.ttsSpeed = '1.5',
   });
 
   VoiceAssistantState copyWith({
@@ -195,6 +201,8 @@ class VoiceAssistantState {
     String? planningContextSummary,
 
     Map<String, dynamic>? planningContext,
+    String? speakerId,
+    String? ttsSpeed,
   }) {
     return VoiceAssistantState(
       voiceState: voiceState ?? this.voiceState,
@@ -230,6 +238,8 @@ class VoiceAssistantState {
           planningContextSummary ?? this.planningContextSummary,
 
       planningContext: planningContext ?? this.planningContext,
+      speakerId: speakerId ?? this.speakerId,
+      ttsSpeed: ttsSpeed ?? this.ttsSpeed,
     );
   }
 }
@@ -285,6 +295,48 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   static const String _defaultTtsSpeed = '1.5';
   static const String _defaultSpeakerId = 'DaNang-Nu-1-BL';
+
+  void setSpeakerId(String id) {
+    if (state.speakerId != id) {
+      state = state.copyWith(speakerId: id);
+    }
+  }
+
+  void setTtsSpeed(String speed) {
+    if (state.ttsSpeed != speed) {
+      state = state.copyWith(ttsSpeed: speed);
+    }
+  }
+
+  Future<void> previewVoiceSample(String speakerId, {String? speed, String? sampleText}) async {
+    final text = sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
+    final spd = speed ?? state.ttsSpeed;
+    _audioService.stopTts();
+    _audioService.initStreamingQueue(
+      onPlay: () {
+        if (mounted) {
+          state = state.copyWith(voiceState: VoiceState.speaking);
+        }
+      },
+      onEnded: () {
+        if (mounted) {
+          state = state.copyWith(voiceState: VoiceState.idle);
+        }
+      },
+      onError: (err) {
+        if (mounted) {
+          state = state.copyWith(voiceState: VoiceState.idle);
+        }
+      },
+    );
+    _audioService.enqueueSentence(
+      baseUrl: ApiConfig.baseUrl,
+      sentence: text,
+      speed: spd,
+      speakerId: speakerId,
+    );
+    _audioService.markStreamDone();
+  }
 
   Timer? _silenceTimer;
   Timer? _noSpeechTimer;
@@ -360,8 +412,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     this._ref, {
     VoiceAudioService? audioService,
     VoiceListeningConfig config = const VoiceListeningConfig(
-      pauseFor: Duration(milliseconds: 1200),
-      finalPauseFor: Duration(milliseconds: 650),
+      pauseFor: Duration(milliseconds: 900),
+      finalPauseFor: Duration(milliseconds: 400),
     ),
   }) : _audioService = audioService ?? VoiceAudioService(),
 
@@ -2053,13 +2105,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         continue;
       }
       final candidate = buffer.substring(0, match.start + 1).trim();
-      final minLen = isFirstChunk ? 6 : 12;
+      final minLen = isFirstChunk ? 4 : 10;
       if (candidate.length >= minLen && !abbrevSuffix.hasMatch(candidate)) {
         return (chunk: candidate, remainder: buffer.substring(match.end));
       }
     }
 
-    final clauseMinLen = isFirstChunk ? 22 : 90;
+    final clauseMinLen = isFirstChunk ? 10 : 50;
     if (buffer.length >= clauseMinLen) {
       final clauseRegex = RegExp(r'[,;:–—]\s+');
       for (final match in clauseRegex.allMatches(buffer)) {
@@ -2256,8 +2308,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
                   _audioService.enqueueSentence(
                     baseUrl: ApiConfig.baseUrl,
                     sentence: cleanedSentence,
-                    speed: _defaultTtsSpeed,
-                    speakerId: _defaultSpeakerId,
+                    speed: state.ttsSpeed,
+                    speakerId: state.speakerId,
                   );
                 }
               }
@@ -2315,8 +2367,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           _audioService.enqueueSentence(
             baseUrl: ApiConfig.baseUrl,
             sentence: cleanedTail,
-            speed: _defaultTtsSpeed,
-            speakerId: _defaultSpeakerId,
+            speed: state.ttsSpeed,
+            speakerId: state.speakerId,
           );
         }
         sentenceBuffer = '';
@@ -3105,8 +3157,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _audioService.enqueueSentence(
       baseUrl: ApiConfig.baseUrl,
       sentence: clean,
-      speed: _defaultTtsSpeed,
-      speakerId: _defaultSpeakerId,
+      speed: state.ttsSpeed,
+      speakerId: state.speakerId,
     );
     _audioService.markStreamDone();
   }

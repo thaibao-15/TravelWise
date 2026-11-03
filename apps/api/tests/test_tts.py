@@ -115,5 +115,46 @@ print('hello')
         print(f"\n[Test Live Blaze Realtime TTS]: TTFB={ttfb:.0f}ms, TotalTime={total_time:.0f}ms, Chunks={chunk_count}, Bytes={total_bytes}")
 
 
+    def test_get_tts_voices_mocked(self):
+        """Kiểm tra endpoint /api/v1/tts/voices trả về danh sách giọng đọc."""
+        mock_voices = [
+            {
+                "voice_id": "HCM-Nar-Nu-SaleThuyVy",
+                "name": "Sale Thúy Vy",
+                "type": "Narration",
+                "gender": "Female",
+                "language": "vi",
+                "audio_speed": 1.0,
+                "province": "Hồ Chí Minh",
+                "is_public": True,
+                "languages": None,
+                "description": "Giọng sale Thúy Vy truyền cảm",
+                "age_group": None,
+                "model": None,
+            }
+        ]
+
+        async def mock_get_voices(**kwargs):
+            return mock_voices
+
+        with patch.object(BlazeTTSService, "get_voices", mock_get_voices):
+            response = self.client.get("/api/v1/tts/voices")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["voice_id"], "HCM-Nar-Nu-SaleThuyVy")
+            self.assertEqual(data[0]["name"], "Sale Thúy Vy")
+            self.assertEqual(data[0]["province"], "Hồ Chí Minh")
+
+    def test_get_tts_voices_without_api_key(self):
+        """Kiểm tra xử lý lỗi khi không có BLAZE_API_KEY."""
+        async def mock_err(**kwargs):
+            raise BlazeTTSError("BLAZE_API_KEY chưa được cấu hình", status_code=401)
+
+        with patch.object(BlazeTTSService, "get_voices", mock_err):
+            response = self.client.get("/api/v1/tts/voices")
+            self.assertEqual(response.status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()
