@@ -23,6 +23,7 @@ Tiến trình LiveKit Voice Agent chạy độc lập cho hệ thống TravelWis
   4. Agent gửi âm thanh người dùng vào Blaze STT, nhận diện tiếng Việt.
   5. Agent gửi transcript đến hệ thống Gemini/RAG của TravelWise để truy xuất tài liệu và tạo câu trả lời đàm thoại (văn xuôi tự nhiên, không markdown, 3-4 câu).
   6. Agent tổng hợp câu phản hồi qua Blaze TTS và stream âm thanh về trình duyệt qua WebRTC.
+- **Tùy chọn giọng LiveKit**: Mobile gửi `set_voice_settings` qua reliable data packet sau khi subscribe audio track của Agent. Agent áp dụng `speaker_id` và tốc độ (`1.0`, `1.2`, `1.5`) cho những lần tổng hợp TTS tiếp theo; tùy chọn nghe thử trong giao diện vẫn dùng HTTP TTS riêng.
 
 ---
 

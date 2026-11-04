@@ -304,17 +304,64 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   void setSpeakerId(String id) {
     if (state.speakerId != id) {
       state = state.copyWith(speakerId: id);
+      _publishLiveKitVoiceSettings();
     }
   }
 
   void setTtsSpeed(String speed) {
     if (state.ttsSpeed != speed) {
       state = state.copyWith(ttsSpeed: speed);
+      _publishLiveKitVoiceSettings();
     }
   }
 
-  Future<void> previewVoiceSample(String speakerId, {String? speed, String? sampleText}) async {
-    final text = sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
+  void _publishLiveKitVoiceSettings() {
+    if (!_liveKitAgentAudioReady) return;
+    unawaited(_sendLiveKitVoiceSettings());
+  }
+
+  Future<void> _sendLiveKitVoiceSettings() async {
+    final room = _liveKitRoom;
+    final participant = room?.localParticipant;
+    if (room?.connectionState != ConnectionState.connected ||
+        participant == null ||
+        !_liveKitAgentAudioReady) {
+      return;
+    }
+
+    try {
+      await participant.publishData(
+        utf8.encode(
+          jsonEncode(<String, String>{
+            'type': 'command',
+            'command': 'set_voice_settings',
+            'speaker_id': state.speakerId,
+            'speed': state.ttsSpeed,
+          }),
+        ),
+        reliable: true,
+      );
+      log('livekit_voice_settings_sent', {
+        'speakerId': state.speakerId,
+        'speed': state.ttsSpeed,
+      });
+    } catch (error) {
+      log('livekit_voice_settings_send_failed', {'error': error.toString()});
+      if (mounted) {
+        state = state.copyWith(
+          error: 'Không thể áp dụng tùy chọn giọng đọc cho trợ lý thoại.',
+        );
+      }
+    }
+  }
+
+  Future<void> previewVoiceSample(
+    String speakerId, {
+    String? speed,
+    String? sampleText,
+  }) async {
+    final text =
+        sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
     final spd = speed ?? state.ttsSpeed;
     _audioService.stopTts();
     _audioService.initStreamingQueue(
@@ -393,6 +440,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   CancelListenFunc? _cancelLiveKitListener;
   bool _liveKitConnecting = false;
   bool _liveKitClosing = false;
+  bool _liveKitAgentAudioReady = false;
   Completer<void>? _liveKitAgentReady;
   String _lastLiveKitUserTranscript = '';
   List<ChatMedia> _liveKitPendingMedia = const [];
@@ -493,7 +541,6 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
       return;
     }
-
     if (state.isMuted) {
       log('mic_unmuted');
 
@@ -581,6 +628,22 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
+  Future<void> startLiveKitVoice() async {
+    if (!_useLiveKitVoice || _liveKitConnecting || _liveKitClosing) return;
+
+    _isVoiceSession = true;
+    final room = _liveKitRoom;
+    if (room?.connectionState == ConnectionState.connected) {
+      final participant = room?.localParticipant;
+      if (participant != null && !participant.isMicrophoneEnabled()) {
+        await _enableLiveKitMicrophone();
+      }
+      return;
+    }
+
+    await _connectLiveKitVoice();
+  }
+
   Future<void> _toggleLiveKitVoice() async {
     if (_liveKitRoom?.connectionState == ConnectionState.connected) {
       final participant = _liveKitRoom!.localParticipant;
@@ -622,18 +685,39 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       final listener = room.createListener();
       _liveKitRoom = room;
       _liveKitListener = listener;
+      _liveKitAgentAudioReady = false;
       _liveKitAgentReady = Completer<void>();
       _cancelLiveKitListener = listener.listen(_handleLiveKitEvent);
       await room.connect(token.serverUrl, token.token);
-      await _waitForLiveKitAgent(room);
       await room.startAudio();
-      await room.localParticipant?.setMicrophoneEnabled(true);
+      final localParticipant = room.localParticipant;
+      if (localParticipant == null) {
+        throw StateError('LiveKit room connected without a local participant.');
+      }
+      await localParticipant.setMicrophoneEnabled(true);
       state = state.copyWith(
         conversationId: token.conversationId,
         voiceState: VoiceState.listening,
         isRecording: true,
         isMuted: false,
         error: null,
+      );
+      unawaited(
+        _waitForLiveKitAgent(room)
+            .then((_) {
+              log('livekit_agent_ready');
+            })
+            .catchError((Object error) {
+              log('livekit_agent_wait_failed', {'error': error.toString()});
+              if (mounted &&
+                  identical(_liveKitRoom, room) &&
+                  room.connectionState == ConnectionState.connected) {
+                state = state.copyWith(
+                  error:
+                      'Đã kết nối microphone nhưng trợ lý chưa sẵn sàng. Vui lòng thử lại sau ít phút.',
+                );
+              }
+            }),
       );
     } catch (error) {
       await _disconnectLiveKit(clearConversation: false);
@@ -760,6 +844,14 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
       return;
     }
+    if (event is TrackSubscribedEvent &&
+        _isLiveKitAgent(event.participant) &&
+        event.track.kind == TrackType.AUDIO) {
+      _liveKitAgentAudioReady = true;
+      log('livekit_agent_audio_subscribed');
+      unawaited(_sendLiveKitVoiceSettings());
+      return;
+    }
     if (event is DataReceivedEvent) {
       _handleLiveKitData(event.data);
     }
@@ -816,6 +908,20 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           state = state.copyWith(
             voiceState: next,
             error: payload['error']?.toString(),
+          );
+        }
+        return;
+      }
+      if (type == 'voice_settings') {
+        if (payload['status'] == 'applied') {
+          log('livekit_voice_settings_applied', {
+            'speakerId': payload['speaker_id'],
+            'speed': payload['speed'],
+          });
+        } else {
+          log('livekit_voice_settings_rejected');
+          state = state.copyWith(
+            error: 'Không thể áp dụng tùy chọn giọng đọc cho trợ lý thoại.',
           );
         }
         return;
@@ -933,6 +1039,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   Future<void> leaveLiveKitVoice() async {
+    _isVoiceSession = false;
     await _disconnectLiveKit(clearConversation: false);
   }
 
@@ -945,6 +1052,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _cancelLiveKitListener = null;
     _liveKitListener = null;
     _liveKitRoom = null;
+    _liveKitAgentAudioReady = false;
     _liveKitAgentReady = null;
     try {
       await cancelListener?.call();

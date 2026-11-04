@@ -161,6 +161,19 @@ class TestBlazeTTSAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.adapter.sample_rate, 24000)
         self.assertEqual(self.adapter.num_channels, 1)
 
+    def test_update_voice_settings_validates_and_updates_values(self):
+        self.adapter.update_voice_settings(
+            speaker_id="HaNoi-Nam-1-BL",
+            speed="1.2",
+        )
+        self.assertEqual(self.adapter.speaker_id, "HaNoi-Nam-1-BL")
+        self.assertEqual(self.adapter.speed, "1.2")
+
+        with self.assertRaises(ValueError):
+            self.adapter.update_voice_settings(speed="2.0")
+        with self.assertRaises(ValueError):
+            self.adapter.update_voice_settings(speaker_id="invalid speaker")
+
     async def test_tts_empty_input_handled_gracefully(self):
         """Verify empty or whitespace-only text returns without error."""
         chunked_stream = self.adapter.synthesize("   ")
@@ -199,6 +212,10 @@ class TestBlazeTTSAdapter(unittest.IsolatedAsyncioTestCase):
             finished_frame,
         ])
 
+        self.adapter.update_voice_settings(
+            speaker_id="HaNoi-Nam-1-BL",
+            speed="1.2",
+        )
         chunked_stream = self.adapter.synthesize("Chào mừng đến với TravelWise.")
         mock_emitter = MagicMock()
 
@@ -219,8 +236,8 @@ class TestBlazeTTSAdapter(unittest.IsolatedAsyncioTestCase):
 
         query_sent = json.loads(mock_ws.send.call_args_list[1][0][0])
         self.assertEqual(query_sent["query"], "Chào mừng đến với TravelWise.")
-        self.assertEqual(query_sent["speaker_id"], "DaNang-Nu-1-BL")
-        self.assertEqual(query_sent["audio_speed"], "1.5")
+        self.assertEqual(query_sent["speaker_id"], "HaNoi-Nam-1-BL")
+        self.assertEqual(query_sent["audio_speed"], "1.2")
         self.assertEqual(query_sent["audio_format"], "mp3")
 
 

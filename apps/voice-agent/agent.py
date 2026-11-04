@@ -464,7 +464,6 @@ async def process_user_audio_with_rag(
             schedule_control_task(
                 send_room_data(room, {"type": "state", "state": "ready"})
             )
-
     audio_stream = rtc.AudioStream(track)
     stt_stream = blaze_stt.stream()
 
@@ -636,6 +635,50 @@ async def entrypoint(ctx: JobContext) -> None:
         sample_rate=24000,
         num_channels=1,
     )
+
+    @ctx.room.on("data_received")
+    def on_voice_settings_data(*args) -> None:
+        if not args:
+            return
+        packet = args[0]
+        raw_data = getattr(packet, "data", packet)
+        if not isinstance(raw_data, bytes):
+            return
+        try:
+            payload = json.loads(raw_data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if (
+            not isinstance(payload, dict)
+            or payload.get("type") != "command"
+            or payload.get("command") != "set_voice_settings"
+        ):
+            return
+
+        try:
+            speaker_id = payload.get("speaker_id")
+            speed = payload.get("speed")
+            if not isinstance(speaker_id, str) or not isinstance(speed, str):
+                raise ValueError("Invalid voice settings payload.")
+            blaze_tts.update_voice_settings(speaker_id=speaker_id, speed=speed)
+            logger.info(
+                "Cập nhật giọng TTS: speaker=%s, speed=%s",
+                blaze_tts.speaker_id,
+                blaze_tts.speed,
+            )
+            response = {
+                "type": "voice_settings",
+                "status": "applied",
+                "speaker_id": blaze_tts.speaker_id,
+                "speed": blaze_tts.speed,
+            }
+        except ValueError as exc:
+            logger.warning("Từ chối cài đặt giọng TTS: %s", exc)
+            response = {
+                "type": "voice_settings",
+                "status": "rejected",
+            }
+        asyncio.create_task(send_room_data(ctx.room, response))
 
     rag_client = TravelWiseRAGClient(
         base_url=config.BACKEND_API_URL,

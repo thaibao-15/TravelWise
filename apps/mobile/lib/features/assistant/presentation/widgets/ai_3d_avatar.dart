@@ -90,9 +90,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
             ref
                 .read(avatar3dStateProvider.notifier)
                 .setLoaded(
-                  modelName: _cachedModel!.name,
-                  hasMorphTargets: _cachedModel!.hasMorphTargets,
-                  hasSkeleton: _cachedModel!.hasSkeleton,
+                  modelName: cached.name,
+                  hasMorphTargets: cached.hasMorphTargets,
+                  hasSkeleton: cached.hasSkeleton,
                 );
           }
         });

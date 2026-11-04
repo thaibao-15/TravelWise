@@ -58,7 +58,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       if (authState is AuthAuthenticated) {
         userName = authState.user.fullName;
       }
-      ref.read(voiceAssistantProvider.notifier).greetUser(userName: userName);
+      final notifier = ref.read(voiceAssistantProvider.notifier);
+      notifier.greetUser(userName: userName);
+      unawaited(notifier.startLiveKitVoice());
     }
   }
 

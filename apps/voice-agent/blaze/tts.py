@@ -102,6 +102,27 @@ class BlazeTTS(tts.TTS):
     def ws_url(self) -> str:
         return self._ws_url
 
+    def update_voice_settings(
+        self,
+        *,
+        speaker_id: Optional[str] = None,
+        speed: Optional[str] = None,
+    ) -> None:
+        """Update the voice used for future synthesis requests."""
+        if speaker_id is not None:
+            clean_speaker_id = speaker_id.strip()
+            if not clean_speaker_id or len(clean_speaker_id) > 100 or not all(
+                char.isalnum() or char in "-_" for char in clean_speaker_id
+            ):
+                raise ValueError("Invalid TTS speaker ID.")
+            self._speaker_id = clean_speaker_id
+
+        if speed is not None:
+            clean_speed = speed.strip()
+            if clean_speed not in {"1.0", "1.2", "1.5"}:
+                raise ValueError("Unsupported TTS speed.")
+            self._speed = clean_speed
+
     def synthesize(
         self,
         text: str,
