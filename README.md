@@ -6,7 +6,7 @@ Dự án được cấu trúc dạng monorepo gồm 4 ứng dụng trong thư m�
 - **API (Backend)**: FastAPI + SQLModel + SQL Server + Chroma Vector DB + Google Gemini + LiveKit Token Generator.
 - **Web (Frontend)**: Next.js 16 (React 19, TypeScript, Tailwind CSS, Living Voice Orb, Trip Canvas).
 - **Voice Agent**: LiveKit Voice Agent Worker độc lập (WebRTC song công, Blaze AI STT/TTS tiếng Việt, Gemini RAG, ngắt lời VAD).
-- **Mobile**: Flutter (Android, iOS, Web).
+- **Mobile**: Flutter (Android, iOS, Web) với trợ lý ảo 3D AI tương tác (`AvatarSample_A` / `Linh AI`) nhép môi thời gian thực theo giọng đọc Blaze TTS.
 
 ---
 

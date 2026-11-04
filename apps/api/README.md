@@ -334,6 +334,30 @@ Kiểm tra cấu hình và tình trạng kết nối Blaze AI Realtime WebSocket
 #### `GET /api/v1/tts/stream?text=...`
 Tạo và stream trực tiếp dữ liệu âm thanh MP3 với độ trễ tối thiểu (hỗ trợ HEAD request preflight).
 
+#### `GET /api/v1/tts/voices`
+Truy vấn danh sách hơn 1.000+ giọng nói Text-to-Speech khả dụng từ Blaze AI (`https://api.blaze.vn/v1/audio/voices`) sử dụng `BLAZE_API_KEY` đã cấu hình trong `.env`:
+- **Query Parameters:**
+  - `language` (tùy chọn): Lọc theo mã ngôn ngữ (`vi`).
+  - `gender` (tùy chọn): Lọc theo giới tính (`Female`, `Male`).
+  - `province` (tùy chọn): Lọc theo tỉnh thành hoặc vùng miền (ví dụ: `Hồ Chí Minh`, `Đà Nẵng`, `Hà Nội`).
+  - `refresh` (tùy chọn): Đặt `true` để bỏ qua bộ nhớ đệm (cache 1h) và đồng bộ danh sách mới nhất từ Blaze AI.
+- **Ví dụ phản hồi JSON:**
+```json
+[
+  {
+    "voice_id": "HCM-Nar-Nu-SaleThuyVy",
+    "name": "Sale Thúy Vy",
+    "type": "Narration",
+    "gender": "Female",
+    "language": "vi",
+    "audio_speed": 1.0,
+    "province": "Hồ Chí Minh",
+    "is_public": true,
+    "description": "Giọng sale Thúy Vy truyền cảm"
+  }
+]
+```
+
 #### `POST /api/v1/stt/transcribe`
 Tải file audio (`.wav`, `.mp3`, `.m4a`) để chuyển đổi thành văn bản tiếng Việt.
 

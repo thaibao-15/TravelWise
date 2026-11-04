@@ -1,3 +1,5 @@
+import time
+import httpx
 import asyncio
 import hashlib
 import json
@@ -27,6 +29,8 @@ class BlazeTTSService:
 
     _audio_cache: dict[str, bytes] = {}
     _inflight_futures: dict[str, asyncio.Future] = {}
+    _voices_cache: Optional[list[dict]] = None
+    _voices_cache_time: float = 0.0
 
     def __init__(
         self,
@@ -186,3 +190,65 @@ class BlazeTTSService:
         if not full_audio:
             raise BlazeTTSError("Không nhận được dữ liệu âm thanh từ Blaze TTS.", status_code=502)
         return full_audio
+
+    @classmethod
+    async def get_voices(
+        cls,
+        api_key: Optional[str] = None,
+        voices_url: Optional[str] = None,
+        language: Optional[str] = None,
+        gender: Optional[str] = None,
+        province: Optional[str] = None,
+        force_refresh: bool = False,
+    ) -> list[dict]:
+        """Fetch all available Text-to-Speech voices from Blaze AI."""
+        key = api_key if api_key is not None else settings.BLAZE_API_KEY
+        if not key or not key.strip():
+            raise BlazeTTSError(
+                "BLAZE_API_KEY chưa được cấu hình trong .env. Vui lòng thêm BLAZE_API_KEY để lấy danh sách giọng nói.",
+                status_code=401,
+            )
+
+        url = voices_url or getattr(settings, "BLAZE_TTS_VOICES_URL", "https://api.blaze.vn/v1/audio/voices")
+        now = time.time()
+
+        if not force_refresh and cls._voices_cache is not None and (now - cls._voices_cache_time < 3600):
+            voices = cls._voices_cache
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    headers = {
+                        "Authorization": f"Bearer {key.strip()}",
+                        "Accept": "application/json",
+                    }
+                    response = await client.get(url, headers=headers)
+                    if response.status_code == 401:
+                        raise BlazeTTSError("API Key không hợp lệ hoặc hết hạn khi gọi Blaze Voices API.", status_code=401)
+                    if response.status_code != 200:
+                        raise BlazeTTSError(
+                            f"Lỗi từ máy chủ Blaze Voices ({response.status_code}): {response.text[:200]}",
+                            status_code=502,
+                        )
+                    data = response.json()
+                    if not isinstance(data, list):
+                        raise BlazeTTSError("Dữ liệu danh sách giọng nói từ Blaze AI không hợp lệ.", status_code=502)
+                    cls._voices_cache = data
+                    cls._voices_cache_time = now
+                    voices = data
+            except httpx.TimeoutException:
+                raise BlazeTTSError("Hết thời gian chờ kết nối đến máy chủ Blaze AI Voices.", status_code=504)
+            except httpx.RequestError as exc:
+                raise BlazeTTSError(f"Lỗi kết nối đến máy chủ Blaze AI Voices: {exc}", status_code=502)
+
+        filtered = voices
+        if language:
+            lang_lower = language.lower()
+            filtered = [v for v in filtered if (v.get("language") or "").lower() == lang_lower]
+        if gender:
+            gender_lower = gender.lower()
+            filtered = [v for v in filtered if (v.get("gender") or "").lower() == gender_lower]
+        if province:
+            prov_lower = province.lower()
+            filtered = [v for v in filtered if prov_lower in (v.get("province") or "").lower()]
+
+        return filtered

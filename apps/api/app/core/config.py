@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     BLAZE_TTS_WS_URL: str = "wss://api.blaze.vn/v1/tts/realtime"
     BLAZE_TTS_API_URL: str = "https://api.blaze.vn/v1/tts"
+    BLAZE_TTS_VOICES_URL: str = "https://api.blaze.vn/v1/audio/voices"
     BLAZE_TTS_SPEAKER_ID: str = "DaNang-Nu-1-BL"
     BLAZE_TTS_MODEL: str = "2.0-realtime"
     BLAZE_TTS_SPEED: str = "1.5"

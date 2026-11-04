@@ -15,6 +15,7 @@ import '../widgets/ai_3d_avatar.dart';
 import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
+import '../widgets/avatar_voice_settings_sheet.dart';
 import '../../../livekit/presentation/screens/livekit_voice_screen.dart';
 
 /// Màn hình Trợ lý du lịch TravelWise (Linh AI) - Thiết kế Compact không cần cuộn dọc.
@@ -30,6 +31,7 @@ class TravelAssistantScreen extends ConsumerStatefulWidget {
 class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _rippleController;
+  bool _isItineraryMinimized = false;
 
   @override
   void initState() {
@@ -104,6 +106,32 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       } else {
         if (_rippleController.isAnimating) _rippleController.stop();
       }
+
+      // Tự động mở rộng lịch trình khi bắt đầu tạo mới hoặc nhận kết quả tạo
+      if ((prev?.planningState != TripPlanningState.generating &&
+              next.planningState == TripPlanningState.generating) ||
+          (prev?.tripPreview == null && next.tripPreview != null)) {
+        if (_isItineraryMinimized && mounted) {
+          setState(() {
+            _isItineraryMinimized = false;
+          });
+        }
+      }
+
+      if (next.error != null &&
+          next.error!.isNotEmpty &&
+          next.error != prev?.error &&
+          mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(next.error!),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
     });
 
     return Scaffold(
@@ -123,27 +151,58 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  children: [
-                    // ── A. Nửa trên: AI Avatar Linh & Bong bóng thoại nổi ───
-                    Expanded(
-                      flex: 11,
-                      child: _buildHeroPersonaSection(context, state, notifier),
-                    ),
+                child: Builder(
+                  builder: (context) {
+                    final hasActiveTrip = state.tripPreview != null ||
+                        state.planningState == TripPlanningState.generating ||
+                        state.planningState == TripPlanningState.revising;
+                    final showExpandedItinerary =
+                        hasActiveTrip && !_isItineraryMinimized;
 
-                    // ── B. Cụm điều khiển giọng nói trung tâm (Voice Cluster) ─
-                    _buildVoiceActionCluster(context, state, notifier),
+                    return Column(
+                      children: [
+                        // ── A. Nửa trên: AI Avatar Linh & Bong bóng thoại nổi ───
+                        // Khi bình thường (chưa tạo lịch trình): Chiếm tối đa màn hình để 3D Avatar to, rõ & sống động!
+                        // Khi đã tạo lịch trình: Chia tỉ lệ cân đối để hiển thị chi tiết các ngày.
+                        Expanded(
+                          flex: showExpandedItinerary ? 10 : 1,
+                          child: _buildHeroPersonaSection(
+                            context,
+                            state,
+                            notifier,
+                          ),
+                        ),
 
-                    const SizedBox(height: 10),
+                        // ── B. Cụm điều khiển giọng nói trung tâm (Voice Cluster) ─
+                        _buildVoiceActionCluster(context, state, notifier),
 
-                    // ── C. Nửa dưới: Thẻ thông minh (Lịch trình / Gợi ý) ────
-                    Expanded(
-                      flex: 9,
-                      child: _buildSmartContentPanel(context, state, notifier),
-                    ),
+                        const SizedBox(height: 8),
 
-                    const SizedBox(height: 10),
-                  ],
+                        // ── C. Nửa dưới: Lịch trình (Thu gọn siêu nhỏ hoặc Mở rộng) ──
+                        if (showExpandedItinerary)
+                          Expanded(
+                            flex: 11,
+                            child: _buildSmartContentPanel(
+                              context,
+                              state,
+                              notifier,
+                              onMinimize: () =>
+                                  setState(() => _isItineraryMinimized = true),
+                            ),
+                          )
+                        else
+                          _buildCompactItineraryBar(
+                            context,
+                            state,
+                            notifier,
+                            onExpand: () =>
+                                setState(() => _isItineraryMinimized = false),
+                          ),
+
+                        const SizedBox(height: 8),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -288,6 +347,30 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               GestureDetector(
+                onTap: () => AvatarVoiceSettingsSheet.show(context),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    size: 19,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
                 onTap: notifier.toggleLanguage,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -415,6 +498,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 voiceState: state.voiceState,
                 speechText: latestAiSpeech,
                 lipSyncListenable: notifier.lipSyncListenable,
+                onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
               ),
             ),
 
@@ -902,13 +986,345 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // 4b. COMPACT ITINERARY BAR (Thanh nhỏ gọn ở chế độ mặc định để nhường chỗ cho 3D Avatar)
+  // ──────────────────────────────────────────────────────────────────────────
+  Widget _buildCompactItineraryBar(
+    BuildContext context,
+    VoiceAssistantState state,
+    VoiceAssistantNotifier notifier, {
+    VoidCallback? onExpand,
+  }) {
+    // 1. Nếu có chuyến đi đã tạo nhưng đang thu gọn: Hiển thị thanh tóm tắt chuyến đi
+    if (state.tripPreview != null) {
+      final trip = state.tripPreview!;
+      return InkWell(
+        onTap: onExpand,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFBAE6FD)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.map_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            trip.destination,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${trip.daysCount} ngày',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    const Text(
+                      'Chạm để mở rộng xem chi tiết từng ngày',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text(
+                      'Mở rộng',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0284C7),
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(
+                      Icons.keyboard_arrow_up_rounded,
+                      size: 14,
+                      color: Color(0xFF0284C7),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 2. Nếu sẵn sàng tạo (Ready to generate): Hiển thị thanh nút bấm "Tạo ngay" gọn gàng
+    if (state.planningState == TripPlanningState.readyToGenerate) {
+      final summaryText =
+          state.planningContextSummary != null &&
+              state.planningContextSummary!.isNotEmpty
+          ? state.planningContextSummary!
+          : 'Đã đủ thông tin du lịch!';
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0284C7).withValues(alpha: 0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    summaryText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Text(
+                    'Nhấn để tạo lịch trình chi tiết từ địa điểm thực.',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => notifier.generateItinerary(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF0284C7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Tạo ngay',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 3. Mặc định bình thường: Thanh nhỏ gọn tiết kiệm tối đa diện tích, nhường chỗ cho 3D Avatar
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon Calendar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.calendar_today_rounded,
+                size: 17,
+                color: Color(0xFF0284C7),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Prompt nhanh: Lên lịch trình Đà Nẵng 3N2Đ
+          Expanded(
+            child: InkWell(
+              onTap: () => notifier.sendMessage(
+                'Tạo lịch trình du lịch Đà Nẵng 3 ngày 2 đêm',
+              ),
+              borderRadius: BorderRadius.circular(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Row(
+                    children: [
+                      Text(
+                        'Lịch trình',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      SizedBox(width: 5),
+                      Text(
+                        '• Đà Nẵng 3N2Đ',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0284C7),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'Chạm để Linh AI lên kế hoạch hoặc nói với AI',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Nút "Gợi ý" mở modal các prompt mẫu
+          InkWell(
+            onTap: () => _openQuickPromptsModal(context, notifier),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    'Gợi ý',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0284C7),
+                    ),
+                  ),
+                  SizedBox(width: 2),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 9,
+                    color: Color(0xFF0284C7),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // 4. SMART CONTENT PANEL (Nửa dưới: Lịch trình tóm tắt / Quick Prompts)
   // ──────────────────────────────────────────────────────────────────────────
   Widget _buildSmartContentPanel(
     BuildContext context,
     VoiceAssistantState state,
-    VoiceAssistantNotifier notifier,
-  ) {
+    VoiceAssistantNotifier notifier, {
+    VoidCallback? onMinimize,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -926,7 +1342,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: "Lịch trình của bạn" | "Xem tất cả"
+          // Header: "Lịch trình của bạn" | "Thu gọn" | "Xem tất cả"
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -948,26 +1364,67 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                   ),
                 ],
               ),
-              InkWell(
-                onTap: () {
-                  if (state.tripPreview != null) {
-                    _openFullItineraryModal(context, state.tripPreview!);
-                  } else {
-                    _openQuickPromptsModal(context, notifier);
-                  }
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  child: Text(
-                    'Xem tất cả',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0284C7),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (onMinimize != null) ...[
+                    InkWell(
+                      onTap: onMinimize,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 14,
+                              color: Color(0xFF64748B),
+                            ),
+                            SizedBox(width: 2),
+                            Text(
+                              'Thu gọn',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  InkWell(
+                    onTap: () {
+                      if (state.tripPreview != null) {
+                        _openFullItineraryModal(context, state.tripPreview!);
+                      } else {
+                        _openQuickPromptsModal(context, notifier);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Text(
+                        'Xem tất cả',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0284C7),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -1818,7 +2275,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               ),
             ),
             const SizedBox(height: 16),
-            const VoiceProfileBar(),
+            VoiceProfileBar(
+              onTap: () => AvatarVoiceSettingsSheet.show(context),
+            ),
             const SizedBox(height: 16),
             const LocationSuggestions(),
           ],

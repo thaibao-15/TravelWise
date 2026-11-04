@@ -13,7 +13,8 @@ import 'glb_3d_painter.dart';
 /// Interactive 3D AI Tour Guide Avatar for TravelWise.
 ///
 /// Features:
-/// - Real-time 3D GLB rendering from `assets/models/linh_avatar.glb` (or any `.vrm` / `.glb` in assets)
+/// - Real-time 3D GLB/VRM rendering from `assets/models/AvatarSample_A.glb`, `linh_avatar.glb`, etc.
+/// - Dynamic model switching (switch between multiple 3D characters seamlessly)
 /// - Seamless Voice AI state integration (Idle, Listening, Thinking, Speaking, Error)
 /// - 60fps audio-driven Morph Target Lip Sync using Blaze TTS audio
 /// - Autonomous blinking, gentle breathing, expressive nodding & hand gestures
@@ -24,6 +25,8 @@ class Ai3dAvatar extends ConsumerStatefulWidget {
   final ValueListenable<LipSyncFrame>? lipSyncListenable;
   final String speechText;
   final VoidCallback? onResetOrbit;
+  final VoidCallback? onOpenSettings;
+  final String? customModelPath;
 
   const Ai3dAvatar({
     super.key,
@@ -31,6 +34,8 @@ class Ai3dAvatar extends ConsumerStatefulWidget {
     this.lipSyncListenable,
     this.speechText = '',
     this.onResetOrbit,
+    this.onOpenSettings,
+    this.customModelPath,
   });
 
   @override
@@ -46,8 +51,8 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
   bool _isLoading = true;
   String? _loadError;
 
-  // Cached model bytes across widget rebuilds
-  static GlbModel? _cachedModel;
+  // Cached model bytes across widget rebuilds and character switches
+  static final Map<String, GlbModel> _modelCache = {};
 
   @override
   void initState() {
@@ -66,12 +71,19 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
     super.dispose();
   }
 
-  Future<void> _loadAvatarModel() async {
-    if (_cachedModel != null) {
+  Future<void> _loadAvatarModel([String? targetPath]) async {
+    final chosenPath = targetPath ??
+        widget.customModelPath ??
+        ref.read(avatar3dStateProvider).selectedModelPath;
+
+    // Fast-path: grab from cache if available
+    if (_modelCache.containsKey(chosenPath)) {
+      final cached = _modelCache[chosenPath]!;
       if (mounted) {
         setState(() {
-          _loadedModel = _cachedModel;
+          _loadedModel = cached;
           _isLoading = false;
+          _loadError = null;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -88,9 +100,16 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
+
     try {
-      // 1. Prioritize AvatarSample_A 3D model
       final assetPaths = [
+        chosenPath,
         'assets/models/AvatarSample_A.glb',
         'assets/models/AvatarSample_A.vrm',
         'assets/models/linh_avatar.glb',
@@ -99,12 +118,12 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       ];
 
       ByteData? byteData;
-      String chosenPath = '';
+      String successfulPath = '';
 
       for (final p in assetPaths) {
         try {
           byteData = await rootBundle.load(p);
-          chosenPath = p;
+          successfulPath = p;
           break;
         } catch (_) {
           // Continue searching fallback candidates
@@ -122,8 +141,13 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
         byteData.lengthInBytes,
       );
 
-      final model = GlbModel.fromBytes(bytes, name: 'AvatarSample_A');
-      _cachedModel = model;
+      final displayName = successfulPath
+          .split('/')
+          .last
+          .replaceAll(RegExp(r'\.(glb|vrm)$'), '');
+      final model = GlbModel.fromBytes(bytes, name: displayName);
+      _modelCache[chosenPath] = model;
+      _modelCache[successfulPath] = model;
 
       if (mounted) {
         setState(() {
@@ -160,6 +184,16 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
   @override
   Widget build(BuildContext context) {
+    // Listen for model switching from provider
+    ref.listen<String>(
+      avatar3dStateProvider.select((s) => s.selectedModelPath),
+      (prev, next) {
+        if (prev != next) {
+          _loadAvatarModel(next);
+        }
+      },
+    );
+
     final avatarState = ref.watch(avatar3dStateProvider);
 
     return LayoutBuilder(
@@ -235,52 +269,78 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                 child: _buildAvatarStatusPill(widget.voiceState),
               ),
 
-              // 4. Reset Orbit Camera Button (Top-Right)
-              if (avatarState.userOrbitYaw.abs() > 0.05 ||
-                  avatarState.userOrbitPitch.abs() > 0.05)
-                Positioned(
-                  top: 14,
-                  right: 14,
-                  child: InkWell(
-                    onTap: () {
-                      ref.read(avatar3dStateProvider.notifier).resetOrbit();
-                      widget.onResetOrbit?.call();
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
+              // 4. Action Buttons (Top-Right: Settings / Change Character & Reset View)
+              Positioned(
+                top: 14,
+                right: 14,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.onOpenSettings != null)
+                      InkWell(
+                        onTap: widget.onOpenSettings,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.tune_rounded, color: Colors.white, size: 13),
+                              SizedBox(width: 4),
+                              Text(
+                                'Đổi 3D & Giọng',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.center_focus_strong,
-                            color: Colors.white,
-                            size: 13,
+                    if (avatarState.userOrbitYaw.abs() > 0.05 ||
+                        avatarState.userOrbitPitch.abs() > 0.05) ...[
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () {
+                          ref.read(avatar3dStateProvider.notifier).resetOrbit();
+                          widget.onResetOrbit?.call();
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                           ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Đặt lại góc nhìn',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.center_focus_strong, color: Colors.white, size: 13),
+                              SizedBox(width: 4),
+                              Text(
+                                'Góc nhìn',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
+                    ],
+                  ],
                 ),
+              ),
 
               // 5. Subtle Soft Floor Gradient
               Positioned.fill(
@@ -372,7 +432,7 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
         break;
       case VoiceState.idle:
         dotColor = const Color(0xFF10B981);
-        statusText = 'Linh AI 3D • Giọng Nữ Đà Nẵng';
+        statusText = 'Linh AI 3D • Sẵn sàng';
         break;
     }
 

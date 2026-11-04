@@ -1,5 +1,5 @@
     window.TravelWiseAudio = {
-      _v: 3,
+      _v: 4,
       _currentAudio: null,
       _currentUrl: null,
       _audioCache: {},
@@ -431,24 +431,8 @@
           return;
         }
 
-        var inFlight = self._inFlightPrefetch[cacheKey];
-        if (inFlight) {
-          inFlight.then(function(blobUrl) {
-            self._playAudioUrl(
-              blobUrl || self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
-              item,
-              sessionId
-            );
-          }).catch(function() {
-            self._playAudioUrl(
-              self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId),
-              item,
-              sessionId
-            );
-          });
-          return;
-        }
-
+        // Direct Stream Playback:
+        // Play immediately via HTTP chunked stream without waiting for full blob download!
         var streamUrl = self._buildStreamUrl(item.baseUrl, item.text, item.speed, item.speakerId);
         self._playAudioUrl(streamUrl, item, sessionId);
       },
