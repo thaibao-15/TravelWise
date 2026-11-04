@@ -341,6 +341,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   CancelListenFunc? _cancelLiveKitListener;
   bool _liveKitConnecting = false;
   bool _liveKitClosing = false;
+  Completer<void>? _liveKitAgentReady;
   String _lastLiveKitUserTranscript = '';
   List<ChatMedia> _liveKitPendingMedia = const [];
 
@@ -569,6 +570,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       final listener = room.createListener();
       _liveKitRoom = room;
       _liveKitListener = listener;
+      _liveKitAgentReady = Completer<void>();
       _cancelLiveKitListener = listener.listen(_handleLiveKitEvent);
       await room.connect(token.serverUrl, token.token);
       await _waitForLiveKitAgent(room);
@@ -594,21 +596,38 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   Future<void> _waitForLiveKitAgent(Room room) async {
-    const timeout = Duration(seconds: 10);
+    const timeout = Duration(seconds: 20);
     const pollInterval = Duration(milliseconds: 200);
     final deadline = DateTime.now().add(timeout);
 
     while (DateTime.now().isBefore(deadline)) {
       final agentConnected = room.remoteParticipants.values.any(
-        (participant) => participant.kind == ParticipantKind.AGENT,
+        _isLiveKitAgent,
       );
       if (agentConnected) return;
-      await Future<void>.delayed(pollInterval);
+
+      final remaining = deadline.difference(DateTime.now());
+      final waitDuration = remaining < pollInterval ? remaining : pollInterval;
+      final agentReady = _liveKitAgentReady;
+      if (agentReady != null && !agentReady.isCompleted) {
+        await Future.any<void>(<Future<void>>[
+          agentReady.future,
+          Future<void>.delayed(waitDuration),
+        ]);
+      } else {
+        await Future<void>.delayed(waitDuration);
+      }
     }
 
     throw StateError(
       'Hiện chưa thể kết nối trợ lý giọng nói. Vui lòng thử lại sau ít phút.',
     );
+  }
+
+  bool _isLiveKitAgent(RemoteParticipant participant) {
+    final identity = participant.identity.toLowerCase();
+    return participant.kind == ParticipantKind.AGENT ||
+        identity.startsWith('agent-');
   }
 
   Future<void> _enableLiveKitMicrophone() async {
@@ -675,6 +694,18 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     if (event is RoomDisconnectedEvent) {
       if (_liveKitClosing) return;
       unawaited(_disconnectLiveKit(clearConversation: false));
+      return;
+    }
+    if (event is ParticipantConnectedEvent) {
+      log('livekit_participant_connected', {
+        'identity': event.participant.identity,
+        'kind': event.participant.kind.name,
+      });
+      if (_isLiveKitAgent(event.participant) &&
+          _liveKitAgentReady != null &&
+          !_liveKitAgentReady!.isCompleted) {
+        _liveKitAgentReady!.complete();
+      }
       return;
     }
     if (event is DataReceivedEvent) {
@@ -862,6 +893,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _cancelLiveKitListener = null;
     _liveKitListener = null;
     _liveKitRoom = null;
+    _liveKitAgentReady = null;
     try {
       await cancelListener?.call();
       listener?.dispose();

@@ -330,10 +330,14 @@ uv run python scripts/test_llm.py            # Test kết nối LLM
 uv run uvicorn app.main:app --reload         # Chạy Dev API Server
 
 # --- Voice Agent (apps/voice-agent) ---
+cd apps/voice-agent
+Copy-Item .env.example .env                 # Tạo cấu hình local (PowerShell)
+# Điền LIVEKIT_*, BLAZE_API_KEY, BACKEND_API_URL và JWT_SECRET vào .env
 uv sync                                      # Cài dependencies
 uv run python main.py dev                    # Chạy Dev Voice Agent
 uv run python main.py start                  # Chạy Production Voice Agent Worker
 uv run python -m unittest discover tests     # Chạy bộ Unit Tests kiểm thử
+cd ../..
 
 # --- Web (apps/web) ---
 bun install                                  # Cài dependencies
@@ -344,3 +348,35 @@ bun run build                                # Kiểm tra typecheck và build pr
 flutter pub get                              # Tải dependencies Flutter
 flutter run                                  # Chạy Mobile App
 ```
+
+### Chạy Voice Agent local
+
+Voice Agent là worker độc lập, không chạy bên trong FastAPI. Để voice chat hoạt động
+đầy đủ, cần khởi động theo thứ tự:
+
+1. **FastAPI** trong `apps/api`:
+   ```powershell
+   uv run uvicorn app.main:app --reload
+   ```
+2. **Voice Agent** trong `apps/voice-agent`:
+   ```powershell
+   uv sync
+   uv run python main.py dev
+   ```
+3. **Mobile/Web** và kết nối voice từ màn hình trợ lý.
+
+Trước khi chạy Agent, tạo `apps/voice-agent/.env` từ
+[`apps/voice-agent/.env.example`](apps/voice-agent/.env.example) và cấu hình:
+
+- `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+- `LIVEKIT_AGENT_NAME` phải trùng tên Agent được API dispatch.
+- `BLAZE_API_KEY` để sử dụng STT/TTS.
+- `BACKEND_API_URL` trỏ đến FastAPI đang chạy.
+- `JWT_SECRET` phải giống secret JWT của API.
+
+Khi chạy thành công, log cần có tên đăng ký Agent
+`travelwise-voice-assistant`. Nếu mobile kết nối được LiveKit nhưng Agent chưa
+hoạt động, hãy kiểm tra cửa sổ terminal của Agent và khởi động lại worker.
+
+Xem hướng dẫn kiến trúc, Docker, kiểm thử và xử lý lỗi chi tiết tại
+[`apps/voice-agent/README.md`](apps/voice-agent/README.md).
