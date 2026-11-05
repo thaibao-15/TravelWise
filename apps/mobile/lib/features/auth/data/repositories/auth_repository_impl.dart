@@ -73,7 +73,29 @@ class AuthRepositoryImpl implements AuthRepository {
     } on ServerException catch (e) {
       return Left(ServerFailure(message: e.message, statusCode: e.statusCode));
     } catch (e) {
-      return Left(ServerFailure(message: 'Lỗi không xác định: ${e.toString()}'));
+      return Left(
+        ServerFailure(message: 'Lỗi không xác định: ${e.toString()}'),
+      );
+    }
+  }
+
+  @override
+  Future<Either<Failure, User?>> restoreSession() async {
+    try {
+      if (!await _storageService.hasToken()) {
+        return const Right<Failure, User?>(null);
+      }
+
+      final userModel = await _remoteDataSource.getCurrentUser();
+      return Right<Failure, User?>(userModel.toEntity());
+    } on ServerException catch (e) {
+      return Left(ServerFailure(message: e.message, statusCode: e.statusCode));
+    } on CacheException catch (e) {
+      return Left(CacheFailure(message: e.message));
+    } catch (e) {
+      return Left(
+        ServerFailure(message: 'Lỗi không xác định: ${e.toString()}'),
+      );
     }
   }
 

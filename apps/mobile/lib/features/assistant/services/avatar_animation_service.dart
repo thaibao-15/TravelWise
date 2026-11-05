@@ -102,6 +102,10 @@ class AvatarAnimationService {
   double _smoothAa = 0.0;
   double _smoothOh = 0.0;
   double _smoothEe = 0.0;
+  VoiceState? _lastVoiceState;
+  double? _speakingStartSeconds;
+  double? _speakingEndSeconds;
+  String _lastSpeechText = '';
 
   void reset() {
     _blinkTimer = 0.0;
@@ -111,6 +115,10 @@ class AvatarAnimationService {
     _smoothAa = 0.0;
     _smoothOh = 0.0;
     _smoothEe = 0.0;
+    _lastVoiceState = null;
+    _speakingStartSeconds = null;
+    _speakingEndSeconds = null;
+    _lastSpeechText = '';
   }
 
   /// Computes frame animation targets.
@@ -361,11 +369,17 @@ class AvatarAnimationService {
         node.translation.y = frame.chestBreath;
       } else if (node.name == 'LeftUpperArm') {
         final baseQ = Quaternion(0.0, 0.0, -0.10, 0.995);
-        final gesture = Quaternion.axisAngle(Vector3(1, 0, 0), frame.leftArmPitch);
+        final gesture = Quaternion.axisAngle(
+          Vector3(1, 0, 0),
+          frame.leftArmPitch,
+        );
         node.rotation.setFrom(baseQ * gesture);
       } else if (node.name == 'RightUpperArm') {
         final baseQ = Quaternion(0.0, 0.0, 0.10, 0.995);
-        final gesture = Quaternion.axisAngle(Vector3(1, 0, 0), frame.rightArmPitch);
+        final gesture = Quaternion.axisAngle(
+          Vector3(1, 0, 0),
+          frame.rightArmPitch,
+        );
         node.rotation.setFrom(baseQ * gesture);
       }
     }

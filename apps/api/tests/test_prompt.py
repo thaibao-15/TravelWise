@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from app.rag.prompt import (
     RAG_HUMAN_TEMPLATE,
     RAG_SYSTEM_INSTRUCTION,
+    RAG_VOICE_SYSTEM_INSTRUCTION,
     format_docs,
     get_rag_prompt,
     rag_chat_prompt,
@@ -48,9 +49,27 @@ class TestRAGPrompt(unittest.TestCase):
         self.assertIn("TravelWise", RAG_SYSTEM_INSTRUCTION)
         self.assertIn("Context", RAG_SYSTEM_INSTRUCTION)
         self.assertIn("tiếng Việt", RAG_SYSTEM_INSTRUCTION)
-        self.assertIn("không tự bịa đặt", RAG_SYSTEM_INSTRUCTION.lower())
-        self.assertIn("context nội bộ", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn(
+            "tuyệt đối không bịa đặt thông tin",
+            RAG_SYSTEM_INSTRUCTION.lower(),
+        )
+        self.assertIn("dựa hoàn toàn trên context", RAG_SYSTEM_INSTRUCTION.lower())
         self.assertIn("không tự nhắc lại", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn(
+            "mình chưa có thông tin để trả lời câu hỏi này",
+            RAG_SYSTEM_INSTRUCTION.lower(),
+        )
+        self.assertIn("kết thúc mỗi câu trả lời", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn(
+            "đúng một câu hỏi liên quan",
+            RAG_SYSTEM_INSTRUCTION.lower(),
+        )
+        self.assertIn("hoặc đề xuất cụ thể", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("kết thúc bằng", RAG_VOICE_SYSTEM_INSTRUCTION.lower())
+        self.assertIn(
+            "đúng một câu hỏi liên quan",
+            RAG_VOICE_SYSTEM_INSTRUCTION.lower(),
+        )
 
         # Human template check
         self.assertIn("## Context:", RAG_HUMAN_TEMPLATE)

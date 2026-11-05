@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:livekit_client/livekit_client.dart';
 
 import '../../../../core/audio/voice_audio_service.dart';
 import '../../../../core/error/exceptions.dart';
@@ -23,6 +24,7 @@ import '../../../trips/data/repositories/trip_repository.dart';
 import '../../../trips/models/trip_model.dart';
 
 import '../../../trips/providers/trip_provider.dart';
+import '../../../livekit/data/services/livekit_api_service.dart';
 
 import '../models/chat_media.dart';
 
@@ -185,6 +187,7 @@ class VoiceAssistantState {
     String? error,
 
     int? conversationId,
+    bool clearConversationId = false,
 
     bool? isTtsEnabled,
 
@@ -224,7 +227,9 @@ class VoiceAssistantState {
 
       error: error,
 
-      conversationId: conversationId ?? this.conversationId,
+      conversationId: clearConversationId
+          ? null
+          : (conversationId ?? this.conversationId),
 
       isTtsEnabled: isTtsEnabled ?? this.isTtsEnabled,
 
@@ -299,17 +304,64 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   void setSpeakerId(String id) {
     if (state.speakerId != id) {
       state = state.copyWith(speakerId: id);
+      _publishLiveKitVoiceSettings();
     }
   }
 
   void setTtsSpeed(String speed) {
     if (state.ttsSpeed != speed) {
       state = state.copyWith(ttsSpeed: speed);
+      _publishLiveKitVoiceSettings();
     }
   }
 
-  Future<void> previewVoiceSample(String speakerId, {String? speed, String? sampleText}) async {
-    final text = sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
+  void _publishLiveKitVoiceSettings() {
+    if (!_liveKitAgentAudioReady) return;
+    unawaited(_sendLiveKitVoiceSettings());
+  }
+
+  Future<void> _sendLiveKitVoiceSettings() async {
+    final room = _liveKitRoom;
+    final participant = room?.localParticipant;
+    if (room?.connectionState != ConnectionState.connected ||
+        participant == null ||
+        !_liveKitAgentAudioReady) {
+      return;
+    }
+
+    try {
+      await participant.publishData(
+        utf8.encode(
+          jsonEncode(<String, String>{
+            'type': 'command',
+            'command': 'set_voice_settings',
+            'speaker_id': state.speakerId,
+            'speed': state.ttsSpeed,
+          }),
+        ),
+        reliable: true,
+      );
+      log('livekit_voice_settings_sent', {
+        'speakerId': state.speakerId,
+        'speed': state.ttsSpeed,
+      });
+    } catch (error) {
+      log('livekit_voice_settings_send_failed', {'error': error.toString()});
+      if (mounted) {
+        state = state.copyWith(
+          error: 'Không thể áp dụng tùy chọn giọng đọc cho trợ lý thoại.',
+        );
+      }
+    }
+  }
+
+  Future<void> previewVoiceSample(
+    String speakerId, {
+    String? speed,
+    String? sampleText,
+  }) async {
+    final text =
+        sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
     final spd = speed ?? state.ttsSpeed;
     _audioService.stopTts();
     _audioService.initStreamingQueue(
@@ -382,6 +434,19 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   bool _isVoiceSession = false;
   bool _userKeepMicOn = false;
+  final bool _useLiveKitVoice = true;
+  Room? _liveKitRoom;
+  EventsListener<RoomEvent>? _liveKitListener;
+  CancelListenFunc? _cancelLiveKitListener;
+  bool _liveKitConnecting = false;
+  Completer<void>? _liveKitConnectCompleter;
+  bool _liveKitClosing = false;
+  Future<void>? _liveKitCloseFuture;
+  bool _liveKitAgentAudioReady = false;
+  bool _liveKitNeedsFreshRoom = false;
+  Completer<void>? _liveKitAgentReady;
+  String _lastLiveKitUserTranscript = '';
+  List<ChatMedia> _liveKitPendingMedia = const [];
 
   bool _isDirectTripEditMode = false;
   Trip? _directEditTrip;
@@ -471,6 +536,14 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   void toggleMute() {
+    if (_useLiveKitVoice) {
+      if (state.isMuted) {
+        unawaited(_enableLiveKitMicrophone());
+      } else {
+        unawaited(_disableLiveKitMicrophone());
+      }
+      return;
+    }
     if (state.isMuted) {
       log('mic_unmuted');
 
@@ -494,6 +567,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   /// Barge-in: interrupt AI stream/speech immediately and open the mic for user turn.
   void bargeIn() {
+    if (_useLiveKitVoice) {
+      log('livekit_stop_speaking');
+      unawaited(stopLiveKitSpeaking());
+      return;
+    }
     log('barge_in_triggered');
     _requestGeneration++;
     _isCommitting = false;
@@ -511,6 +589,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   void toggleRecording() {
+    if (_useLiveKitVoice) {
+      unawaited(_toggleLiveKitVoice());
+      return;
+    }
+
     if (state.voiceState == VoiceState.speaking ||
         state.voiceState == VoiceState.thinking ||
         state.voiceState == VoiceState.processing) {
@@ -545,6 +628,625 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       _userKeepMicOn = true;
       _isVoiceSession = true;
       _beginListening();
+    }
+  }
+
+  Future<void> startLiveKitVoice() async {
+    if (!_useLiveKitVoice) return;
+
+    _isVoiceSession = true;
+    final connecting = _liveKitConnectCompleter;
+    if (connecting != null) {
+      final timer = Stopwatch()..start();
+      await connecting.future;
+      log('livekit_connect_in_progress_waited', {
+        'durationMs': timer.elapsedMilliseconds,
+      });
+      if (!mounted || !_isVoiceSession) return;
+    }
+
+    final closing = _liveKitCloseFuture;
+    if (closing != null) {
+      final timer = Stopwatch()..start();
+      await closing;
+      log('livekit_previous_room_close_waited', {
+        'durationMs': timer.elapsedMilliseconds,
+      });
+      if (!mounted || !_isVoiceSession || _liveKitConnecting) return;
+    }
+
+    if (_liveKitNeedsFreshRoom) {
+      await _connectLiveKitVoice();
+      return;
+    }
+
+    final room = _liveKitRoom;
+    if (room?.connectionState == ConnectionState.connected) {
+      final participant = room?.localParticipant;
+      if (participant != null && !participant.isMicrophoneEnabled()) {
+        await _enableLiveKitMicrophone();
+      }
+      return;
+    }
+
+    await _connectLiveKitVoice();
+  }
+
+  Future<void> _toggleLiveKitVoice() async {
+    if (_liveKitConnecting) return;
+    _isVoiceSession = true;
+    if (_liveKitNeedsFreshRoom) {
+      await _disconnectLiveKit(clearConversation: false);
+      await _connectLiveKitVoice();
+      return;
+    }
+
+    if (_liveKitRoom?.connectionState == ConnectionState.connected) {
+      final participant = _liveKitRoom!.localParticipant;
+      if (participant == null) return;
+      final enabled = participant.isMicrophoneEnabled();
+      if (!enabled || state.isMuted) {
+        await _enableLiveKitMicrophone();
+      } else if (state.voiceState == VoiceState.speaking) {
+        await _enableLiveKitMicrophone();
+      } else {
+        await _disableLiveKitMicrophone();
+      }
+      return;
+    }
+
+    await _connectLiveKitVoice();
+  }
+
+  Future<void> _connectLiveKitVoice() async {
+    if (_liveKitConnecting) return;
+    final closing = _liveKitCloseFuture;
+    if (closing != null) {
+      await closing;
+      if (!mounted || !_isVoiceSession || _liveKitConnecting) return;
+    }
+    if (_liveKitRoom != null) {
+      await _disconnectLiveKit(clearConversation: false);
+      if (!mounted || !_isVoiceSession || _liveKitConnecting) return;
+    }
+    _liveKitConnecting = true;
+    final connectCompleter = Completer<void>();
+    _liveKitConnectCompleter = connectCompleter;
+    final connectTimer = Stopwatch()..start();
+    state = state.copyWith(
+      voiceState: VoiceState.connecting,
+      error: null,
+      isRecording: false,
+    );
+
+    try {
+      final tokenTimer = Stopwatch()..start();
+      final token = await LiveKitApiService(_ref.read(dioClientProvider))
+          .createToken(
+            conversationId: state.conversationId,
+            roomName: _liveKitNeedsFreshRoom
+                ? 'travelwise_conv_${state.conversationId ?? 'new'}_session_${DateTime.now().microsecondsSinceEpoch}'
+                : null,
+          );
+      log('livekit_token_ready', {
+        'durationMs': tokenTimer.elapsedMilliseconds,
+      });
+      if (!mounted || !_isVoiceSession) return;
+
+      final room = Room(
+        roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+      );
+      final listener = room.createListener();
+      _liveKitRoom = room;
+      _liveKitListener = listener;
+      _liveKitAgentAudioReady = false;
+      _liveKitAgentReady = Completer<void>();
+      _cancelLiveKitListener = listener.listen(_handleLiveKitEvent);
+      final roomTimer = Stopwatch()..start();
+      await room.connect(token.serverUrl, token.token);
+      log('livekit_room_connected', {
+        'durationMs': roomTimer.elapsedMilliseconds,
+      });
+      if (!mounted || !_isVoiceSession) {
+        await _disconnectLiveKit(clearConversation: false);
+        return;
+      }
+
+      final audioTimer = Stopwatch()..start();
+      await room.startAudio();
+      if (!mounted || !_isVoiceSession) {
+        await _disconnectLiveKit(clearConversation: false);
+        return;
+      }
+
+      final localParticipant = room.localParticipant;
+      if (localParticipant == null) {
+        throw StateError('LiveKit room connected without a local participant.');
+      }
+      await localParticipant.setMicrophoneEnabled(true);
+      if (!mounted || !_isVoiceSession) {
+        await _disconnectLiveKit(clearConversation: false);
+        return;
+      }
+
+      log('livekit_microphone_ready', {
+        'durationMs': audioTimer.elapsedMilliseconds,
+        'totalDurationMs': connectTimer.elapsedMilliseconds,
+      });
+      state = state.copyWith(
+        conversationId: token.conversationId,
+        voiceState: VoiceState.listening,
+        isRecording: true,
+        isMuted: false,
+        error: null,
+      );
+      unawaited(
+        _waitForLiveKitAgent(room)
+            .then((_) {
+              if (mounted &&
+                  identical(_liveKitRoom, room) &&
+                  room.connectionState == ConnectionState.connected) {
+                _liveKitNeedsFreshRoom = false;
+              }
+              log('livekit_agent_ready');
+            })
+            .catchError((Object error) {
+              log('livekit_agent_wait_failed', {'error': error.toString()});
+              if (mounted &&
+                  identical(_liveKitRoom, room) &&
+                  room.connectionState == ConnectionState.connected) {
+                unawaited(
+                  _markLiveKitUnavailable(
+                    'Đã kết nối microphone nhưng trợ lý chưa sẵn sàng. Vui lòng thử lại sau ít phút.',
+                  ),
+                );
+              }
+            }),
+      );
+    } catch (error) {
+      await _disconnectLiveKit(clearConversation: false);
+      if (mounted && _isVoiceSession) {
+        state = state.copyWith(
+          voiceState: VoiceState.error,
+          isRecording: false,
+          error: _messageForLiveKitError(error),
+        );
+      }
+    } finally {
+      _liveKitConnecting = false;
+      if (identical(_liveKitConnectCompleter, connectCompleter)) {
+        _liveKitConnectCompleter = null;
+      }
+      if (!connectCompleter.isCompleted) connectCompleter.complete();
+    }
+  }
+
+  Future<void> _waitForLiveKitAgent(Room room) async {
+    const timeout = Duration(seconds: 20);
+    const pollInterval = Duration(milliseconds: 200);
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      final agentConnected = room.remoteParticipants.values.any(
+        _isLiveKitAgent,
+      );
+      if (agentConnected) return;
+
+      final remaining = deadline.difference(DateTime.now());
+      final waitDuration = remaining < pollInterval ? remaining : pollInterval;
+      final agentReady = _liveKitAgentReady;
+      if (agentReady != null && !agentReady.isCompleted) {
+        await Future.any<void>(<Future<void>>[
+          agentReady.future,
+          Future<void>.delayed(waitDuration),
+        ]);
+      } else {
+        await Future<void>.delayed(waitDuration);
+      }
+    }
+
+    throw StateError(
+      'Hiện chưa thể kết nối trợ lý giọng nói. Vui lòng thử lại sau ít phút.',
+    );
+  }
+
+  bool _isLiveKitAgent(RemoteParticipant participant) {
+    final identity = participant.identity.toLowerCase();
+    return participant.kind == ParticipantKind.AGENT ||
+        identity.startsWith('agent-');
+  }
+
+  Future<void> _enableLiveKitMicrophone() async {
+    final participant = _liveKitRoom?.localParticipant;
+    if (participant == null) return;
+    await participant.setMicrophoneEnabled(true);
+    state = state.copyWith(
+      voiceState: VoiceState.listening,
+      isRecording: true,
+      isMuted: false,
+      error: null,
+    );
+  }
+
+  Future<void> _disableLiveKitMicrophone() async {
+    final participant = _liveKitRoom?.localParticipant;
+    if (participant == null) return;
+    await participant.setMicrophoneEnabled(false);
+    state = state.copyWith(
+      voiceState: VoiceState.idle,
+      isRecording: false,
+      isMuted: true,
+    );
+  }
+
+  Future<void> stopLiveKitSpeaking() async {
+    final room = _liveKitRoom;
+    if (room == null ||
+        room.connectionState != ConnectionState.connected ||
+        room.localParticipant == null) {
+      return;
+    }
+
+    try {
+      await room.localParticipant!.publishData(
+        utf8.encode(
+          jsonEncode(<String, String>{
+            'type': 'command',
+            'command': 'stop_speaking',
+          }),
+        ),
+        reliable: true,
+      );
+      await _enableLiveKitMicrophone();
+    } catch (error) {
+      state = state.copyWith(
+        voiceState: VoiceState.error,
+        error: _messageForLiveKitError(error),
+      );
+    }
+  }
+
+  void _handleLiveKitEvent(RoomEvent event) {
+    if (event is RoomReconnectingEvent || event is RoomAttemptReconnectEvent) {
+      state = state.copyWith(voiceState: VoiceState.connecting);
+      return;
+    }
+    if (event is RoomReconnectedEvent) {
+      state = state.copyWith(
+        voiceState: state.isMuted ? VoiceState.idle : VoiceState.listening,
+      );
+      return;
+    }
+    if (event is RoomDisconnectedEvent) {
+      if (_liveKitClosing) return;
+      unawaited(_handleUnexpectedLiveKitDisconnect());
+      return;
+    }
+    if (event is ParticipantConnectedEvent) {
+      log('livekit_participant_connected', {
+        'identity': event.participant.identity,
+        'kind': event.participant.kind.name,
+      });
+      if (_isLiveKitAgent(event.participant) &&
+          _liveKitAgentReady != null &&
+          !_liveKitAgentReady!.isCompleted) {
+        _liveKitNeedsFreshRoom = false;
+        _liveKitAgentReady!.complete();
+      }
+      return;
+    }
+    if (event is ParticipantDisconnectedEvent &&
+        _isLiveKitAgent(event.participant)) {
+      unawaited(
+        _markLiveKitUnavailable(
+          'Trợ lý giọng nói đã ngắt kết nối. Chạm micro để kết nối lại.',
+        ),
+      );
+      log('livekit_agent_disconnected', {
+        'identity': event.participant.identity,
+      });
+      return;
+    }
+    if (event is TrackSubscribedEvent &&
+        _isLiveKitAgent(event.participant) &&
+        event.track.kind == TrackType.AUDIO) {
+      _liveKitAgentAudioReady = true;
+      log('livekit_agent_audio_subscribed');
+      unawaited(_sendLiveKitVoiceSettings());
+      return;
+    }
+    if (event is DataReceivedEvent) {
+      _handleLiveKitData(event.data);
+    }
+  }
+
+  void _handleLiveKitData(List<int> rawData) {
+    try {
+      final payload = jsonDecode(utf8.decode(rawData));
+      if (payload is! Map<String, dynamic>) return;
+      final type = payload['type']?.toString();
+      if (type == 'conversation') {
+        final id = payload['conversation_id'];
+        state = state.copyWith(
+          conversationId: id is num ? id.toInt() : int.tryParse('$id'),
+        );
+        return;
+      }
+      if (type == 'transcript') {
+        final role = payload['role']?.toString();
+        final text = payload['text']?.toString() ?? '';
+        final isFinal = payload['is_final'] == true;
+        if (role == 'user') {
+          state = state.copyWith(
+            currentTranscript: text,
+            voiceState: isFinal ? VoiceState.thinking : VoiceState.listening,
+            isRecording: !isFinal,
+          );
+          if (isFinal) {
+            _lastLiveKitUserTranscript = text;
+            _upsertLiveKitUserMessage(text);
+          }
+        } else if (role == 'assistant') {
+          state = state.copyWith(
+            currentTranscript: text,
+            voiceState: isFinal ? VoiceState.idle : VoiceState.speaking,
+          );
+          _upsertLiveKitAssistantMessage(text, isFinal);
+        }
+        return;
+      }
+      if (type == 'metadata') {
+        _applyLiveKitMetadata(payload);
+        return;
+      }
+      if (type == 'state') {
+        final next = switch (payload['state']?.toString()) {
+          'analyzing' => VoiceState.thinking,
+          'speaking' => VoiceState.speaking,
+          'ready' || 'listening' => VoiceState.listening,
+          'error' => VoiceState.error,
+          _ => null,
+        };
+        if (next != null) {
+          if (next == VoiceState.error) {
+            unawaited(
+              _markLiveKitUnavailable(
+                payload['error']?.toString() ??
+                    'Trợ lý thoại đã gặp lỗi. Chạm micro để kết nối lại.',
+              ),
+            );
+            return;
+          }
+          state = state.copyWith(
+            voiceState: next,
+            error: payload['error']?.toString(),
+          );
+        }
+        return;
+      }
+      if (type == 'voice_settings') {
+        if (payload['status'] == 'applied') {
+          log('livekit_voice_settings_applied', {
+            'speakerId': payload['speaker_id'],
+            'speed': payload['speed'],
+          });
+        } else {
+          log('livekit_voice_settings_rejected');
+          state = state.copyWith(
+            error: 'Không thể áp dụng tùy chọn giọng đọc cho trợ lý thoại.',
+          );
+        }
+        return;
+      }
+      if (type == 'error') {
+        unawaited(
+          _markLiveKitUnavailable(
+            payload['message']?.toString() ?? 'LiveKit voice error.',
+          ),
+        );
+      }
+    } on FormatException catch (error) {
+      log('livekit_invalid_data', {'error': error.toString()});
+      state = state.copyWith(
+        voiceState: VoiceState.error,
+        error: 'Dữ liệu voice realtime không hợp lệ.',
+      );
+    }
+  }
+
+  void _upsertLiveKitAssistantMessage(String text, bool isFinal) {
+    if (text.trim().isEmpty) return;
+    final messages = [...state.messages];
+    if (messages.isNotEmpty && !messages.last.isUser) {
+      messages[messages.length - 1] = ChatMessage(
+        text: text,
+        isUser: false,
+        timestamp: messages.last.timestamp,
+        media: isFinal ? _liveKitPendingMedia : messages.last.media,
+      );
+    } else if (isFinal || messages.isEmpty) {
+      messages.add(
+        ChatMessage(
+          text: text,
+          isUser: false,
+          timestamp: DateTime.now(),
+          media: _liveKitPendingMedia,
+        ),
+      );
+      _liveKitPendingMedia = const [];
+    }
+    state = state.copyWith(messages: messages);
+  }
+
+  void _upsertLiveKitUserMessage(String text) {
+    if (text.trim().isEmpty) return;
+    final messages = [...state.messages];
+    if (messages.isNotEmpty &&
+        messages.last.isUser &&
+        messages.last.text == text) {
+      return;
+    }
+    messages.add(
+      ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
+    );
+    state = state.copyWith(messages: messages);
+  }
+
+  void _applyLiveKitMetadata(Map<String, dynamic> payload) {
+    final rawContext = payload['planning_context'];
+    final context = rawContext is Map
+        ? Map<String, dynamic>.from(rawContext)
+        : null;
+    final action = payload['planning_action']?.toString();
+    final rawMedia = payload['media'];
+    if (rawMedia is List) {
+      _liveKitPendingMedia = rawMedia
+          .whereType<Map>()
+          .map((item) => ChatMedia.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    }
+    final isReady = payload['is_ready_to_generate'] == true;
+    final status = payload['planning_status']?.toString();
+    final planningState = status == 'collecting_requirements'
+        ? TripPlanningState.collectingRequirements
+        : (isReady ? TripPlanningState.readyToGenerate : state.planningState);
+    state = state.copyWith(
+      conversationId: _parseConversationId(payload['conversation_id']),
+      planningContext: context,
+      planningContextSummary: context == null
+          ? state.planningContextSummary
+          : _formatPlanningContextSummary(context),
+      planningState: planningState,
+    );
+    if (action == 'TRIGGER_GENERATION' && state.conversationId != null) {
+      unawaited(
+        generateItinerary(
+          convId: state.conversationId!,
+          context: context,
+          userPrompt: _lastLiveKitUserTranscript,
+        ),
+      );
+    } else if (action == 'TRIGGER_SAVE' && state.conversationId != null) {
+      unawaited(saveCurrentTrip(convId: state.conversationId));
+    }
+  }
+
+  String _messageForLiveKitError(Object error) {
+    final message = error.toString();
+    if (message.contains('Hiện chưa thể kết nối trợ lý giọng nói')) {
+      return 'Hiện chưa thể kết nối trợ lý giọng nói. Vui lòng thử lại sau ít phút.';
+    }
+    if (message.toLowerCase().contains('permission')) {
+      return 'Vui lòng cấp quyền microphone cho TravelWise.';
+    }
+    return 'Không thể kết nối trợ lý giọng nói. Vui lòng kiểm tra mạng và thử lại.';
+  }
+
+  int? _parseConversationId(Object? value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> disconnectLiveKitVoice() async {
+    _isVoiceSession = false;
+    await _disconnectLiveKitAfterPendingConnect(clearConversation: true);
+  }
+
+  Future<void> leaveLiveKitVoice() async {
+    _isVoiceSession = false;
+    _liveKitNeedsFreshRoom = true;
+    await _disconnectLiveKitAfterPendingConnect(
+      clearConversation: false,
+      onlyIfSessionEnded: true,
+    );
+  }
+
+  Future<void> _disconnectLiveKitAfterPendingConnect({
+    required bool clearConversation,
+    bool onlyIfSessionEnded = false,
+  }) async {
+    final connecting = _liveKitConnectCompleter;
+    if (connecting != null) await connecting.future;
+    if (onlyIfSessionEnded && _isVoiceSession) return;
+    await _disconnectLiveKit(clearConversation: clearConversation);
+  }
+
+  Future<void> _handleUnexpectedLiveKitDisconnect() async {
+    await _disconnectLiveKit(clearConversation: false);
+    await _markLiveKitUnavailable(
+      'Kết nối phòng thoại bị gián đoạn. Chạm micro để thử lại.',
+    );
+  }
+
+  Future<void> _markLiveKitUnavailable(String message) async {
+    _liveKitNeedsFreshRoom = true;
+    if (mounted) {
+      state = state.copyWith(
+        voiceState: VoiceState.error,
+        isRecording: false,
+        error: message,
+      );
+    }
+
+    final participant = _liveKitRoom?.localParticipant;
+    if (participant != null && participant.isMicrophoneEnabled()) {
+      try {
+        await participant.setMicrophoneEnabled(false);
+      } catch (error) {
+        log('livekit_mic_stop_failed', {'error': error.toString()});
+      }
+    }
+  }
+
+  Future<void> _disconnectLiveKit({required bool clearConversation}) {
+    final closing = _liveKitCloseFuture;
+    if (closing != null) return closing;
+    late final Future<void> closeFuture;
+    closeFuture =
+        _performLiveKitDisconnect(
+          clearConversation: clearConversation,
+        ).whenComplete(() {
+          if (identical(_liveKitCloseFuture, closeFuture)) {
+            _liveKitCloseFuture = null;
+          }
+        });
+    _liveKitCloseFuture = closeFuture;
+    return closeFuture;
+  }
+
+  Future<void> _performLiveKitDisconnect({
+    required bool clearConversation,
+  }) async {
+    if (_liveKitClosing) return;
+    _liveKitClosing = true;
+    final cancelListener = _cancelLiveKitListener;
+    final listener = _liveKitListener;
+    final room = _liveKitRoom;
+    _cancelLiveKitListener = null;
+    _liveKitListener = null;
+    _liveKitRoom = null;
+    _liveKitAgentAudioReady = false;
+    _liveKitAgentReady = null;
+    try {
+      await cancelListener?.call();
+      listener?.dispose();
+      if (room != null) {
+        await room.localParticipant?.setMicrophoneEnabled(false);
+        await room.disconnect();
+        await room.dispose();
+      }
+    } finally {
+      _liveKitClosing = false;
+    }
+    if (mounted) {
+      _lastLiveKitUserTranscript = '';
+      _liveKitPendingMedia = const [];
+      state = state.copyWith(
+        voiceState: VoiceState.idle,
+        isRecording: false,
+        isMuted: false,
+        clearConversationId: clearConversation,
+      );
     }
   }
 
@@ -683,9 +1385,16 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     log('chat_clear_conversation');
     _requestGeneration++;
     _isCommitting = false;
+    _isVoiceSession = false;
     _audioService.abortStream();
     stopAudio();
     _abortListening();
+    unawaited(
+      _disconnectLiveKitAfterPendingConnect(
+        clearConversation: true,
+        onlyIfSessionEnded: true,
+      ),
+    );
 
     state = state.copyWith(
       messages: [],
@@ -736,7 +1445,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       currentTranscript: greetingText,
     );
 
-    if (state.isTtsEnabled) {
+    if (state.isTtsEnabled && !_useLiveKitVoice) {
       await _playTts(greetingText);
     }
   }
@@ -762,6 +1471,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   /// assistant tab).
 
   void cancelListening() {
+    if (_useLiveKitVoice) {
+      unawaited(_disableLiveKitMicrophone());
+      return;
+    }
+
     _userKeepMicOn = false;
     _isVoiceSession = false;
     if (!_listeningTurnActive && !state.isRecording) return;
@@ -3285,6 +3999,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _audioService.abortStream();
     _abortListening();
     _audioService.stopTts();
+    _isVoiceSession = false;
+    unawaited(
+      _disconnectLiveKitAfterPendingConnect(clearConversation: false),
+    );
     super.dispose();
   }
 }

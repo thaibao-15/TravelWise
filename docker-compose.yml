@@ -32,3 +32,17 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+  voice-agent:
+    build:
+      context: ./apps/voice-agent
+      dockerfile: Dockerfile
+    container_name: travelwise-voice-agent
+    env_file:
+      - ./apps/voice-agent/.env
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+

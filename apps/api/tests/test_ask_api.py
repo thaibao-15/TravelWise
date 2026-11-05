@@ -156,6 +156,8 @@ class TestRAGAskAPI(unittest.TestCase):
                 "không có thông tin",
                 "không có đủ thông tin",
                 "chưa có thông tin",
+                "ngoài vùng phủ sóng",
+                "chịu thua",
             ]
         )
         self.assertTrue(has_decline, f"Answer should decline hallucinating: {answer}")

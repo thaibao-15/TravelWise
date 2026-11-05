@@ -5,9 +5,13 @@ import '../storage/secure_storage_service.dart';
 /// API configuration constants.
 /// Switch [baseUrl] based on runtime target (emulator vs real device).
 class ApiConfig {
-  // Android Emulator maps 10.0.2.2 to the host machine.
-  // For a physical device, replace this with the host machine's LAN IP.
+  // Override for a physical device with:
+  // flutter run --dart-define=TRAVELWISE_API_URL=http://<host-lan-ip>:8000
   static String get baseUrl {
+    const configuredUrl = String.fromEnvironment('TRAVELWISE_API_URL');
+    if (configuredUrl.isNotEmpty) {
+      return configuredUrl;
+    }
     if (kIsWeb) {
       return 'http://127.0.0.1:8000';
     }

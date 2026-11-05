@@ -24,9 +24,18 @@ class RAGRetriever:
         query: str,
         k: int,
         filter_dict: Optional[Dict[str, Any]] = None,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[Tuple[Document, float]]:
         """Safe similarity search returning (Document, score) with optional metadata filter."""
         try:
+            if query_embedding is not None and hasattr(
+                self.vectorstore, "similarity_search_by_vector_with_relevance_scores"
+            ):
+                return self.vectorstore.similarity_search_by_vector_with_relevance_scores(
+                    embedding=query_embedding,
+                    k=k,
+                    filter=filter_dict,
+                )
             return self.vectorstore.similarity_search_with_relevance_scores(
                 query=query,
                 k=k,
@@ -34,6 +43,15 @@ class RAGRetriever:
             )
         except Exception:
             try:
+                if query_embedding is not None and hasattr(
+                    self.vectorstore, "similarity_search_by_vector"
+                ):
+                    raw_results = self.vectorstore.similarity_search_by_vector(
+                        embedding=query_embedding,
+                        k=k,
+                        filter=filter_dict,
+                    )
+                    return [(doc, 1.0) for doc in raw_results]
                 raw_results = self.vectorstore.similarity_search_with_score(
                     query=query,
                     k=k,
@@ -69,6 +87,16 @@ class RAGRetriever:
         if not clean_query:
             return []
 
+        # Pre-compute query embedding once to avoid duplicate Google API embedding network calls
+        query_embedding: Optional[List[float]] = None
+        try:
+            if hasattr(self.vectorstore, "_embedding_function") and hasattr(
+                self.vectorstore._embedding_function, "embed_query"
+            ):
+                query_embedding = self.vectorstore._embedding_function.embed_query(clean_query)
+        except Exception as e:
+            logger.debug("Pre-computing query embedding failed, falling back to text search: %s", e)
+
         all_results_with_scores: List[Tuple[Document, float]] = []
 
         if prefer_database:
@@ -81,6 +109,7 @@ class RAGRetriever:
                 query=clean_query,
                 k=k_db,
                 filter_dict={"source": "TravelWise"},
+                query_embedding=query_embedding,
             )
 
             # Query Crawled web chunks
@@ -88,6 +117,7 @@ class RAGRetriever:
                 query=clean_query,
                 k=k_crawl,
                 filter_dict={"source_type": "crawl4ai"},
+                query_embedding=query_embedding,
             )
 
             # Apply a boost (+0.05) to curated Database knowledge so it ranks high
@@ -112,7 +142,11 @@ class RAGRetriever:
 
         # Fallback to standard search if hybrid returned nothing
         if not all_results_with_scores:
-            all_results_with_scores = self._search_with_filter(clean_query, k=k)
+            all_results_with_scores = self._search_with_filter(
+                clean_query,
+                k=k,
+                query_embedding=query_embedding,
+            )
 
         formatted_results: List[Dict[str, Any]] = []
 

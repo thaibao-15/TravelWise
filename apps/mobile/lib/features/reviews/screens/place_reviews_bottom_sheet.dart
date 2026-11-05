@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
+import '../../../core/error/user_facing_error.dart';
 import '../../../core/constants/spacing.dart';
 import '../../auth/presentation/providers/auth_notifier.dart';
 import '../../auth/presentation/providers/auth_state.dart';
@@ -102,7 +103,10 @@ class _PlaceReviewsBottomSheetState
         _isLoadingMyReview = false;
         _myReviewError = isUnauthenticated
             ? null
-            : 'Không thể kiểm tra đánh giá của bạn: $error';
+            : userFacingServerError(
+                error,
+                fallback: 'Không thể kiểm tra đánh giá của bạn.',
+              );
       });
     }
   }
@@ -134,7 +138,10 @@ class _PlaceReviewsBottomSheetState
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Không thể tải đánh giá từ máy chủ: $e';
+        _errorMessage = userFacingServerError(
+          e,
+          fallback: 'Không thể tải đánh giá. Vui lòng thử lại sau.',
+        );
       });
     }
   }
@@ -163,7 +170,10 @@ class _PlaceReviewsBottomSheetState
           content: Text(
             e.toString().contains('401')
                 ? 'Vui lòng đăng nhập để bình chọn hữu ích.'
-                : 'Không thể cập nhật lượt bình chọn: $e',
+                : userFacingServerError(
+                    e,
+                    fallback: 'Không thể cập nhật lượt bình chọn.',
+                  ),
           ),
           backgroundColor: AppColors.error,
         ),

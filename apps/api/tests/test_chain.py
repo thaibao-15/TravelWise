@@ -153,6 +153,9 @@ class TestRAGChain(unittest.TestCase):
                 "không thuộc phạm vi",
                 "không thể trả lời",
                 "không hỗ trợ",
+                "quá tầm hiểu biết",
+                "chịu thua",
+                "phải đợi phim khoa học viễn tưởng",
             ]
         )
         self.assertTrue(

@@ -16,6 +16,7 @@ interface VoiceTourGuideBarProps {
   onStopListening: () => void;
   onStopSpeaking: () => void;
   statusMessage?: string;
+  onOpenLiveKitModal?: () => void;
 }
 
 export function VoiceTourGuideBar({
@@ -30,6 +31,7 @@ export function VoiceTourGuideBar({
   onStopListening,
   onStopSpeaking,
   statusMessage,
+  onOpenLiveKitModal,
 }: VoiceTourGuideBarProps) {
   const isListening = voiceState === "listening" || isRecording;
   const isSpeaking = voiceState === "speaking";
@@ -149,7 +151,25 @@ export function VoiceTourGuideBar({
           )}
 
           {/* Controls */}
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            {onOpenLiveKitModal && (
+              <button
+                type="button"
+                onClick={onOpenLiveKitModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-500/20 to-emerald-500/20 hover:from-teal-500/30 hover:to-emerald-500/30 text-teal-300 border border-teal-500/40 text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95"
+                title="Mở phòng đàm thoại LiveKit WebRTC Realtime (Khuyên dùng)"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>⚡ LiveKit Voice</span>
+                <span className="hidden lg:inline px-1 py-0.2 rounded-full bg-teal-500/20 text-[9px] font-bold uppercase text-teal-200">
+                  Mới
+                </span>
+              </button>
+            )}
+
             {isSpeaking && (
               <button
                 type="button"

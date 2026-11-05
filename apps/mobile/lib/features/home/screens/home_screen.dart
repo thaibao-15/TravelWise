@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/colors.dart';
+import '../../../core/error/user_facing_error.dart';
 import '../../../core/constants/spacing.dart';
 import '../../../core/constants/text_styles.dart';
 import '../../map/presentation/providers/location_provider.dart';
@@ -178,7 +179,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => _buildError(
-        'Không thể tìm kiếm địa điểm: $error',
+        userFacingServerError(
+          error,
+          fallback: 'Không thể tìm kiếm địa điểm. Vui lòng thử lại sau.',
+        ),
         () => ref.invalidate(homeSearchPlacesProvider(_searchQuery)),
       ),
       data: (items) => items.isEmpty

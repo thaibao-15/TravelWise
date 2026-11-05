@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_session
-from app.main import app, fastapi_app
+from app.main import app
 from app.models.place import Place
 from app.services.place_service import PlaceService
 
@@ -13,14 +13,14 @@ from app.services.place_service import PlaceService
 class TestNearbyPlaces(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
-        self.original_get_session = fastapi_app.dependency_overrides.get(get_session)
-        fastapi_app.dependency_overrides[get_session] = lambda: None
+        self.original_get_session = app.dependency_overrides.get(get_session)
+        app.dependency_overrides[get_session] = lambda: None
 
     def tearDown(self):
         if self.original_get_session is None:
-            fastapi_app.dependency_overrides.pop(get_session, None)
+            app.dependency_overrides.pop(get_session, None)
         else:
-            fastapi_app.dependency_overrides[get_session] = self.original_get_session
+            app.dependency_overrides[get_session] = self.original_get_session
 
     def test_nearby_endpoint_returns_distance_and_validates_coordinates(self):
         place = Place(

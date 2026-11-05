@@ -116,7 +116,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ref.read(avatar3dStateProvider.notifier).setLoaded(
+            ref
+                .read(avatar3dStateProvider.notifier)
+                .setLoaded(
                   modelName: cached.name,
                   hasMorphTargets: cached.hasMorphTargets,
                   hasSkeleton: cached.hasSkeleton,
@@ -158,7 +160,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       }
 
       if (byteData == null) {
-        throw Exception('Không tìm thấy tệp 3D (.glb / .vrm) khả dụng trong assets/models.');
+        throw Exception(
+          'Không tìm thấy tệp 3D (.glb / .vrm) khả dụng trong assets/models.',
+        );
       }
 
       final bytes = byteData.buffer.asUint8List(
@@ -187,8 +191,10 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            ref.read(avatar3dStateProvider.notifier).setLoaded(
-                  modelName: displayName,
+            ref
+                .read(avatar3dStateProvider.notifier)
+                .setLoaded(
+                  modelName: chosenPath.split('/').last,
                   hasMorphTargets: model.hasMorphTargets,
                   hasSkeleton: model.hasSkeleton,
                 );
@@ -530,10 +536,7 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
           Container(
             width: 7,
             height: 7,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
@@ -584,7 +587,11 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.view_in_ar_rounded, size: 36, color: Color(0xFFEF4444)),
+              const Icon(
+                Icons.view_in_ar_rounded,
+                size: 36,
+                color: Color(0xFFEF4444),
+              ),
               const SizedBox(height: 8),
               Text(
                 'Lỗi hiển thị model 3D: $error',

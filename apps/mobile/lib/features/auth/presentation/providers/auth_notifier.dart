@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/usecases/get_current_user_usecase.dart';
 import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/logout_usecase.dart';
 import '../../domain/usecases/register_usecase.dart';
+import '../../domain/usecases/restore_session_usecase.dart';
 import '../../auth_di.dart';
 import 'auth_state.dart';
 
@@ -14,17 +17,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final RegisterUseCase _registerUseCase;
   final GetCurrentUserUseCase _getCurrentUserUseCase;
   final LogoutUseCase _logoutUseCase;
+  final RestoreSessionUseCase _restoreSessionUseCase;
 
   AuthNotifier({
     required LoginUseCase loginUseCase,
     required RegisterUseCase registerUseCase,
     required GetCurrentUserUseCase getCurrentUserUseCase,
     required LogoutUseCase logoutUseCase,
+    required RestoreSessionUseCase restoreSessionUseCase,
   }) : _loginUseCase = loginUseCase,
        _registerUseCase = registerUseCase,
        _getCurrentUserUseCase = getCurrentUserUseCase,
        _logoutUseCase = logoutUseCase,
-       super(const AuthInitial());
+       _restoreSessionUseCase = restoreSessionUseCase,
+       super(const AuthInitial()) {
+    unawaited(restoreSession());
+  }
+
+  /// Revalidates a saved access token and restores the authenticated user.
+  Future<void> restoreSession() async {
+    state = const AuthLoading();
+    final result = await _restoreSessionUseCase();
+    result.fold(
+      (failure) => state = AuthError(failure.message),
+      (user) =>
+          state = user == null ? const AuthInitial() : AuthAuthenticated(user),
+    );
+  }
 
   /// Performs login, saves token (handled by repo), then fetches user profile.
   Future<void> login({required String email, required String password}) async {
@@ -98,5 +117,6 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     registerUseCase: ref.watch(registerUseCaseProvider),
     getCurrentUserUseCase: ref.watch(getCurrentUserUseCaseProvider),
     logoutUseCase: ref.watch(logoutUseCaseProvider),
+    restoreSessionUseCase: ref.watch(restoreSessionUseCaseProvider),
   );
 });
