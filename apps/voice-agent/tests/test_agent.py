@@ -1,11 +1,12 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from livekit import rtc
 from livekit.agents import WorkerOptions
 
 from agent import entrypoint, generate_test_tone_frames
 from config import AgentConfig
+from main import _prewarm_livekit_ffi
 
 
 class TestVoiceAgentUnit(unittest.TestCase):
@@ -59,6 +60,24 @@ class TestVoiceAgentUnit(unittest.TestCase):
         self.assertEqual(opts.ws_url, "wss://test.livekit.cloud")
         self.assertEqual(opts.api_key, "APIKEY123")
         self.assertIsNotNone(opts.entrypoint_fnc)
+
+    def test_prewarm_livekit_ffi_on_windows(self):
+        with patch("main.sys.platform", "win32"), patch(
+            "livekit.rtc._ffi_client.FfiClient.instance",
+            new_callable=PropertyMock,
+        ) as ffi_instance:
+            _prewarm_livekit_ffi()
+
+        ffi_instance.assert_called_once_with()
+
+    def test_skip_livekit_ffi_prewarm_off_windows(self):
+        with patch("main.sys.platform", "linux"), patch(
+            "livekit.rtc._ffi_client.FfiClient.instance",
+            new_callable=PropertyMock,
+        ) as ffi_instance:
+            _prewarm_livekit_ffi()
+
+        ffi_instance.assert_not_called()
 
 
 if __name__ == "__main__":

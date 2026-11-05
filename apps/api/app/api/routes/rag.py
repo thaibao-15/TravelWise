@@ -1,6 +1,8 @@
 
 import json
 import logging
+import re
+import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,7 +41,9 @@ router = APIRouter(
 )
 
 
-def get_planning_signals(user_question, planning_context):
+def get_planning_signals(
+    user_question: str, planning_context: object
+) -> tuple[str | None, bool | None, str | None]:
     """Extract trip planning status and requested action."""
     planning_status = None
     is_ready_to_generate = None
@@ -70,35 +74,72 @@ def get_planning_signals(user_question, planning_context):
         else "collecting_requirements"
     )
 
-    user_lower = user_question.lower()
+    normalized_question = unicodedata.normalize("NFD", user_question.casefold())
+    normalized_question = "".join(
+        char for char in normalized_question if unicodedata.category(char) != "Mn"
+    ).replace("đ", "d")
 
-    if any(kw in user_lower for kw in [
-        "tạo lịch trình",
-        "lên lịch trình",
-        "tạo ngay",
-        "tạo cho tôi",
+    generation_phrases = (
+        "tao lich trinh",
+        "len lich trinh",
+        "lap lich trinh",
+        "thiet ke lich trinh",
+        "tao ngay",
+        "tao cho toi",
+        "len ke hoach",
+        "lap ke hoach",
         "generate itinerary",
-    ]):
+        "plan a trip",
+    )
+    itinerary_terms = ("lich trinh", "ke hoach", "lo trinh")
+    request_phrases = (
+        "muon",
+        "minh can",
+        "toi can",
+        "cho minh",
+        "cho toi",
+        "giup minh",
+        "giup toi",
+        "lam on",
+    )
+    save_phrases = (
+        "luu lich trinh",
+        "luu chuyen di",
+        "save trip",
+        "luu ngay",
+    )
+    edit_phrases = (
+        "chinh sua lich trinh",
+        "sua lich trinh",
+        "doi diem",
+        "thay doi lich trinh",
+        "them vao lich trinh",
+        "xoa khoi lich trinh",
+        "doi khach san",
+    )
+    is_save_request = any(phrase in normalized_question for phrase in save_phrases)
+    is_edit_request = any(phrase in normalized_question for phrase in edit_phrases)
+    asks_for_itinerary = (
+        any(term in normalized_question for term in itinerary_terms)
+        and any(
+            re.search(rf"\b{re.escape(phrase)}\b", normalized_question)
+            for phrase in request_phrases
+        )
+        and not is_save_request
+        and not is_edit_request
+    )
+
+    if (
+        any(phrase in normalized_question for phrase in generation_phrases)
+        or asks_for_itinerary
+    ):
         if is_ready:
             planning_action = "TRIGGER_GENERATION"
 
-    elif any(kw in user_lower for kw in [
-        "lưu lịch trình",
-        "lưu chuyến đi",
-        "save trip",
-        "lưu ngay",
-    ]):
+    elif is_save_request:
         planning_action = "TRIGGER_SAVE"
 
-    elif any(kw in user_lower for kw in [
-        "chỉnh sửa lịch trình",
-        "sửa lịch trình",
-        "đổi điểm",
-        "thay đổi lịch trình",
-        "thêm vào lịch trình",
-        "xóa khỏi lịch trình",
-        "đổi khách sạn",
-    ]):
+    elif is_edit_request:
         planning_action = "TRIGGER_EDIT"
 
     return planning_status, is_ready_to_generate, planning_action

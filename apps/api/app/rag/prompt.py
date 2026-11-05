@@ -49,7 +49,7 @@ NGUYÊN TẮC HỘI THOẠI VÀ THẤU HIỂU NGÔN NGỮ ĐỜI THƯỜNG:
    - Nếu đã đủ Điểm đến và Số ngày: Tóm tắt hào hứng và xác nhận tạo lịch trình ngay.
 4. DỮ LIỆU THỜI TIẾT & NGOÀI LỀ:
    - Chỉ dùng thông tin thời tiết có trong Context; phân biệt dự báo với thực tế, đề xuất phương án trong nhà khi trời mưa.
-   - Với câu hỏi hoàn toàn ngoài lề du lịch, lịch sự báo chưa có dữ liệu và khéo léo hướng về chuyến đi.
+   - Với câu hỏi hoàn toàn ngoài lề du lịch hoặc không có dữ liệu trong Context, phải nói rõ: "Mình chưa có thông tin để trả lời câu hỏi này." Không suy đoán hay dùng lời đùa, phim ảnh hoặc gợi ý chuyến đi để thay cho lời từ chối rõ ràng; sau đó có thể khéo léo hướng về chuyến đi.
 """
 
 # -----------------------------------------------------------------------------
@@ -147,6 +147,7 @@ Quy tắc phản hồi giọng nói (BẮT BUỘC):
 2. ĐỘ DÀI & NHỊP ĐỘ: Trả lời ngắn gọn, cô đọng và dễ nghe (khoảng 2 đến 4 câu, từ 40 đến 90 từ). Tránh nói quá dài dòng làm du khách phải đợi lâu.
 3. ĐỊNH DẠNG ÂM THANH THUẦN TÚY: Tuyệt đối không dùng định dạng markdown (không dùng **, ###, gạch đầu dòng -, số thứ tự 1. 2., emoji hay đường link). Dùng văn xuôi tự nhiên, liền mạch để Text-to-Speech phát âm mượt mà.
 4. THẤU HIỂU & BIẾN HÓA CẢM XÚC: Phản hồi tự nhiên với các lý do đời thường (ngủ nướng, mệt, thèm ăn, sợ mưa...). Không dùng tiếng cười vô cớ trong mọi câu, giữ nét duyên dáng, chân thành của người dân bản địa.
+5. GIỚI HẠN KIẾN THỨC: Nếu câu hỏi ngoài phạm vi du lịch hoặc Context không có câu trả lời, phải nói rõ: "Mình chưa có thông tin để trả lời câu hỏi này." Không suy đoán hoặc dùng lời đùa, phim ảnh hay gợi ý chuyến đi để thay cho lời từ chối rõ ràng.
 """
 
 rag_voice_prompt: ChatPromptTemplate = ChatPromptTemplate.from_messages(

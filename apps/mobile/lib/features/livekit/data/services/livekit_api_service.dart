@@ -8,11 +8,17 @@ class LiveKitApiService {
 
   LiveKitApiService(DioClient dioClient) : _dio = dioClient.dio;
 
-  Future<LiveKitToken> createToken({int? conversationId}) async {
+  Future<LiveKitToken> createToken({
+    int? conversationId,
+    String? roomName,
+  }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/livekit/token',
-        data: <String, dynamic>{'conversation_id': ?conversationId},
+        data: <String, dynamic>{
+          'conversation_id': ?conversationId,
+          'room_name': ?roomName,
+        },
       );
 
       final data = response.data;

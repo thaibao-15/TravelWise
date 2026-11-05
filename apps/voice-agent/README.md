@@ -109,6 +109,11 @@ docker compose logs -f voice-agent
    ```
 3. **Mở trình duyệt Web**: Truy cập `http://localhost:3000/voice-guide` và bắt đầu nói vào micro. Voice Agent sẽ tự động tham gia phòng thoại và phản hồi trực tiếp.
 
+### Khôi phục khi Voice Agent bị ngắt:
+- Kết nối phòng LiveKit không đồng nghĩa Voice Agent còn hoạt động. Nếu worker bị dừng hoặc Blaze STT đóng WebSocket bất thường (ví dụ mã `1011`), mobile sẽ báo lỗi thay vì tiếp tục hiển thị đang nghe.
+- Khởi động lại worker, sau đó chạm nút micro trên mobile để tạo phòng mới cho cùng cuộc trò chuyện và dispatch một job Agent mới.
+- Trên Windows, nếu log có `timed out waiting for ReadyForRoomEventRequest after ConnectCallback`, hãy cập nhật Voice Agent mới nhất và khởi động lại worker. Đây là race khởi tạo FFI trong LiveKit RTC khi nhiều job kết nối đồng thời; worker giờ khởi tạo FFI trước khi nhận job.
+
 ### Chạy toàn bộ Unit & Integration Tests:
 ```powershell
 uv run python -m unittest discover -s tests -p "test_*.py" -v

@@ -16,6 +16,15 @@ logging.basicConfig(
 logger = logging.getLogger("travelwise.voice-agent")
 
 
+def _prewarm_livekit_ffi() -> None:
+    if sys.platform.startswith("win"):
+        from livekit.rtc._ffi_client import FfiClient
+
+        # Windows runs agent jobs in threads; initialize the SDK singleton
+        # before concurrent Room.connect() calls can race on first access.
+        _ = FfiClient.instance
+
+
 def main() -> None:
     """Validate configuration and run LiveKit Agent Worker."""
     try:
@@ -23,6 +32,8 @@ def main() -> None:
     except ValueError as e:
         logger.error("Lỗi cấu hình Agent: %s", e)
         sys.exit(1)
+
+    _prewarm_livekit_ffi()
 
     logger.info("Khởi động TravelWise Voice Agent Worker...")
     logger.info("Tên đăng ký Agent: %s", config.LIVEKIT_AGENT_NAME)

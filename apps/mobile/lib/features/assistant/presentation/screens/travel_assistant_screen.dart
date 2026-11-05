@@ -16,7 +16,6 @@ import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
 import '../widgets/avatar_voice_settings_sheet.dart';
-import '../../../livekit/presentation/screens/livekit_voice_screen.dart';
 
 /// Màn hình Trợ lý du lịch TravelWise (Linh AI) - Thiết kế Compact không cần cuộn dọc.
 /// Tối ưu trải nghiệm trò chuyện giọng nói, xem lộ trình và tương tác tức thì.
@@ -394,24 +393,6 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                       color: AppColors.primary,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'LiveKit Voice Agent',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => LiveKitVoiceScreen(
-                        conversationId: state.conversationId,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.wifi_tethering,
-                  size: 21,
-                  color: Color(0xFF0D9488),
                 ),
               ),
               const SizedBox(width: 8),

@@ -576,6 +576,11 @@ async def process_user_audio_with_rag(
             pass
         except Exception as e:
             logger.error("Lỗi trong luồng xử lý STT: %s", e)
+            await send_room_data(room, {
+                "type": "state",
+                "state": "error",
+                "error": "Kết nối nhận diện giọng nói bị gián đoạn. Vui lòng thử kết nối lại.",
+            })
 
     tasks = [
         asyncio.create_task(forward_audio_to_stt_and_vad(), name="Audio.forward"),
