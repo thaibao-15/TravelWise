@@ -603,44 +603,53 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                                       ),
                                     ),
                                   ],
-                                  Text(
-                                    isUserSpeaking
-                                        ? 'Bạn đang nói...'
-                                        : (isThinking
-                                              ? 'Linh AI đang xử lý...'
-                                              : (isSpeaking
-                                                    ? 'Linh AI đang đọc giọng nói...'
-                                                    : 'Linh AI • Trợ lý du lịch')),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: isThinking
-                                          ? const Color(0xFF0D9488)
-                                          : (isUserSpeaking || isSpeaking
-                                                ? const Color(0xFF0284C7)
-                                                : const Color(0xFF64748B)),
-                                      letterSpacing: 0.2,
+                                  Expanded(
+                                    child: Text(
+                                      isUserSpeaking
+                                          ? 'Bạn đang nói...'
+                                          : (isThinking
+                                                ? 'Linh AI đang xử lý...'
+                                                : (isSpeaking
+                                                      ? 'Linh AI đang đọc giọng nói...'
+                                                      : 'Linh AI • Trợ lý du lịch')),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: isThinking
+                                            ? const Color(0xFF0D9488)
+                                            : (isUserSpeaking || isSpeaking
+                                                  ? const Color(0xFF0284C7)
+                                                  : const Color(0xFF64748B)),
+                                        letterSpacing: 0.2,
+                                      ),
                                     ),
                                   ),
                                   if (isSpeaking) ...[
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(
-                                          0xFFEF4444,
-                                        ).withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Text(
-                                        'Chạm mic để ngắt lời',
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFFDC2626),
+                                    const SizedBox(width: 6),
+                                    Tooltip(
+                                      message: 'Chạm mic để ngắt lời',
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFFEF4444,
+                                          ).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Chạm mic',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFFDC2626),
+                                          ),
                                         ),
                                       ),
                                     ),

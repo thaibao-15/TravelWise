@@ -767,7 +767,7 @@ async def entrypoint(ctx: JobContext) -> None:
             if publication.track is not None:
                 attach_user_audio(publication.track, participant)
             elif not publication.subscribed:
-                await publication.set_subscribed(True)
+                publication.set_subscribed(True)
 
     # 7. Play welcome voice and publish greeting transcript
     async def play_welcome_voice():
