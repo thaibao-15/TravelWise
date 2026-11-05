@@ -145,7 +145,7 @@ class Avatar3dNotifier extends StateNotifier<Avatar3dState> {
   }
 
   void setZoom(double zoom) {
-    state = state.copyWith(userZoom: zoom.clamp(0.75, 1.45));
+    state = state.copyWith(userZoom: zoom.clamp(0.75, 1.85));
   }
 }
 

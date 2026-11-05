@@ -465,32 +465,25 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       }
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Stack(
-          alignment: Alignment.topCenter,
-          clipBehavior: Clip.none,
-          children: [
-            // Khung nhân vật 3D AI Linh (Trung tâm màn hình Voice AI)
-            Positioned(
-              top: 0,
-              bottom: 40,
-              left: 12,
-              right: 12,
-              child: Ai3dAvatar(
-                voiceState: state.voiceState,
-                speechText: latestAiSpeech,
-                lipSyncListenable: notifier.lipSyncListenable,
-                onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
-              ),
+    return Column(
+      children: [
+        // Khung nhân vật 3D AI Linh (Trung tâm màn hình Voice AI - hiển thị cân đối, không bị che khuất)
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: Ai3dAvatar(
+              voiceState: state.voiceState,
+              speechText: latestAiSpeech,
+              lipSyncListenable: notifier.lipSyncListenable,
+              onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
             ),
-
-            // Bong bóng lời thoại nổi (Hiển thị văn bản khi User nói hoặc khi AI trả lời)
-            Positioned(
-              bottom: 0,
-              left: 4,
-              right: 4,
-              child: Builder(
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Bong bóng lời thoại nổi (Nằm ngay bên dưới avatar, hoàn toàn không đè lên thân nhân vật)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Builder(
                 builder: (context) {
                   final isUserSpeaking =
                       (state.voiceState == VoiceState.listening ||
@@ -681,9 +674,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 },
               ),
             ),
-          ],
-        );
-      },
+      ],
     );
   }
 

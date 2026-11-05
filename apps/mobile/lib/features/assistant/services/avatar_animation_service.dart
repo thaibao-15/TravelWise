@@ -24,12 +24,20 @@ class AvatarFrameState {
 
   /// Subtle breathing chest displacement
   final double chestBreath;
+  final double chestPitch;
+  final double chestRoll;
 
-  /// Left and right arm gesture rotation adjustments (radians)
+  /// Left and right arm gesture 3D rotations (pitch, roll, yaw) in radians
   final double leftArmPitch;
   final double leftArmRoll;
+  final double leftArmYaw;
+  final double leftForeArmPitch;
+  final double leftForeArmYaw;
   final double rightArmPitch;
   final double rightArmRoll;
+  final double rightArmYaw;
+  final double rightForeArmPitch;
+  final double rightForeArmYaw;
 
   const AvatarFrameState({
     this.headPitch = 0.0,
@@ -41,26 +49,45 @@ class AvatarFrameState {
     this.visemeEe = 0.0,
     this.smileWeight = 0.25,
     this.chestBreath = 0.0,
+    this.chestPitch = 0.0,
+    this.chestRoll = 0.0,
     this.leftArmPitch = 0.0,
     this.leftArmRoll = 0.0,
+    this.leftArmYaw = 0.0,
+    this.leftForeArmPitch = 0.0,
+    this.leftForeArmYaw = 0.0,
     this.rightArmPitch = 0.0,
     this.rightArmRoll = 0.0,
+    this.rightArmYaw = 0.0,
+    this.rightForeArmPitch = 0.0,
+    this.rightForeArmYaw = 0.0,
   });
 
   Map<String, double> get morphWeights => {
-    'viseme_aa': visemeAa,
-    'viseme_oh': visemeOh,
-    'viseme_ee': visemeEe,
-    'blink': blinkWeight,
-    'smile': smileWeight,
-    // VRM & ARKit standard aliases
-    'A': visemeAa,
-    'O': visemeOh,
-    'E': visemeEe,
-    'Blink': blinkWeight,
-    'Joy': smileWeight,
-    'mouthOpen': visemeAa,
-  };
+        'viseme_aa': visemeAa,
+        'viseme_oh': visemeOh,
+        'viseme_ee': visemeEe,
+        'viseme_ih': (visemeEe * 0.45).clamp(0.0, 1.0),
+        'viseme_ou': (visemeOh * 0.45).clamp(0.0, 1.0),
+        'blink': blinkWeight,
+        'smile': smileWeight,
+        // VRM 1.0 & ARKit standard aliases
+        'A': visemeAa,
+        'O': visemeOh,
+        'E': visemeEe,
+        'I': (visemeEe * 0.45).clamp(0.0, 1.0),
+        'U': (visemeOh * 0.45).clamp(0.0, 1.0),
+        'Blink': blinkWeight,
+        'Joy': smileWeight,
+        'mouthOpen': visemeAa,
+        'Fcl_MTH_A': visemeAa,
+        'Fcl_MTH_O': visemeOh,
+        'Fcl_MTH_E': visemeEe,
+        'Fcl_MTH_I': (visemeEe * 0.45).clamp(0.0, 1.0),
+        'Fcl_MTH_U': (visemeOh * 0.45).clamp(0.0, 1.0),
+        'Fcl_EYE_Close': blinkWeight,
+        'Fcl_MTH_Fun': smileWeight,
+      };
 }
 
 /// Service that translates Voice AI state and real-time audio LipSyncFrame into
@@ -69,6 +96,7 @@ class AvatarAnimationService {
   double _blinkTimer = 0.0;
   double _nextBlinkTime = 3.5;
   double _currentBlink = 0.0;
+  bool _isDoubleBlink = false;
 
   // Smoothed phoneme targets for natural lip-sync
   double _smoothAa = 0.0;
@@ -83,6 +111,7 @@ class AvatarAnimationService {
     _blinkTimer = 0.0;
     _nextBlinkTime = 3.5;
     _currentBlink = 0.0;
+    _isDoubleBlink = false;
     _smoothAa = 0.0;
     _smoothOh = 0.0;
     _smoothEe = 0.0;
@@ -96,194 +125,236 @@ class AvatarAnimationService {
   /// [elapsedSeconds] is the continuous wall-clock elapsed seconds.
   /// [voiceState] indicates AI operational state.
   /// [lipSync] is the real-time Blaze TTS audio lip-sync frame from Web Audio / AnalyserNode.
+  /// [speechText] is the Vietnamese text currently being spoken.
   AvatarFrameState computeFrame({
     required double elapsedSeconds,
     required VoiceState voiceState,
     required LipSyncFrame lipSync,
-    required String speechText,
+    String speechText = '',
   }) {
-    if (_lastVoiceState != voiceState) {
-      if (_lastVoiceState == VoiceState.speaking &&
-          voiceState != VoiceState.speaking) {
-        _speakingEndSeconds = elapsedSeconds;
-      }
-      _lastVoiceState = voiceState;
-      if (voiceState == VoiceState.speaking) {
-        _speakingStartSeconds = elapsedSeconds;
-        _speakingEndSeconds = null;
-      }
-    }
-    if (speechText.trim().isNotEmpty) _lastSpeechText = speechText;
-
-    // 1. Natural autonomous blinking (every 3..6s, 180ms duration)
+    // 1. Natural autonomous blinking with occasional double-blinks (every 2.8..4.5s)
     _blinkTimer += 0.0166;
     if (_blinkTimer >= _nextBlinkTime) {
-      final blinkProgress = (_blinkTimer - _nextBlinkTime) / 0.18;
+      final double blinkDuration = _isDoubleBlink ? 0.36 : 0.18;
+      final blinkProgress = (_blinkTimer - _nextBlinkTime) / blinkDuration;
       if (blinkProgress >= 1.0) {
         _blinkTimer = 0.0;
         _currentBlink = 0.0;
-        _nextBlinkTime = 2.8 + math.Random().nextDouble() * 3.2;
+        _isDoubleBlink = math.Random().nextDouble() < 0.28;
+        _nextBlinkTime = 2.5 + math.Random().nextDouble() * 2.8;
       } else {
-        _currentBlink = math.sin(blinkProgress * math.pi);
+        if (_isDoubleBlink) {
+          _currentBlink = math.sin(blinkProgress * 2 * math.pi).abs();
+        } else {
+          _currentBlink = math.sin(blinkProgress * math.pi);
+        }
       }
     }
 
-    // 2. State-specific skeletal posing and look-at gestures
+    // 2. Rich state-specific skeletal posing, expressive actions, and looking gestures
     double headPitch = 0.0;
     double headYaw = 0.0;
     double headRoll = 0.0;
-    double smile = 0.22;
+    double smile = 0.28;
+    double chestBreath = math.sin(elapsedSeconds * 1.9) * 0.0035;
+    double chestPitch = 0.0;
+    double chestRoll = 0.0;
+
     double leftArmPitch = 0.0;
     double leftArmRoll = 0.0;
+    double leftArmYaw = 0.0;
+    double leftForeArmPitch = 0.0;
+    double leftForeArmYaw = 0.0;
     double rightArmPitch = 0.0;
     double rightArmRoll = 0.0;
-
-    final chestBreath = math.sin(elapsedSeconds * 2.2) * 0.003;
+    double rightArmYaw = 0.0;
+    double rightForeArmPitch = 0.0;
+    double rightForeArmYaw = 0.0;
 
     switch (voiceState) {
       case VoiceState.idle:
-        // Gentle micro-sway and warm resting posture
-        headYaw = math.sin(elapsedSeconds * 0.6) * 0.035;
-        headPitch = math.sin(elapsedSeconds * 0.8) * 0.020;
-        headRoll = math.cos(elapsedSeconds * 0.5) * 0.015;
-        smile = 0.25;
+        // Micro-sway tự nhiên, nhịp thở thư thái và tư thế sẵn sàng đón chào
+        headYaw = math.sin(elapsedSeconds * 0.6) * 0.038;
+        headPitch = math.sin(elapsedSeconds * 0.8) * 0.022;
+        headRoll = math.cos(elapsedSeconds * 0.5) * 0.020;
+        chestRoll = math.sin(elapsedSeconds * 0.5) * 0.012;
+        smile = 0.28;
+        // Tay thả lỏng hai bên với chuyển động thở tự nhiên
+        leftArmPitch = 0.04 + math.sin(elapsedSeconds * 1.9) * 0.015;
+        rightArmPitch = 0.04 + math.cos(elapsedSeconds * 1.9) * 0.015;
         break;
 
       case VoiceState.listening:
-        // Attentive posture: leaned slightly forward, head tilted toward user
-        headPitch = -0.065 + math.sin(elapsedSeconds * 1.5) * 0.012;
-        headYaw = math.sin(elapsedSeconds * 1.0) * 0.025;
-        headRoll = 0.045; // Inquisitive head tilt
-        smile = 0.32;
-        // Right hand lifted slightly in attentive gesture
-        rightArmPitch = 0.12;
-        rightArmRoll = -0.05;
+        // Tư thế chú tâm: Thân hơi nghiêng nhẹ về phía trước, đầu nghiêng tò mò
+        chestPitch = -0.035;
+        headPitch = -0.065 + math.sin(elapsedSeconds * 2.8) * 0.025; // Gật đầu thấu hiểu nhẹ nhàng
+        headYaw = -0.04 + math.sin(elapsedSeconds * 1.2) * 0.018;
+        headRoll = 0.065; // Nghiêng đầu chăm chú lắng nghe
+        smile = 0.36; // Nụ cười khích lệ
+        // Cử chỉ tay phải nâng nhẹ tiếp nhận thông tin từ người dùng
+        rightArmPitch = 0.26 + math.sin(elapsedSeconds * 2.0) * 0.02;
+        rightArmRoll = -0.14;
+        rightArmYaw = 0.12;
+        leftArmPitch = 0.05;
         break;
 
       case VoiceState.thinking:
       case VoiceState.processing:
       case VoiceState.connecting:
-        // Pensive posture: gaze angled slightly upward-left
-        headPitch = 0.085 + math.sin(elapsedSeconds * 2.5) * 0.015;
-        headYaw = -0.12 + math.sin(elapsedSeconds * 1.8) * 0.025;
-        headRoll = -0.05;
-        smile = 0.15;
-        // Pensive arm posture
-        rightArmPitch = 0.22;
-        rightArmRoll = -0.10;
+        // Tư thế đăm chiêu suy nghĩ kinh điển: Ánh mắt hơi hướng lên góc trái, tay nâng về phía cằm
+        headPitch = 0.095 + math.sin(elapsedSeconds * 1.8) * 0.015;
+        headYaw = -0.14 + math.sin(elapsedSeconds * 1.4) * 0.020;
+        headRoll = -0.06;
+        smile = 0.12; // Miệng chúm lại tập trung suy nghĩ
+        // Cử chỉ tay phải đặt gần cằm / ngực trong tư thế suy ngẫm
+        rightArmPitch = 0.52 + math.sin(elapsedSeconds * 2.0) * 0.025;
+        rightArmRoll = -0.24;
+        rightArmYaw = 0.30;
+        // Tay trái hơi nâng đỡ nhẹ
+        leftArmPitch = 0.10;
+        leftArmRoll = 0.08;
         break;
 
       case VoiceState.speaking:
-        // Expressive conversational nodding and hand gestures
-        headPitch =
-            math.sin(elapsedSeconds * 4.2) * 0.045 +
-            math.sin(elapsedSeconds * 1.8) * 0.025;
-        headYaw = math.sin(elapsedSeconds * 2.4) * 0.055;
-        headRoll = math.cos(elapsedSeconds * 2.0) * 0.028;
-        smile = 0.28 + math.sin(elapsedSeconds * 3.0) * 0.08;
-        // Natural alternating conversational hand emphasis
-        leftArmPitch = math.sin(elapsedSeconds * 2.8) * 0.10;
-        rightArmPitch = math.cos(elapsedSeconds * 2.8) * 0.12;
+        // Tư thế thuyết minh / hướng dẫn viên du lịch sinh động và tràn đầy năng lượng!
+        // Gật đầu nhịp nhàng theo câu nói nhấn mạnh từng ý
+        headPitch = math.sin(elapsedSeconds * 4.4) * 0.046 +
+            math.sin(elapsedSeconds * 2.2) * 0.026;
+        headYaw = math.sin(elapsedSeconds * 2.2) * 0.062;
+        headRoll = math.cos(elapsedSeconds * 1.8) * 0.034;
+        chestPitch = math.sin(elapsedSeconds * 2.2) * 0.018;
+        chestRoll = math.cos(elapsedSeconds * 1.8) * 0.015;
+        smile = 0.38 + math.sin(elapsedSeconds * 3.2) * 0.12; // Cười rạng rỡ khi trò chuyện
+
+        // Cử chỉ tay sinh động luân phiên: Mở tay hướng dẫn người dùng
+        rightArmPitch = 0.28 + math.sin(elapsedSeconds * 2.8) * 0.18;
+        rightArmRoll = -0.15 + math.cos(elapsedSeconds * 2.8) * 0.08;
+        rightArmYaw = 0.18 + math.sin(elapsedSeconds * 2.8) * 0.10;
+
+        leftArmPitch = 0.14 + math.cos(elapsedSeconds * 2.4) * 0.12;
+        leftArmRoll = 0.10 + math.sin(elapsedSeconds * 2.4) * 0.06;
+        leftArmYaw = -0.12;
         break;
 
       case VoiceState.error:
-        // Calm reset posture
-        headPitch = 0.03;
+        // Tư thế điềm tĩnh, an ủi người dùng thử lại
+        headPitch = 0.04;
         headYaw = 0.0;
-        headRoll = 0.0;
+        headRoll = 0.02;
         smile = 0.10;
         break;
     }
 
-    // 3. Strict Real-Time Blaze TTS Audio Lip-Sync
-    // Requirement: "Không giả lập nhép môi liên tục khi AI chưa phát âm thanh."
-    // If AI is not in `speaking` state, or audio is silent / ended (lipSync.active == false),
-    // mouth MUST snap strictly to 0.0!
+    // 3. Khớp chuyển động môi (Strict & Natural Phonetic Lip-Sync)
     double targetAa = 0.0;
     double targetOh = 0.0;
     double targetEe = 0.0;
 
-    final isInSpeakingGracePeriod =
-        _speakingEndSeconds != null &&
-        elapsedSeconds - _speakingEndSeconds! < 1.0;
-    final shouldAnimateMouth =
-        voiceState == VoiceState.speaking || isInSpeakingGracePeriod;
+    if (voiceState == VoiceState.speaking) {
+      if (lipSync.active && lipSync.energy > 0.015) {
+        // A. Đồng bộ trực tiếp theo tín hiệu âm thanh Blaze TTS thực tế (Web Audio Analyser)
+        final open = lipSync.mouthOpen.clamp(0.0, 1.0);
+        final wide = lipSync.mouthWide.clamp(-1.0, 1.0); // Giữ nguyên dấu âm/dương chuẩn phonetic!
 
-    if (shouldAnimateMouth) {
-      final hasAudioLipSync = lipSync.active && lipSync.energy > 0.02;
-      final speakingElapsed =
-          elapsedSeconds - (_speakingStartSeconds ?? elapsedSeconds);
-      final fallbackText = speechText.trim().isNotEmpty
-          ? speechText
-          : _lastSpeechText;
-      final fallback = speakingElapsed < 2.5
-          ? (0.0, 0.0)
-          : _fallbackViseme(fallbackText, speakingElapsed - 1.5);
-      final open = hasAudioLipSync
-          ? lipSync.mouthOpen.clamp(0.0, 1.0)
-          : fallback.$1;
-      final wide = hasAudioLipSync
-          ? lipSync.mouthWide.clamp(-1.0, 1.0)
-          : fallback.$2;
-
-      if (wide > 0.58) {
-        // High F2 formant -> wide spread vowel ("E", "I", "Ê")
-        targetEe = (open * 0.85).clamp(0.0, 1.0);
-        targetAa = (open * 0.35).clamp(0.0, 1.0);
-      } else if (wide < 0.42) {
-        // Low F2 formant -> rounded vowel ("O", "U", "Ô")
-        targetOh = (open * 0.90).clamp(0.0, 1.0);
-        targetAa = (open * 0.30).clamp(0.0, 1.0);
-      } else {
-        // Open central vowel ("A", "Ă", "Â")
-        targetAa = open;
-        targetOh = open * 0.20;
+        if (wide < -0.18 || (wide >= 0.0 && wide < 0.38)) {
+          // Âm tròn môi (O, Ô, U, Ơ) -> Kích hoạt viseme_oh
+          targetOh = (open * 0.95).clamp(0.0, 1.0);
+          targetAa = (open * 0.20).clamp(0.0, 1.0);
+          targetEe = 0.0;
+        } else if (wide > 0.62) {
+          // Âm bẹt mở rộng (E, Ê, I, Y) -> Kích hoạt viseme_ee
+          targetEe = (open * 0.92).clamp(0.0, 1.0);
+          targetAa = (open * 0.25).clamp(0.0, 1.0);
+          targetOh = 0.0;
+        } else {
+          // Âm mở hàm trung tâm (A, Ă, Â): Hỗ trợ cả mouthWide ~0.0 và ~0.50
+          targetAa = (open * 1.0).clamp(0.0, 1.0);
+          targetEe = (open * 0.15).clamp(0.0, 1.0);
+          targetOh = 0.0;
+        }
+      } else if (lipSync.active && lipSync.energy <= 0.015) {
+        // Lúc ngừng hơi / ngắt câu giữa các từ: Miệng khép lại dứt khoát
+        targetAa = 0.0;
+        targetOh = 0.0;
+        targetEe = 0.0;
+      } else if (speechText.trim().isNotEmpty) {
+        // B. Fallback thông minh: Tạo nhịp điệu phát âm chuẩn âm tiết Tiếng Việt theo nội dung đang đọc
+        final viseme = _sampleVietnameseViseme(speechText, elapsedSeconds);
+        targetAa = viseme.aa;
+        targetOh = viseme.oh;
+        targetEe = viseme.ee;
       }
     }
 
-    // Smooth lerp (fast attack ~0.35, gentle decay ~0.25)
-    _smoothAa += (targetAa - _smoothAa) * 0.38;
-    _smoothOh += (targetOh - _smoothOh) * 0.38;
-    _smoothEe += (targetEe - _smoothEe) * 0.38;
+    // Smooth lerp (Attack nhanh 0.44 để khớp tức thì với âm thanh, Decay 0.32)
+    _smoothAa += (targetAa - _smoothAa) * 0.44;
+    _smoothOh += (targetOh - _smoothOh) * 0.44;
+    _smoothEe += (targetEe - _smoothEe) * 0.44;
 
-    // Zero cut-off to prevent micro-twitching when silent
-    if (_smoothAa < 0.015) _smoothAa = 0.0;
-    if (_smoothOh < 0.015) _smoothOh = 0.0;
-    if (_smoothEe < 0.015) _smoothEe = 0.0;
+    // Ngưỡng cắt nhẹ để tránh rung giật môi khi im lặng
+    if (_smoothAa < 0.012) _smoothAa = 0.0;
+    if (_smoothOh < 0.012) _smoothOh = 0.0;
+    if (_smoothEe < 0.012) _smoothEe = 0.0;
 
     return AvatarFrameState(
       headPitch: headPitch,
       headYaw: headYaw,
       headRoll: headRoll,
-      blinkWeight: _currentBlink.clamp(0.0, 1.0),
+      blinkWeight: (_currentBlink + (voiceState == VoiceState.thinking ? 0.16 : 0.0)).clamp(0.0, 1.0),
       visemeAa: _smoothAa.clamp(0.0, 1.0),
       visemeOh: _smoothOh.clamp(0.0, 1.0),
       visemeEe: _smoothEe.clamp(0.0, 1.0),
       smileWeight: smile.clamp(0.0, 1.0),
       chestBreath: chestBreath,
+      chestPitch: chestPitch,
+      chestRoll: chestRoll,
       leftArmPitch: leftArmPitch,
       leftArmRoll: leftArmRoll,
+      leftArmYaw: leftArmYaw,
+      leftForeArmPitch: leftForeArmPitch,
+      leftForeArmYaw: leftForeArmYaw,
       rightArmPitch: rightArmPitch,
       rightArmRoll: rightArmRoll,
+      rightArmYaw: rightArmYaw,
+      rightForeArmPitch: rightForeArmPitch,
+      rightForeArmYaw: rightForeArmYaw,
     );
   }
 
-  (double, double) _fallbackViseme(String text, double elapsedSeconds) {
-    final characters = text.trim().toLowerCase().runes.toList();
-    if (characters.isEmpty) {
-      final pulse = 0.5 + 0.5 * math.sin(elapsedSeconds * 18.0);
-      return (0.28 + pulse * 0.42, 0.0);
+  /// Bộ phân tích phát âm âm tiết Tiếng Việt theo thời gian thực
+  _VisemeSample _sampleVietnameseViseme(String text, double elapsedSec) {
+    final clean = text.trim();
+    if (clean.isEmpty) return const _VisemeSample(aa: 0.0, oh: 0.0, ee: 0.0);
+
+    final words = clean.split(RegExp(r'\s+'));
+    if (words.isEmpty) return const _VisemeSample(aa: 0.0, oh: 0.0, ee: 0.0);
+
+    const syllableDur = 0.22;
+    final totalDur = words.length * syllableDur;
+    final timeInCycle = elapsedSec % (totalDur + 0.5);
+
+    if (timeInCycle >= totalDur) {
+      return const _VisemeSample(aa: 0.0, oh: 0.0, ee: 0.0);
     }
 
-    final index = (elapsedSeconds * 9.0).floor() % characters.length;
-    final character = String.fromCharCode(characters[index]);
+    final wordIdx = (timeInCycle / syllableDur).floor().clamp(0, words.length - 1);
+    final word = words[wordIdx].toLowerCase();
+    final wordProgress = (timeInCycle % syllableDur) / syllableDur;
 
-    if (',.;:!?'.contains(character)) return (0.08, 0.0);
-    if (character.trim().isEmpty) return (0.10, 0.0);
-    if ('oôơuư'.contains(character)) return (0.68, -0.75);
-    if ('eêiịy'.contains(character)) return (0.56, 0.75);
-    if ('aăâ'.contains(character)) return (0.86, 0.12);
-    return (0.42, 0.0);
+    double openness = math.sin(wordProgress * math.pi).clamp(0.0, 1.0);
+
+    // Âm môi kết thúc (m, p, b): Khép môi sớm
+    if (word.endsWith('m') || word.endsWith('p') || word.endsWith('b')) {
+      if (wordProgress > 0.60) openness = 0.0;
+    }
+
+    if (RegExp(r'[oôuươớờởỡợúùủũụóòỏõọ]').hasMatch(word)) {
+      return _VisemeSample(aa: openness * 0.20, oh: openness * 0.90, ee: 0.0);
+    } else if (RegExp(r'[ieêyíìỉĩịéèẻẽẹếềểễệ]').hasMatch(word)) {
+      return _VisemeSample(aa: openness * 0.20, oh: 0.0, ee: openness * 0.90);
+    } else {
+      return _VisemeSample(aa: openness * 0.95, oh: 0.0, ee: openness * 0.15);
+    }
   }
 
   /// Applies skeletal bone rotations directly onto [model]'s nodes.
@@ -313,4 +384,16 @@ class AvatarAnimationService {
       }
     }
   }
+}
+
+class _VisemeSample {
+  final double aa;
+  final double oh;
+  final double ee;
+
+  const _VisemeSample({
+    required this.aa,
+    required this.oh,
+    required this.ee,
+  });
 }

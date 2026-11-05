@@ -576,15 +576,20 @@ class _AvatarVoiceSettingsSheetState
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Tốc độ giọng nói AI:',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey[800],
+            Flexible(
+              child: Text(
+                'Tốc độ giọng nói AI:',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey[800],
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 8),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: ['1.0', '1.2', '1.5'].map((spd) {
                 final isSelected = voiceState.ttsSpeed == spd;
                 return Padding(
@@ -600,6 +605,7 @@ class _AvatarVoiceSettingsSheetState
                       color: isSelected ? AppColors.primary : Colors.grey[700],
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
+                    visualDensity: VisualDensity.compact,
                   ),
                 );
               }).toList(),
@@ -657,32 +663,41 @@ class _AvatarVoiceSettingsSheetState
 
         const SizedBox(height: 10),
 
-        // 3. REGION FILTER & COUNT
+        // 3. REGION FILTER & COUNT (Hỗ trợ cuộn ngang linh hoạt, chống RenderFlex overflow)
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Wrap(
-              spacing: 6,
-              children: regions.map((region) {
-                final isSelected = _selectedRegionFilter == region;
-                return ChoiceChip(
-                  label: Text(region),
-                  selected: isSelected,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedRegionFilter = region;
-                    });
-                  },
-                  selectedColor: AppColors.primary,
-                  labelStyle: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : Colors.grey[700],
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                );
-              }).toList(),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: regions.map((region) {
+                    final isSelected = _selectedRegionFilter == region;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(region),
+                        selected: isSelected,
+                        onSelected: (_) {
+                          setState(() {
+                            _selectedRegionFilter = region;
+                          });
+                        },
+                        selectedColor: AppColors.primary,
+                        labelStyle: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? Colors.white : Colors.grey[700],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
+            const SizedBox(width: 8),
             Text(
               '${filteredVoices.length} giọng',
               style: TextStyle(
