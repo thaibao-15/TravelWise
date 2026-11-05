@@ -23,6 +23,9 @@ abstract class AuthRepository {
   /// Fetches the currently authenticated user's profile.
   Future<Either<Failure, User>> getCurrentUser();
 
+  /// Restores an existing session, or returns null when no token is stored.
+  Future<Either<Failure, User?>> restoreSession();
+
   /// Logs out the user by clearing stored tokens.
   Future<Either<Failure, void>> logout();
 }

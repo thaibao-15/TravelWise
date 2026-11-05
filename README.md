@@ -254,6 +254,39 @@ flutter run
 - Để chọn thiết bị cụ thể: `flutter run -d <device_id>`
 - Để chạy trên trình duyệt Web: `flutter run -d chrome`
 
+### Chạy ứng dụng Android trên LDPlayer (Windows)
+
+LDPlayer cần được kết nối qua ADB. Bật **ADB debugging** trong cài đặt LDPlayer, sau đó kiểm tra thiết bị trong PowerShell:
+
+```powershell
+flutter devices
+```
+
+Nếu chưa thấy LDPlayer, kết nối bằng cổng ADB được LDPlayer hiển thị (ví dụ `5555`):
+
+```powershell
+& "C:\Android\Sdk\platform-tools\adb.exe" connect 127.0.0.1:5555
+flutter devices
+```
+
+Chạy backend trong **một cửa sổ PowerShell riêng** (backend cần được cấu hình và khởi động theo mục [Chạy FastAPI Backend](#-1-chạy-fastapi-backend-appsapi)):
+
+```powershell
+Set-Location 'E:\TravelWise\apps\api'
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Lấy địa chỉ IPv4 của máy bằng `ipconfig` (ví dụ `192.168.1.28`). Trên LDPlayer, thử mở `http://<IPv4-máy-tính>:8000/docs`; nếu không truy cập được, kiểm tra Windows Firewall cho cổng `8000`.
+
+Trong **một cửa sổ PowerShell khác**, chạy Flutter và thay địa chỉ ví dụ bên dưới bằng IPv4 thực tế của máy:
+
+```powershell
+Set-Location 'E:\TravelWise\apps\mobile'
+flutter run -d emulator-5556 --dart-define=TRAVELWISE_API_URL=http://192.168.1.28:8000
+```
+
+Thay `emulator-5556` bằng device ID mà `flutter devices` hiển thị. Nếu đang đứng sẵn trong `apps\mobile`, chỉ cần chạy lệnh `flutter run ...` (không ghép lệnh đó cùng dòng với `cd`). Android Emulator chuẩn có thể dùng URL mặc định `http://10.0.2.2:8000`; với LDPlayer, hãy dùng IPv4 của máy tính như hướng dẫn trên.
+
 ---
 
 ## 🐳 5. Chạy bằng Docker Compose (API + Web + Voice Agent)

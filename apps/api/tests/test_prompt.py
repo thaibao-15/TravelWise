@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from app.rag.prompt import (
     RAG_HUMAN_TEMPLATE,
     RAG_SYSTEM_INSTRUCTION,
+    RAG_VOICE_SYSTEM_INSTRUCTION,
     format_docs,
     get_rag_prompt,
     rag_chat_prompt,
@@ -55,6 +56,11 @@ class TestRAGPrompt(unittest.TestCase):
             "mình chưa có thông tin để trả lời câu hỏi này",
             RAG_SYSTEM_INSTRUCTION.lower(),
         )
+        self.assertIn("sau mỗi câu trả lời", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("đúng một câu hỏi ngắn", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("hoặc một đề xuất cụ thể", RAG_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("kết thúc mỗi câu trả lời", RAG_VOICE_SYSTEM_INSTRUCTION.lower())
+        self.assertIn("đúng một câu hỏi ngắn", RAG_VOICE_SYSTEM_INSTRUCTION.lower())
 
         # Human template check
         self.assertIn("## Context:", RAG_HUMAN_TEMPLATE)
