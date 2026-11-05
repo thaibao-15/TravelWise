@@ -65,12 +65,20 @@
 
       _connectAudioForLipSync: function(audioEl) {
         try {
-          if (!this._audioCtx || this._audioCtx.state !== 'running') return false;
+          var AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!this._audioCtx && AudioCtx) {
+            this._audioCtx = new AudioCtx();
+          }
+          if (this._audioCtx && this._audioCtx.state === 'suspended') {
+            this._audioCtx.resume().catch(function() {});
+          }
           var analyser = this._ensureAnalyser();
           if (!analyser) return false;
+          if (audioEl.__twSourceConnected) return true;
           var src = this._audioCtx.createMediaElementSource(audioEl);
           src.connect(analyser);
           analyser.connect(this._audioCtx.destination);
+          audioEl.__twSourceConnected = true;
           return true;
         } catch (_) {
           return false;
@@ -80,8 +88,7 @@
       _sampleTextViseme: function(text, elapsedSec) {
         var clean = (text || '').trim();
         if (!clean) {
-          var w = 0.5 + 0.5 * Math.sin(elapsedSec * 22.0);
-          return { open: 0.14 + w * 0.68, wide: 0.25 * Math.sin(elapsedSec * 9.0), energy: w * 0.8 };
+          return { open: 0.0, wide: 0.0, energy: 0.0 };
         }
         var tokens = clean.match(/[a-zA-ZÀ-ỹ0-9]+|[,.;:!?–—]/g) || [clean];
         var cursor = 0;
@@ -89,30 +96,34 @@
         for (var i = 0; i < tokens.length; i++) {
           var tok = tokens[i];
           if (tok.length === 1 && ',.;:!?–—'.indexOf(tok) !== -1) {
-            var pd = (tok === ',' || tok === ';' || tok === ':') ? 0.16 : 0.28;
-            beats.push({ s: cursor, d: pd, o: 0.18, w: 0.0, pause: true, labial: false });
+            var pd = (tok === ',' || tok === ';' || tok === ':') ? 0.18 : 0.32;
+            beats.push({ s: cursor, d: pd, o: 0.0, w: 0.0, pause: true, labial: false });
             cursor += pd;
           } else {
-            var dur = 0.155 + Math.min(6, tok.length) * 0.012;
-            var o = 0.62, wd = 0.10;
-            if (/[aáàảãạăắằẳẵặâấầẩẫậơớờởỡợ]/i.test(tok)) { o = 0.88; wd = 0.25; }
-            else if (/[oôuư]/i.test(tok)) { o = 0.74; wd = -0.70; }
-            else if (/[iíìỉĩịyýỳỷỹỵeéèẻẽẹêếềểễệ]/i.test(tok)) { o = 0.56; wd = 0.74; }
+            var dur = 0.17 + Math.min(6, tok.length) * 0.015;
+            var o = 0.75, wd = 0.0;
+            if (/[aáàảãạăắằẳẵặâấầẩẫậ]/i.test(tok)) { o = 0.95; wd = 0.0; }
+            else if (/[oôuưóòỏõọốồổỗộúùủũụơớờởỡợ]/i.test(tok)) { o = 0.85; wd = -0.75; }
+            else if (/[iíìỉĩịyýỳỷỹỵeéèẻẽẹêếềểễệ]/i.test(tok)) { o = 0.65; wd = 0.75; }
             var lab = /(^[mbp]|[mp]$)/i.test(tok);
             beats.push({ s: cursor, d: dur, o: o, w: wd, pause: false, labial: lab });
             cursor += dur;
           }
         }
-        var t = cursor > 0 ? (elapsedSec % cursor) : 0;
-        var active = beats[beats.length - 1];
+        // Khi hết câu: khép miệng tự nhiên
+        if (cursor > 0 && elapsedSec >= cursor) {
+          return { open: 0.0, wide: 0.0, energy: 0.0 };
+        }
+        var t = elapsedSec;
+        var active = null;
         for (var j = 0; j < beats.length; j++) {
           if (t >= beats[j].s && t < beats[j].s + beats[j].d) { active = beats[j]; break; }
         }
-        if (!active || active.pause) return { open: 0.20, wide: 0.0, energy: 0.05 };
+        if (!active || active.pause) return { open: 0.0, wide: 0.0, energy: 0.0 };
         var ph = Math.max(0, Math.min(1, (t - active.s) / active.d));
         var curve = Math.sin(ph * Math.PI);
-        var floor = active.labial ? 0.02 : 0.14;
-        return { open: floor + (active.o - floor) * curve, wide: active.w * curve, energy: curve * 0.85 };
+        if (active.labial && ph > 0.60) curve = 0.0;
+        return { open: active.o * curve, wide: active.w * curve, energy: curve * 0.90 };
       },
 
       _startLipSyncLoop: function(text, hasAnalyser) {
@@ -312,6 +323,7 @@
           var audio = new Audio(audioUrl);
           audio.crossOrigin = 'anonymous';
           audio.preload = 'auto';
+          audio.crossOrigin = 'anonymous';
           audio.playbackRate = 1.0;
           self._currentAudio = audio;
           var hasAnalyser = self._connectAudioForLipSync(audio);
@@ -445,6 +457,7 @@
           var blob = new Blob([new Uint8Array(byteArray)], { type: 'audio/mpeg' });
           self._currentUrl = URL.createObjectURL(blob);
           var audio = new Audio(self._currentUrl);
+          audio.crossOrigin = 'anonymous';
           audio.playbackRate = 1.0;
           self._currentAudio = audio;
           var hasAnalyser = self._connectAudioForLipSync(audio);

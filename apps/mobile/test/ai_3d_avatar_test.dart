@@ -27,6 +27,9 @@ void main() {
       expect(model.name, equals('AvatarSample_A'));
       expect(model.hasSkeleton, isTrue);
       expect(model.hasMorphTargets, isTrue);
+      expect(model.hasTextures, isTrue);
+      expect(model.skins, isNotEmpty);
+      expect(model.materials.length, greaterThanOrEqualTo(10));
       expect(model.nodes.length, greaterThanOrEqualTo(6));
       expect(model.meshes.length, greaterThanOrEqualTo(5));
 

@@ -1,4 +1,7 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,11 +51,14 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
   final AvatarAnimationService _animationService = AvatarAnimationService();
 
   GlbModel? _loadedModel;
+  List<ui.Image?>? _loadedTextures;
   bool _isLoading = true;
   String? _loadError;
+  double _baseScaleZoom = 1.0;
 
-  // Cached model bytes across widget rebuilds and character switches
+  // Cached model & decoded GPU textures across widget rebuilds and character switches
   static final Map<String, GlbModel> _modelCache = {};
+  static final Map<String, List<ui.Image?>> _textureCache = {};
 
   @override
   void initState() {
@@ -71,6 +77,24 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
     super.dispose();
   }
 
+  void _decodeAndCacheTextures(GlbModel model, List<String> cacheKeys) {
+    if (!model.hasTextures) return;
+    model.decodeTextures().then((decoded) {
+      if (decoded.any((img) => img != null)) {
+        for (final key in cacheKeys) {
+          if (key.isNotEmpty) {
+            _textureCache[key] = decoded;
+          }
+        }
+      }
+      if (mounted && identical(_loadedModel, model)) {
+        setState(() {
+          _loadedTextures = decoded;
+        });
+      }
+    });
+  }
+
   Future<void> _loadAvatarModel([String? targetPath]) async {
     final chosenPath = targetPath ??
         widget.customModelPath ??
@@ -79,12 +103,17 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
     // Fast-path: grab from cache if available
     if (_modelCache.containsKey(chosenPath)) {
       final cached = _modelCache[chosenPath]!;
+      final cachedTextures = _textureCache[chosenPath];
       if (mounted) {
         setState(() {
           _loadedModel = cached;
+          _loadedTextures = cachedTextures;
           _isLoading = false;
           _loadError = null;
         });
+        if (cachedTextures == null && cached.hasTextures) {
+          _decodeAndCacheTextures(cached, [chosenPath]);
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             ref.read(avatar3dStateProvider.notifier).setLoaded(
@@ -148,8 +177,13 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       if (mounted) {
         setState(() {
           _loadedModel = model;
+          _loadedTextures = _textureCache[successfulPath];
           _isLoading = false;
         });
+
+        if (_loadedTextures == null && model.hasTextures) {
+          _decodeAndCacheTextures(model, [chosenPath, successfulPath]);
+        }
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -207,45 +241,72 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
               else if (_loadError != null)
                 _buildErrorPlaceholder(_loadError!)
               else if (_loadedModel != null)
-                GestureDetector(
-                  onPanUpdate: (details) {
-                    final deltaX = details.delta.dx / constraints.maxWidth * 2.8;
-                    final deltaY = details.delta.dy / constraints.maxHeight * 2.0;
-                    ref.read(avatar3dStateProvider.notifier).addOrbitDelta(
-                          deltaYaw: deltaX,
-                          deltaPitch: -deltaY,
-                        );
+                Listener(
+                  onPointerSignal: (event) {
+                    if (event is PointerScrollEvent) {
+                      final currentZoom = ref.read(avatar3dStateProvider).userZoom;
+                      ref
+                          .read(avatar3dStateProvider.notifier)
+                          .setZoom(currentZoom - event.scrollDelta.dy * 0.0012);
+                    }
                   },
-                  child: AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _tickerController,
-                      if (widget.lipSyncListenable != null)
-                        widget.lipSyncListenable!,
-                    ]),
-                    builder: (context, child) {
-                      final elapsed = _tickerController.lastElapsedDuration?.inMicroseconds ?? 0;
-                      final seconds = elapsed / 1000000.0;
-                      final lipSync = widget.lipSyncListenable?.value ?? LipSyncFrame.idle;
-
-                      final frame = _animationService.computeFrame(
-                        elapsedSeconds: seconds,
-                        voiceState: widget.voiceState,
-                        lipSync: lipSync,
-                      );
-
-                      return CustomPaint(
-                        size: Size(constraints.maxWidth, constraints.maxHeight),
-                        painter: Glb3dPainter(
-                          model: _loadedModel!,
-                          frame: frame,
-                          orbitYaw: avatarState.userOrbitYaw,
-                          orbitPitch: avatarState.userOrbitPitch,
-                          zoom: avatarState.userZoom,
-                          cameraDistance: 0.94,
-                          targetY: 1.29,
-                        ),
-                      );
+                  child: GestureDetector(
+                    onScaleStart: (_) {
+                      _baseScaleZoom = ref.read(avatar3dStateProvider).userZoom;
                     },
+                    onScaleUpdate: (details) {
+                      if (details.pointerCount >= 2) {
+                        ref
+                            .read(avatar3dStateProvider.notifier)
+                            .setZoom(_baseScaleZoom * details.scale);
+                      } else {
+                        final deltaX =
+                            details.focalPointDelta.dx / constraints.maxWidth * 2.8;
+                        final deltaY =
+                            details.focalPointDelta.dy / constraints.maxHeight * 2.0;
+                        ref.read(avatar3dStateProvider.notifier).addOrbitDelta(
+                              deltaYaw: deltaX,
+                              deltaPitch: -deltaY,
+                            );
+                      }
+                    },
+                    child: AnimatedBuilder(
+                      animation: Listenable.merge([
+                        _tickerController,
+                        if (widget.lipSyncListenable != null)
+                          widget.lipSyncListenable!,
+                      ]),
+                      builder: (context, child) {
+                        final elapsed =
+                            _tickerController.lastElapsedDuration?.inMicroseconds ?? 0;
+                        final seconds = elapsed / 1000000.0;
+                        final lipSync =
+                            widget.lipSyncListenable?.value ?? LipSyncFrame.idle;
+
+                        final frame = _animationService.computeFrame(
+                          elapsedSeconds: seconds,
+                          voiceState: widget.voiceState,
+                          lipSync: lipSync,
+                          speechText: widget.speechText,
+                        );
+
+                        final bool isSkinned = _loadedModel!.skins.isNotEmpty;
+
+                        return CustomPaint(
+                          size: Size(constraints.maxWidth, constraints.maxHeight),
+                          painter: Glb3dPainter(
+                            model: _loadedModel!,
+                            textures: _loadedTextures,
+                            frame: frame,
+                            orbitYaw: avatarState.userOrbitYaw,
+                            orbitPitch: avatarState.userOrbitPitch,
+                            zoom: avatarState.userZoom,
+                            cameraDistance: isSkinned ? 1.10 : 1.18,
+                            targetY: isSkinned ? 1.20 : 1.14,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
 
@@ -292,7 +353,8 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                         ),
                       ),
                     if (avatarState.userOrbitYaw.abs() > 0.05 ||
-                        avatarState.userOrbitPitch.abs() > 0.05) ...[
+                        avatarState.userOrbitPitch.abs() > 0.05 ||
+                        (avatarState.userZoom - 1.0).abs() > 0.05) ...[
                       const SizedBox(width: 6),
                       InkWell(
                         onTap: () {
@@ -329,7 +391,7 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                 ),
               ),
 
-              // 5. Subtle Soft Floor Gradient
+              // 5. Subtle Soft Floor Touch (Giữ trọn vẹn chi tiết trang phục, váy và bàn tay)
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -338,10 +400,9 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                         colors: [
                           Colors.transparent,
                           Colors.transparent,
-                          const Color(0xFFF6F8FB).withValues(alpha: 0.15),
-                          const Color(0xFFF6F8FB).withValues(alpha: 0.90),
+                          const Color(0xFFF6F8FB).withValues(alpha: 0.22),
                         ],
-                        stops: const [0.0, 0.65, 0.88, 1.0],
+                        stops: const [0.0, 0.92, 1.0],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                       ),
@@ -358,38 +419,64 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
   Widget _buildStudioBackground(BuildContext context, VoiceState state) {
     Color ambientGlow;
+    Color outerGlow;
     switch (state) {
       case VoiceState.speaking:
-        ambientGlow = const Color(0xFF0284C7).withValues(alpha: 0.25);
+        ambientGlow = const Color(0xFF38BDF8).withValues(alpha: 0.28);
+        outerGlow = const Color(0xFFBAE6FD).withValues(alpha: 0.20);
         break;
       case VoiceState.listening:
-        ambientGlow = const Color(0xFF10B981).withValues(alpha: 0.22);
+        ambientGlow = const Color(0xFF10B981).withValues(alpha: 0.24);
+        outerGlow = const Color(0xFFA7F3D0).withValues(alpha: 0.18);
         break;
       case VoiceState.thinking:
       case VoiceState.processing:
       case VoiceState.connecting:
-        ambientGlow = const Color(0xFF0D9488).withValues(alpha: 0.25);
+        ambientGlow = const Color(0xFF14B8A6).withValues(alpha: 0.26);
+        outerGlow = const Color(0xFF99F6E4).withValues(alpha: 0.18);
         break;
       case VoiceState.error:
-        ambientGlow = const Color(0xFFEF4444).withValues(alpha: 0.20);
+        ambientGlow = const Color(0xFFEF4444).withValues(alpha: 0.22);
+        outerGlow = const Color(0xFFFECACA).withValues(alpha: 0.15);
         break;
       case VoiceState.idle:
-        ambientGlow = const Color(0xFF6366F1).withValues(alpha: 0.16);
+        ambientGlow = const Color(0xFF6366F1).withValues(alpha: 0.18);
+        outerGlow = const Color(0xFFE0E7FF).withValues(alpha: 0.15);
         break;
     }
 
     return Container(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: const Alignment(0.0, -0.2),
-          radius: 0.85,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
           colors: [
-            ambientGlow,
-            const Color(0xFFE0E7FF).withValues(alpha: 0.35),
-            const Color(0xFFF1F5F9),
+            Color(0xFFE8F1FC),
+            Color(0xFFF1F5F9),
+            Color(0xFFF8FAFC),
           ],
-          stops: const [0.0, 0.55, 1.0],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: [0.0, 0.45, 1.0],
         ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Vòng hào quang Studio nổi bật sau lưng nhân vật (Backlight Halo)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.0, -0.22),
+                radius: 0.72,
+                colors: [
+                  ambientGlow,
+                  outerGlow,
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
