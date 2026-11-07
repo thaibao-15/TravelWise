@@ -523,18 +523,22 @@ QUY TẮC BẢO TOÀN LỊCH TRÌNH HIỆN CÓ (BẮT BUỘC):
 Nội dung yêu cầu từ du khách: "{user_prompt}"
 
 HƯỚNG DẪN XỬ LÝ CÁC TÌNH HUỐNG THỰC TẾ CỦA DU KHÁCH (BẮT BUỘC):
-1. TÌNH HUỐNG DẬY MUỘN / NGỦ NƯỚNG (ví dụ: "đổi sang 10 giờ sáng do ngủ quá nhiều", "mai cho đi lúc 10h"):
+1. TÌNH HUỐNG CHỈ ĐỊNH ĐỊA ĐIỂM CHO TỪNG NGÀY CỤ THỂ (QUY TẮC BẮT BUỘC SỐ 1):
+   - Khi du khách chỉ định rõ ngày nào đi đâu (ví dụ: "Ngày thứ 2 đi bán đảo Sơn Trà kết hợp Chùa Linh Ứng", "Ngày thứ 3 đi phố cổ Hội An", "Ngày 1 đi biển Mỹ Khê"):
+     + BẮT BUỘC phải xếp đúng các địa điểm đó vào đúng ngày mà du khách đã yêu cầu (Ví dụ: Chùa Linh Ứng và Sơn Trà PHẢI nằm trọn ở Ngày 2; Phố cổ Hội An PHẢI nằm ở Ngày 3).
+     + TUYỆT ĐỐI KHÔNG ĐƯỢC tráo đổi hoặc đẩy địa điểm của ngày này sang ngày khác (ví dụ: không được tự tiện đẩy Chùa Linh Ứng sang Ngày 3 khi du khách đã chỉ định đi ở Ngày 2).
+2. TÌNH HUỐNG DẬY MUỘN / NGỦ NƯỚNG (ví dụ: "đổi sang 10 giờ sáng do ngủ quá nhiều", "mai cho đi lúc 10h"):
    - Dời giờ bắt đầu của hoạt động đầu tiên sang đúng giờ du khách yêu cầu (ví dụ: "10:00").
    - Dời các hoạt động tiếp theo phù hợp; nếu buổi sáng không đủ thời gian thì tinh giản điểm phụ để du khách ăn trưa đúng giờ (11:30 - 13:00) không bị dồn dập.
-2. TÌNH HUỐNG MỆT MỎI / MUỐN NGHỈ NGƠI (ví dụ: "đi nhiều quá chiều nay muốn nghỉ ở khách sạn", "ngày 2 đi nhẹ nhàng thôi"):
+3. TÌNH HUỐNG MỆT MỎI / MUỐN NGHỈ NGƠI (ví dụ: "đi nhiều quá chiều nay muốn nghỉ ở khách sạn", "ngày 2 đi nhẹ nhàng thôi"):
    - Buổi được yêu cầu nghỉ (sáng hoặc chiều) chuyển thành hoạt động nghỉ ngơi thư giãn tại khách sạn (activity_type = 'REST', place_id = null).
    - Dời các điểm tham quan bị lùi sang buổi khác hoặc tinh giản nhịp độ chuyến đi.
-3. TÌNH HUỐNG ĐỔI SỞ THÍCH / BỎ ĐỊA ĐIỂM (ví dụ: "tôi không thích bảo tàng", "thay bằng chỗ nào vui hơn"):
+4. TÌNH HUỐNG ĐỔI SỞ THÍCH / BỎ ĐỊA ĐIỂM (ví dụ: "tôi không thích bảo tàng", "thay bằng chỗ nào vui hơn"):
    - Bỏ địa điểm du khách không thích khỏi lịch trình.
    - Chọn một địa điểm trải nghiệm/vui chơi hấp dẫn thay thế từ DANH SÁCH ĐỊA ĐIỂM THỰC TẾ dưới đây.
-4. TÌNH HUỐNG ĐỔI CHỖ GẦN HƠN (ví dụ: "chỗ này xa quá, đổi chỗ khác gần hơn đi"):
+5. TÌNH HUỐNG ĐỔI CHỖ GẦN HƠN (ví dụ: "chỗ này xa quá, đổi chỗ khác gần hơn đi"):
    - Xác định địa điểm bị phàn nàn và thay bằng địa điểm cùng loại nằm trong cùng Cụm địa lý với các điểm khác trong ngày.
-5. TÌNH HUỐNG THỜI TIẾT (ví dụ: "nếu chiều mai mưa thì đừng đi biển"):
+6. TÌNH HUỐNG THỜI TIẾT (ví dụ: "nếu chiều mai mưa thì đừng đi biển"):
    - Đổi hoặc chuẩn bị phương án trong nhà (khu vui chơi trong nhà, bảo tàng, quán cafe có view đẹp).
 
 YÊU CẦU ĐỐI VỚI TRƯỜNG "summary":

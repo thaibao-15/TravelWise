@@ -27,6 +27,7 @@ class ConversationRead(BaseModel):
     id: int
     user_id: Optional[int] = None
     title: Optional[str] = None
+    summary: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

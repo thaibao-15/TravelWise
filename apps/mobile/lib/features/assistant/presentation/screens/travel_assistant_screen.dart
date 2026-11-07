@@ -16,6 +16,7 @@ import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
 import '../widgets/avatar_voice_settings_sheet.dart';
+import '../widgets/conversation_history_sheet.dart';
 
 /// Màn hình Trợ lý du lịch TravelWise (Linh AI) - Thiết kế Compact không cần cuộn dọc.
 /// Tối ưu trải nghiệm trò chuyện giọng nói, xem lộ trình và tương tác tức thì.
@@ -31,6 +32,10 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _rippleController;
   bool _isItineraryMinimized = false;
+  String? _bannerNotificationText;
+  IconData _bannerNotificationIcon = Icons.check_circle_rounded;
+  Color _bannerNotificationColor = const Color(0xFF10B981);
+  Timer? _bannerDismissTimer;
 
   @override
   void initState() {
@@ -65,8 +70,31 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
   @override
   void dispose() {
+    _bannerDismissTimer?.cancel();
     _rippleController.dispose();
     super.dispose();
+  }
+
+  void _showTopBanner({
+    required String text,
+    IconData icon = Icons.check_circle_rounded,
+    Color color = const Color(0xFF10B981),
+    Duration duration = const Duration(seconds: 4),
+  }) {
+    if (!mounted) return;
+    _bannerDismissTimer?.cancel();
+    setState(() {
+      _bannerNotificationText = text;
+      _bannerNotificationIcon = icon;
+      _bannerNotificationColor = color;
+    });
+    _bannerDismissTimer = Timer(duration, () {
+      if (mounted) {
+        setState(() {
+          _bannerNotificationText = null;
+        });
+      }
+    });
   }
 
   @override
@@ -119,6 +147,26 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
         }
       }
 
+      // Bắt sự kiện hoàn thành tạo hoặc sửa lịch trình để hiển thị thẻ thông báo trên đỉnh màn hình
+      if (prev?.planningState == TripPlanningState.generating &&
+          next.planningState == TripPlanningState.previewReady &&
+          next.tripPreview != null) {
+        _showTopBanner(
+          text: 'Đã hoàn thành lịch trình "${next.tripPreview!.title}"!',
+          icon: Icons.check_circle_rounded,
+          color: const Color(0xFF10B981),
+        );
+      } else if (prev?.planningState == TripPlanningState.revising &&
+          (next.planningState == TripPlanningState.previewReady ||
+              next.planningState == TripPlanningState.saved) &&
+          next.tripPreview != null) {
+        _showTopBanner(
+          text: 'Đã cập nhật lịch trình thành công theo yêu cầu!',
+          icon: Icons.auto_awesome,
+          color: const Color(0xFF0284C7),
+        );
+      }
+
       if (next.error != null &&
           next.error!.isNotEmpty &&
           next.error != prev?.error &&
@@ -144,6 +192,17 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           children: [
             // ── 1. Top Header Bar ───────────────────────────────────────────
             _buildTopAppBar(context, state, notifier),
+
+            if (_bannerNotificationText != null)
+              _buildTopSuccessBanner(
+                text: _bannerNotificationText!,
+                icon: _bannerNotificationIcon,
+                color: _bannerNotificationColor,
+                onClose: () {
+                  _bannerDismissTimer?.cancel();
+                  setState(() => _bannerNotificationText = null);
+                },
+              ),
 
             if (state.error != null && state.error!.isNotEmpty)
               _buildVoiceErrorBanner(state.error!),
@@ -213,6 +272,68 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     );
   }
 
+  Widget _buildTopSuccessBanner({
+    required String text,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onClose,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color.withValues(alpha: 0.95),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          GestureDetector(
+            onTap: onClose,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: color.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVoiceErrorBanner(String message) {
     return Container(
       width: double.infinity,
@@ -259,7 +380,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Nút Menu bên trái
+          // Nút Lịch sử hội thoại bên trái
           Container(
             width: 40,
             height: 40,
@@ -276,13 +397,14 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             ),
             child: IconButton(
               icon: const Icon(
-                Icons.menu_rounded,
-                size: 20,
+                Icons.history_rounded,
+                size: 22,
                 color: Color(0xFF1E293B),
               ),
+              tooltip: 'Lịch sử cuộc trò chuyện',
               padding: EdgeInsets.zero,
               onPressed: () {
-                _openVoiceSettingsModal(context);
+                ConversationHistorySheet.show(context);
               },
             ),
           ),
@@ -348,7 +470,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               GestureDetector(
-                onTap: () => AvatarVoiceSettingsSheet.show(context),
+                onTap: () => _openVoiceSettingsModal(context),
                 child: Container(
                   width: 38,
                   height: 38,
@@ -448,11 +570,16 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
-    // Lấy câu nói gần nhất của AI
+    // Lấy câu nói gần nhất của AI trong hội thoại (ưu tiên bỏ qua các thông báo đính kèm lịch trình)
     String latestAiSpeech = '';
     if (state.messages.isNotEmpty) {
       final aiMsgs = state.messages.where((m) => !m.isUser).toList();
-      if (aiMsgs.isNotEmpty) {
+      // Ưu tiên tin nhắn hội thoại thường không đính kèm đối tượng tripItinerary
+      final regularAiMsgs =
+          aiMsgs.where((m) => m.tripItinerary == null).toList();
+      if (regularAiMsgs.isNotEmpty) {
+        latestAiSpeech = regularAiMsgs.last.text;
+      } else if (aiMsgs.isNotEmpty) {
         latestAiSpeech = aiMsgs.last.text;
       }
     }
@@ -2258,6 +2385,25 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               ),
             ),
             const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.history_rounded, color: AppColors.primary, size: 22),
+              ),
+              title: const Text('Lịch sử cuộc trò chuyện', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+              subtitle: const Text('Xem và tiếp tục các đoạn chat trước đây', style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+              onTap: () {
+                Navigator.pop(ctx);
+                ConversationHistorySheet.show(context);
+              },
+            ),
+            const SizedBox(height: 12),
             VoiceProfileBar(
               onTap: () => AvatarVoiceSettingsSheet.show(context),
             ),
