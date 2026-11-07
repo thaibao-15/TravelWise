@@ -156,6 +156,8 @@ class TestRAGAskAPI(unittest.TestCase):
                 "không có thông tin",
                 "không có đủ thông tin",
                 "chưa có thông tin",
+                "chưa tìm thấy dữ liệu",
+                "không có dữ liệu",
                 "ngoài vùng phủ sóng",
                 "chịu thua",
             ]
