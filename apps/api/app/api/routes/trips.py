@@ -884,8 +884,13 @@ def edit_itinerary_for_trip(
         "lịch trình có gì", "lịch trình thế nào", "xem lịch", "lịch hiện tại", "có những điểm nào",
         "có những gì", "những hoạt động nào", "chi tiết lịch"
     ])
+    is_fast_create = any(kw in prompt_lower for kw in [
+        "tạo lịch", "tao lich", "lên lịch", "len lich", "lập lịch", "lap lich",
+        "thiết kế lịch", "thiet ke lich", "tạo chuyến", "tao chuyen", "lên kế hoạch", "len ke hoach"
+    ])
     is_obvious_edit_kw = bool(
-        re.search(
+        is_fast_create
+        or re.search(
             r"\b(dậy|ngủ|trễ|muộn|sớm|dời|chuyển|bỏ|xóa|xoá|thêm|đổi|thay|ghé|ghé quán|điều chỉnh|cập nhật|bắt đầu|kết thúc|rút gọn|kéo dài|tăng|giảm)\b",
             prompt_lower,
         )
@@ -971,10 +976,10 @@ def edit_itinerary_for_trip(
     if not context.trip.dates.end_date and trip.end_date:
         context.trip.dates.end_date = trip.end_date.isoformat()
 
-    # Kiểm tra nếu người dùng yêu cầu đổi tổng số ngày (VD: "rút gọn còn 2 ngày", "kéo dài thành 4 ngày")
+    # Kiểm tra nếu người dùng yêu cầu đổi tổng số ngày (VD: "tạo cho 2 ngày", "rút gọn còn 2 ngày", "kéo dài thành 4 ngày", "làm 2 ngày")
     prompt_lower = (request_data.change_prompt or "").lower()
     explicit_days_match = re.search(
-        r"(?:rút\s*gọn\s*(?:còn|xuống|thành)?|kéo\s*dài\s*(?:lên|thành)?|đổi\s*(?:lịch\s*trình\s*)?(?:thành|sang)|chuyển\s*(?:thành|sang)|tăng\s*lên|giảm\s*(?:còn|xuống))\s*(\d+)\s*ngày",
+        r"(?:tạo|lên|lập|đổi|chuyển|thành|sang|làm|rút\s*gọn\s*(?:còn|xuống|thành)?|kéo\s*dài\s*(?:lên|thành)?|tăng\s*lên|giảm\s*(?:còn|xuống))?\s*(?:cho\s*)?(\d+)\s*ngày",
         prompt_lower,
     )
     if explicit_days_match:
@@ -1115,17 +1120,28 @@ def edit_itinerary_for_trip(
             itin_overview = "\n".join(itin_summary_lines)
 
             system_instruction = (
-                "Bạn là Linh AI - Hướng dẫn viên du lịch thông minh của TravelWise.\n"
-                "Nhiệm vụ bắt buộc: Hãy phân tích yêu cầu của du khách và GỌI CÔNG CỤ (tool call) phù hợp trong danh sách tools được cung cấp để thực hiện chỉnh sửa lịch trình.\n"
+                "Bạn là Linh AI - Chuyên gia trợ lý du lịch cá nhân thông minh của TravelWise.\n"
+                "Bạn được cung cấp danh sách công cụ (tools) để thao tác và cập nhật cơ sở dữ liệu chuyến đi.\n"
+                "Nhiệm vụ bắt buộc: Hãy phân tích yêu cầu của du khách và GỌI CÔNG CỤ (tool call) phù hợp trong danh sách tools được cung cấp.\n\n"
+                "### QUY TẮC BẮT BUỘC KHI DU KHÁCH THAY ĐỔI SỐ NGÀY HOẶC ĐỔI ĐỊA ĐIỂM:\n"
+                "1. Khi du khách muốn đổi sang số ngày khác hoặc tạo lại với số ngày mới (Ví dụ: 'Tạo cho 2 ngày và đi Chùa Linh Ứng', 'Đổi thành 3 ngày khám phá Bà Nà', 'Lên lịch 2 ngày đi', 'Kéo dài thành 2 ngày', 'Tạo lịch 2 ngày'):\n"
+                "   - BẮT BUỘC PHẢI GỌI TOOL generate_new_itinerary.\n"
+                "   - Tuyệt đối KHÔNG ĐƯỢC gọi các tool chỉnh sửa vi mô (add_activity, update_activity_time) vì lịch trình cũ không đủ số ngày.\n"
+                "   - Quy tắc trích xuất tham số:\n"
+                "     + duration_days: Lấy chính xác số ngày mới mà du khách yêu cầu (Ví dụ: 2, 3).\n"
+                "     + destination_city: Lấy theo thành phố du lịch hiện tại (Ví dụ: 'Đà Nẵng').\n"
+                "     + must_visit_places: Đưa các địa điểm mới mà du khách vừa nhắc tới vào danh sách (Ví dụ: ['Chùa Linh Ứng']).\n"
+                "     + special_requests: Lưu lại các ghi chú đặc biệt nếu có.\n\n"
+                "### CÁC TOOL CHỈNH SỬA VI MÔ TRONG NGÀY:\n"
                 "- Khi du khách muốn dậy trễ, bắt đầu muộn, dời giờ, đổi giờ: BẮT BUỘC gọi tool update_activity_time.\n"
                 "- Khi du khách muốn bỏ, xóa, không đi một điểm nào đó: BẮT BUỘC gọi tool remove_activity.\n"
-                "- Khi du khách muốn thêm, bổ sung quán ăn, cà phê, điểm tham quan: BẮT BUỘC gọi tool add_activity.\n"
+                "- Khi du khách muốn thêm, bổ sung quán ăn, cà phê, điểm tham quan vào ngày hiện có: BẮT BUỘC gọi tool add_activity.\n"
                 "- Khi du khách muốn đổi, thay thế một địa điểm này bằng điểm khác: BẮT BUỘC gọi tool replace_activity.\n"
                 "- Khi du khách muốn tráo đổi 2 điểm tham quan với nhau hoặc đổi lịch giữa 2 ngày: BẮT BUỘC gọi tool swap_activities.\n"
                 "- Khi du khách muốn tăng hoặc giảm thời gian tham quan ở một điểm: BẮT BUỘC gọi tool change_activity_duration.\n"
                 "- Khi du khách muốn xóa trắng 1 ngày để nghỉ ngơi / tự do khám phá: BẮT BUỘC gọi tool clear_day_activities.\n"
                 "- Khi du khách muốn review, đọc lại, tóm tắt lịch trình hiện tại: BẮT BUỘC gọi tool review_current_itinerary.\n"
-                "- Khi du khách muốn quay lại lịch cũ, hoàn tác: BẮT BUỘC gọi tool undo_last_edit.\n"
+                "- Khi du khách muốn quay lại lịch cũ, hoàn tác: BẮT BUỘC gọi tool undo_last_edit.\n\n"
                 "CHÚ Ý:\n"
                 "- Luôn xác định đúng day_number (nếu du khách nói 'mai' hoặc không nói rõ ngày, mặc định là ngày 1 hoặc target_day).\n"
                 "- Tên địa điểm (place_name, old_place_name) nên lấy chính xác theo tên hiển thị trong lịch trình bên dưới.\n"
@@ -1219,6 +1235,18 @@ def edit_itinerary_for_trip(
                         success, msg = ItineraryToolExecutor.execute_undo(
                             session=session,
                             trip_id=trip.id,
+                            current_user=current_user,
+                            allow_overwrite=request_data.allow_overwrite,
+                        )
+                    elif fn_name == "generate_new_itinerary":
+                        success, msg = ItineraryToolExecutor.execute_generate_itinerary(
+                            session=session,
+                            trip_id=trip.id,
+                            destination_city=fn_args.get("destination_city", trip.destination_city or "Đà Nẵng"),
+                            duration_days=fn_args.get("duration_days", 1),
+                            travel_style=fn_args.get("travel_style"),
+                            must_visit_places=fn_args.get("must_visit_places"),
+                            special_requests=fn_args.get("special_requests"),
                             current_user=current_user,
                             allow_overwrite=request_data.allow_overwrite,
                         )

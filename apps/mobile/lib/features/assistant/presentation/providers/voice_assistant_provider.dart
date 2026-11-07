@@ -2205,8 +2205,18 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     for (final entry in destinations.entries) {
       if (lower.contains(entry.key)) {
         matchedCity = entry.value;
-
         break;
+      }
+    }
+
+    // Nếu câu lệnh không nhắc lại tên thành phố (VD: "Tạo lịch trình 3 ngày đi"),
+    // lấy ngay thành phố từ planningContext đang có của cuộc trò chuyện
+    if (matchedCity == null && state.planningContext != null) {
+      final tripMap = state.planningContext!['trip'] as Map<String, dynamic>?;
+      final destMap = tripMap?['destination'] as Map<String, dynamic>?;
+      final cityInCtx = destMap?['city']?.toString();
+      if (cityInCtx != null && cityInCtx.trim().isNotEmpty) {
+        matchedCity = cityInCtx.trim();
       }
     }
 
@@ -2519,20 +2529,43 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       final hasNewPlaceOrDaysInPrompt = RegExp(
         r'(?:đi\s+\S+|\d+\s*ngày|\d+\s*đêm)',
-
         caseSensitive: false,
       ).hasMatch(trimmed);
 
+      // Kiểm tra câu nói trước đó của AI có phải là lời hỏi/đề xuất tạo lịch trình hay không
+      final lastAiMsgText = state.messages.isNotEmpty && !state.messages.last.isUser
+          ? state.messages.last.text.toLowerCase()
+          : '';
+      final lastAiAskedToGenerate = lastAiMsgText.contains('tạo lịch trình') ||
+          lastAiMsgText.contains('lên lịch trình') ||
+          lastAiMsgText.contains('lập lịch trình') ||
+          lastAiMsgText.contains('thiết kế lịch trình') ||
+          lastAiMsgText.contains('tạo chuyến đi');
+
+      // CHẶN BẪY: Nếu người dùng chỉ nói câu đồng ý chung chung ("có", "ok", "được")
+      // mà không kèm chữ "tạo", thì BẮT BUỘC câu hỏi trước đó của AI phải là hỏi tạo lịch trình!
+      final hasExplicitCreateKeyword = isCreateCmd ||
+          RegExp(
+            r'(?:tạo|lên|lập|thiết\s*kế|xây\s*dựng)\s+(?:lịch\s*trình|kế\s*hoạch|chuyến\s*đi|tour)',
+            caseSensitive: false,
+          ).hasMatch(trimmed) ||
+          RegExp(
+            r'(?:tạo|lên|lập)\s*(?:lịch\s*trình|kế\s*hoạch)?\s*(?:đi|luôn|ngay|nha|nhé|giúp)',
+            caseSensitive: false,
+          ).hasMatch(trimmed);
+
+      final isAffirmativeForGeneration = hasExplicitCreateKeyword ||
+          (isAffirmative && lastAiAskedToGenerate);
+
       if (hasDestination &&
           (hasDuration || isReadyToGenerate || isCreateCmd) &&
-          isAffirmative &&
+          isAffirmativeForGeneration &&
           !hasNewPlaceOrDaysInPrompt &&
           state.conversationId != null) {
         state = state.copyWith(clearTripPreview: true);
 
         await generateItinerary(
           convId: state.conversationId,
-
           userPrompt: trimmed,
         );
 
@@ -3187,7 +3220,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       final shouldAutoGenerate =
           convId != null &&
           (streamPlanningAction == 'TRIGGER_GENERATION' ||
-              ((isCreateCmd || isAffirmative || isRegenerateIntent) &&
+              ((isCreateCmd || isRegenerateIntent) &&
                   (derivedPlanning == TripPlanningState.readyToGenerate ||
                       hasDestAfterAsk)));
 

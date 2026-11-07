@@ -98,6 +98,30 @@ class undo_last_edit(BaseModel):
     confirm: bool = Field(True, description="Xác nhận hoàn tác về lịch cũ")
 
 
+class generate_new_itinerary(BaseModel):
+    """Kích hoạt tạo mới toàn bộ lịch trình chuyến đi và lưu các hoạt động chi tiết vào Database khi du khách yêu cầu (VD: 'Tạo lịch trình đi', 'Lên kế hoạch 2 ngày ở Đà Nẵng', 'Thiết kế chuyến đi 1 ngày')."""
+    destination_city: str = Field(
+        ...,
+        description="Tên thành phố du lịch, ví dụ: 'Đà Nẵng', 'Hà Nội', 'Hội An'"
+    )
+    duration_days: int = Field(
+        default=1,
+        description="Số ngày của chuyến đi (ví dụ: 1, 2, 3...)"
+    )
+    travel_style: Optional[str] = Field(
+        None,
+        description="Phong cách hoặc mục đích du lịch (ví dụ: 'thư giãn', 'ẩm thực', 'khám phá', 'tiết kiệm')"
+    )
+    must_visit_places: Optional[List[str]] = Field(
+        default=[],
+        description="Danh sách các địa điểm du khách đặc biệt muốn ghé thăm nếu có nhắc tới (ví dụ: ['Bãi biển Mỹ Khê', 'Chùa Linh Ứng'])"
+    )
+    special_requests: Optional[str] = Field(
+        None,
+        description="Yêu cầu đặc biệt (ví dụ: 'bắt đầu lúc 6:00 sáng', 'đi cùng người lớn tuổi')"
+    )
+
+
 ITINERARY_EDIT_TOOLS = [
     update_activity_time,
     remove_activity,
@@ -108,6 +132,7 @@ ITINERARY_EDIT_TOOLS = [
     clear_day_activities,
     review_current_itinerary,
     undo_last_edit,
+    generate_new_itinerary,
 ]
 
 
@@ -669,4 +694,57 @@ class ItineraryToolExecutor:
         except Exception as e:
             logger.error("Undo execution failed: %s", e)
             return False, f"Lỗi hoàn tác: {str(e)}"
+
+    @classmethod
+    def execute_generate_itinerary(
+        cls,
+        session: Session,
+        trip_id: int,
+        destination_city: str = "Đà Nẵng",
+        duration_days: int = 1,
+        travel_style: Optional[str] = None,
+        must_visit_places: Optional[List[str]] = None,
+        special_requests: Optional[str] = None,
+        current_user: Optional[Any] = None,
+        allow_overwrite: bool = True,
+    ) -> Tuple[bool, str]:
+        """Tạo mới toàn bộ lịch trình chuyến đi và lưu các hoạt động chi tiết vào Database."""
+        try:
+            from app.services.itinerary_generation_service import ItineraryGenerationService
+
+            prompt_parts = [f"Tạo lịch trình {duration_days} ngày tại {destination_city}."]
+            if travel_style:
+                prompt_parts.append(f"Phong cách du lịch: {travel_style}.")
+            if must_visit_places and len(must_visit_places) > 0:
+                prompt_parts.append(f"Các địa điểm ưu tiên ghé thăm: {', '.join(must_visit_places)}.")
+            if special_requests:
+                prompt_parts.append(f"Yêu cầu đặc biệt: {special_requests}.")
+
+            user_prompt = " ".join(prompt_parts)
+
+            gen_res = ItineraryGenerationService.generate_itinerary(
+                session=session,
+                trip_id=trip_id,
+                user_prompt=user_prompt,
+                allow_overwrite=allow_overwrite,
+                current_user=current_user,
+            )
+
+            status_val = getattr(gen_res, "status", None)
+            if hasattr(status_val, "value"):
+                status_val = status_val.value
+
+            if status_val == "GENERATED":
+                msg = (
+                    f"Dạ, em đã tạo xong lịch trình {duration_days} ngày khám phá {destination_city} "
+                    f"với đầy đủ các điểm tham quan và giờ giấc vào hệ thống cho bạn rồi ạ! "
+                    f"Bạn hãy xem chi tiết lịch trình bên dưới nhé."
+                )
+                return True, msg
+            else:
+                return False, f"Chưa thể tạo lịch trình: {status_val}"
+        except Exception as e:
+            logger.error("Generate itinerary tool execution failed: %s", e)
+            return False, f"Lỗi tạo lịch trình: {str(e)}"
+
 
