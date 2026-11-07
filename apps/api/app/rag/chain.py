@@ -122,7 +122,7 @@ _PREFIX_PATTERN = re.compile(
 )
 _CAP_PATTERN = re.compile(rf"\b({_V_CAP}(?:\s+{_V_CAP}){{1,3}})\b")
 _IGNORED_ENTITIES = {
-    "travelwise", "travelwise ai", "linh ai", "xin chào", "chào bạn", "cảm ơn", "tôi là", "bạn là"
+    "travelwise", "travelwise ai", "linh ai", "linh", "hi linh", "chào linh", "xin chào", "chào bạn", "cảm ơn", "tôi là", "bạn là"
 }
 
 
@@ -169,6 +169,100 @@ def extract_recent_entity(chat_history: Optional[Sequence[Any]]) -> Optional[str
             return entities[0]
 
     return None
+
+
+_CHITCHAT_PATTERNS = (
+    # Chào hỏi / Thưa gửi
+    "chào", "xin chào", "hello", "hi", "hey", "alo", "bạn ơi", "ê", "ê bạn", "ad ơi",
+    "bạn là ai", "bạn tên là gì", "tên bạn là gì", "mày là ai",
+    # Cảm ơn / Tạm biệt / Khen ngợi
+    "cảm ơn", "cam on", "cám ơn", "thanks", "thank you", "tạm biệt", "tam biet",
+    "bye", "goodbye", "ok", "oke", "oki", "ok bạn", "tuyệt vời", "tuyệt", "hay quá",
+    "chuẩn", "được rồi", "được đấy",
+    # Thăm hỏi sức khỏe / cảm xúc
+    "khỏe không", "khoe khong", "bạn khỏe không", "rất vui được gặp", "chúc một ngày tốt lành",
+)
+
+_CHECKLIST_PATTERNS = (
+    # Số lượng người
+    r"^\d+\s*(?:người|ng|pax|vé|ve|khách)(?:\s+lớn|\s+em\s+bé)?$",
+    # Thời gian / số ngày
+    r"^(?:hôm nay|ngày mai|mai|mốt|tuần sau|cuối tuần(?: này)?|tháng sau)$",
+    r"^\d+\s*(?:ngày|đêm|ngay|dem)(?:\s+\d+\s*(?:đêm|dem))?$",
+    # Ngân sách
+    r"^(?:khoảng|tầm)?\s*\d+(?:[\.,]\d+)?\s*(?:triệu|tr|k|củ|dong|đ|vnd)$",
+    # Phương tiện / Lưu trú ngắn
+    r"^(?:đi\s+)?(?:máy bay|tàu hỏa|xe khách|xe máy|ô tô|grab)$",
+    r"^(?:khách sạn|homestay|resort)(?:\s+\d+\s*sao)?$",
+)
+
+_LOCATION_INQUIRY_KEYWORDS = (
+    "ở đâu", "o dau", "chỗ nào", "cho nao", "mấy giờ", "may gio", "mở cửa", "mo cua",
+    "đóng cửa", "dong cua", "giá vé", "gia ve", "bao nhiêu tiền", "bao nhieu tien",
+    "bao tiền", "bao tien", "có gì", "co gi", "ăn gì", "an gi", "chơi gì", "choi gi",
+    "phương tiện gì", "phuong tien gi", "đường đi", "duong di", "cách bao xa", "cach bao xa",
+    "kinh nghiệm", "review", "tham quan", "check in", "check-in", "địa điểm", "dia diem",
+)
+
+
+def should_retrieve_knowledge(query: str, chat_history: Optional[Sequence[Any]] = None) -> bool:
+    """Evaluate whether a query requires Chroma Vector DB retrieval.
+
+    Filters out chitchat, greetings, compliments, and short checklist answers (<0.1ms).
+    Returns True if query refers to specific places, landmarks, or travel inquiries.
+    """
+    clean = (query or "").strip()
+    if not clean:
+        return False
+
+    # Normalize punctuation and case
+    clean_no_punct = re.sub(r"[?!.,;:]+$", "", clean).strip()
+    lower_q = clean_no_punct.lower()
+    words = lower_q.split()
+    word_count = len(words)
+
+    # 1. Chitchat filter: short greeting/thanks/compliment (<= 8 words)
+    if word_count <= 8:
+        for chitchat in _CHITCHAT_PATTERNS:
+            if lower_q == chitchat or lower_q.startswith(chitchat + " ") or lower_q.endswith(" " + chitchat) or f" {chitchat} " in f" {lower_q} ":
+                return False
+
+    # 2. Short checklist criteria answer (<= 5 words, e.g. "2 người", "ngày mai", "5 triệu", "cuối tuần này")
+    if word_count <= 5:
+        for pattern in _CHECKLIST_PATTERNS:
+            if re.match(pattern, lower_q, re.IGNORECASE):
+                return False
+
+    # 3. If text explicitly contains recognizable location entities -> MUST retrieve
+    explicit_entities = extract_entities_from_text(clean)
+    if explicit_entities:
+        return True
+
+    # 4. Check for explicit place/knowledge inquiry keywords (e.g. "ở đâu", "giá vé", "có gì")
+    has_inquiry = any(kw in lower_q for kw in _LOCATION_INQUIRY_KEYWORDS)
+
+    # If it has an inquiry keyword and there's a recent entity in conversation history -> MUST retrieve
+    if has_inquiry:
+        recent_entity = extract_recent_entity(chat_history)
+        if recent_entity:
+            return True
+        # If no recent entity but inquiry keyword is present in longer sentence (> 3 words)
+        if word_count > 3:
+            return True
+
+    # 5. Generic planning requests without specific location (e.g. "lên kế hoạch giúp mình", "tạo lịch trình")
+    generic_planning_phrases = (
+        "lên kế hoạch", "len ke hoach", "lập kế hoạch", "lap ke hoach",
+        "tạo lịch trình", "tao lich trinh", "tư vấn lịch trình", "tu van lich trinh",
+        "giúp mình lên lịch", "gợi ý chuyến đi", "đi du lịch", "muốn đi chơi",
+    )
+    if word_count <= 8 and any(phrase in lower_q for phrase in generic_planning_phrases):
+        recent_entity = extract_recent_entity(chat_history)
+        if not recent_entity:
+            return False
+
+    # Default fallback: if longer sentence or unclear, perform retrieval safely
+    return True
 
 
 class RAGChainError(Exception):

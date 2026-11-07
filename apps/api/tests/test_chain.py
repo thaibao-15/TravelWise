@@ -191,6 +191,7 @@ class TestRAGChain(unittest.TestCase):
                 "không hỗ trợ",
                 "quá tầm hiểu biết",
                 "chịu thua",
+                "chịu thôi",
                 "phải đợi phim khoa học viễn tưởng",
             ]
         )

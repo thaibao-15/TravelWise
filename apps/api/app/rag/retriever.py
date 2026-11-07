@@ -4,6 +4,9 @@ Supports Hybrid Multi-source retrieval: guarantees relevant Database knowledge
 while enriching with crawled web articles.
 """
 
+import functools
+import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_chroma import Chroma
@@ -11,6 +14,30 @@ from langchain_core.documents import Document
 
 from app.rag.config import RAG_TOP_K
 from app.rag.vectorstore import get_vectorstore
+
+logger = logging.getLogger(__name__)
+
+
+def normalize_embedding_query(query: str) -> str:
+    """Normalize query string for consistent cache key mapping.
+
+    Strips whitespace, converts to lowercase, and strips common trailing punctuation.
+    """
+    clean = (query or "").strip().lower()
+    clean = re.sub(r"[?!.,;:]+$", "", clean).strip()
+    return clean
+
+
+@functools.lru_cache(maxsize=1024)
+def _cached_embed_query(embedding_fn: Any, normalized_query: str) -> Tuple[float, ...]:
+    """LRU cache helper for embedding vector computations."""
+    raw_vector = embedding_fn.embed_query(normalized_query)
+    return tuple(float(x) for x in raw_vector)
+
+
+def clear_query_embedding_cache() -> None:
+    """Clear query embedding cache (useful for testing or cache invalidation)."""
+    _cached_embed_query.cache_clear()
 
 
 class RAGRetriever:
@@ -87,13 +114,22 @@ class RAGRetriever:
         if not clean_query:
             return []
 
-        # Pre-compute query embedding once to avoid duplicate Google API embedding network calls
+        # Pre-compute query embedding with in-memory LRU cache to avoid duplicate Google API embedding network calls
         query_embedding: Optional[List[float]] = None
+        normalized_query = normalize_embedding_query(clean_query)
         try:
-            if hasattr(self.vectorstore, "_embedding_function") and hasattr(
-                self.vectorstore._embedding_function, "embed_query"
-            ):
-                query_embedding = self.vectorstore._embedding_function.embed_query(clean_query)
+            embedding_fn = getattr(self.vectorstore, "_embedding_function", None)
+            if embedding_fn and hasattr(embedding_fn, "embed_query"):
+                cache_info_before = _cached_embed_query.cache_info()
+                query_vector_tuple = _cached_embed_query(embedding_fn, normalized_query)
+                cache_info_after = _cached_embed_query.cache_info()
+
+                if cache_info_after.hits > cache_info_before.hits:
+                    logger.debug("Embedding cache HIT for query: '%s'", normalized_query)
+                else:
+                    logger.debug("Embedding cache MISS for query: '%s' (computed & cached)", normalized_query)
+
+                query_embedding = list(query_vector_tuple)
         except Exception as e:
             logger.debug("Pre-computing query embedding failed, falling back to text search: %s", e)
 

@@ -16,7 +16,7 @@ from sqlmodel import Session
 from app.api.deps import get_current_user_optional, get_session
 from app.core.config import settings
 from app.models.user import User
-from app.rag.chain import RAGChainError, get_rag_chain
+from app.rag.chain import RAGChainError, get_rag_chain, should_retrieve_knowledge
 from app.rag.llm import extract_response_text, get_chat_llm
 from app.rag.retriever import RAGRetriever
 from app.schemas.rag import (
@@ -75,6 +75,43 @@ def run_trip_context_extraction_background(
     except Exception as exc:
         logger.error(
             "Background trip context extraction failed for conversation %s: %s",
+            conversation_id,
+            exc,
+            exc_info=True,
+        )
+
+
+def run_conversation_summary_background(
+    conversation_id: int,
+    user_id: Optional[int] = None,
+) -> None:
+    """Update conversation summary in background with an independent database session."""
+    try:
+        from app.db.session import engine
+        from app.services.conversation_summary_service import (
+            ConversationSummaryError,
+            ConversationSummaryService,
+        )
+
+        with Session(engine) as bg_session:
+            ConversationSummaryService.maybe_update_summary(
+                session=bg_session,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+            logger.info(
+                "Background conversation summary updated for conversation %s",
+                conversation_id,
+            )
+    except ConversationSummaryError as exc:
+        logger.warning(
+            "Background conversation summary skipped for %s: %s",
+            conversation_id,
+            exc,
+        )
+    except Exception as exc:
+        logger.error(
+            "Background conversation summary failed for conversation %s: %s",
             conversation_id,
             exc,
             exc_info=True,
@@ -373,29 +410,40 @@ async def ask_knowledge(
             else user_question
         ).strip()
 
-        # Parallel retrieval of documents and weather context
-        docs_task = asyncio.to_thread(
-            chain.retriever.search,
-            query=search_query,
-            top_k=chain.top_k,
-        )
+        # Check intent gating: skip Vector DB embedding/retrieval for chitchat/checklist
+        need_retrieval = should_retrieve_knowledge(search_query, chat_history)
+
         weather_task = WeatherContextService.build_context(
             session=session,
             question=weather_question,
             current_location=request.current_location,
         )
 
-        retrieved_docs_res, weather_context_res = await asyncio.gather(
-            docs_task,
-            weather_task,
-            return_exceptions=True,
-        )
-
-        if isinstance(retrieved_docs_res, Exception):
-            logger.warning("Parallel RAG retrieval failed: %s", type(retrieved_docs_res).__name__)
-            retrieved_docs = []
+        if need_retrieval:
+            # Parallel retrieval of documents and weather context
+            docs_task = asyncio.to_thread(
+                chain.retriever.search,
+                query=search_query,
+                top_k=chain.top_k,
+            )
+            retrieved_docs_res, weather_context_res = await asyncio.gather(
+                docs_task,
+                weather_task,
+                return_exceptions=True,
+            )
+            if isinstance(retrieved_docs_res, Exception):
+                logger.warning("Parallel RAG retrieval failed: %s", type(retrieved_docs_res).__name__)
+                retrieved_docs = []
+            else:
+                retrieved_docs = retrieved_docs_res
         else:
-            retrieved_docs = retrieved_docs_res
+            logger.debug("Skipping vector retrieval for non-factual/chitchat query: '%s'", search_query)
+            retrieved_docs = []
+            try:
+                weather_context_res = await weather_task
+            except Exception as exc:
+                logger.warning("Weather context build failed: %s", type(exc).__name__)
+                weather_context_res = None
 
         if isinstance(weather_context_res, Exception):
             logger.warning("Parallel weather context build failed: %s", type(weather_context_res).__name__)
@@ -490,17 +538,12 @@ async def ask_knowledge(
         content=answer,
     )
 
-    try:
-        ConversationSummaryService.maybe_update_summary(
-            session=session,
-            conversation_id=conversation.id,
-            user_id=conversation.user_id,
-        )
-    except ConversationSummaryError:
-        logger.warning(
-            "Conversation summary skipped for %s",
-            conversation.id,
-        )
+    # Schedule background conversation summary update
+    background_tasks.add_task(
+        run_conversation_summary_background,
+        conversation_id=conversation.id,
+        user_id=conversation.user_id,
+    )
 
     ConversationService.update_conversation_timestamp(
         session,
@@ -681,7 +724,7 @@ async def ask_rag_stream(
             exc,
         )
 
-    # 5. Weather context and vector document retrieval in parallel
+    # 5. Prepare search parameters for streaming response
     weather_question = (
         standalone_question
         if isinstance(standalone_question, str)
@@ -696,41 +739,54 @@ async def ask_rag_stream(
 
     stream_k = 4 if request.mode == "voice" else chain.top_k
 
-    docs_task = asyncio.to_thread(
-        chain.retriever.search,
-        query=search_query,
-        top_k=stream_k,
-    )
-    weather_task = WeatherContextService.build_context(
-        session=session,
-        question=weather_question,
-        current_location=request.current_location,
-    )
-
-    retrieved_docs_res, weather_context_res = await asyncio.gather(
-        docs_task,
-        weather_task,
-        return_exceptions=True,
-    )
-
-    if isinstance(retrieved_docs_res, Exception):
-        logger.warning("Parallel streaming RAG retrieval failed: %s", type(retrieved_docs_res).__name__)
-        retrieved_docs = []
-    else:
-        retrieved_docs = retrieved_docs_res
-
-    if isinstance(weather_context_res, Exception):
-        logger.warning("Parallel streaming weather context build failed: %s", type(weather_context_res).__name__)
-        weather_context = None
-    else:
-        weather_context = weather_context_res
-
-    # 6. Stream response
+    # 6. Stream response (returns immediately to client, runs docs & weather search concurrently inside generator)
     async def event_generator():
 
+        # Emit init event immediately (<30ms) so mobile/web transitions to streaming state without HTTP delay
         yield (
             f"data: {json.dumps({'type': 'init', 'conversation_id': conversation.id})}\n\n"
         )
+
+        # Check intent gating: skip Vector DB embedding/retrieval for chitchat/checklist
+        need_retrieval = should_retrieve_knowledge(search_query, chat_history)
+
+        weather_task = WeatherContextService.build_context(
+            session=session,
+            question=weather_question,
+            current_location=request.current_location,
+        )
+
+        if need_retrieval:
+            # Weather context and vector document retrieval in parallel inside the stream
+            docs_task = asyncio.to_thread(
+                chain.retriever.search,
+                query=search_query,
+                top_k=stream_k,
+            )
+            retrieved_docs_res, weather_context_res = await asyncio.gather(
+                docs_task,
+                weather_task,
+                return_exceptions=True,
+            )
+            if isinstance(retrieved_docs_res, Exception):
+                logger.warning("Parallel streaming RAG retrieval failed: %s", type(retrieved_docs_res).__name__)
+                retrieved_docs = []
+            else:
+                retrieved_docs = retrieved_docs_res
+        else:
+            logger.debug("Skipping streaming vector retrieval for non-factual/chitchat query: '%s'", search_query)
+            retrieved_docs = []
+            try:
+                weather_context_res = await weather_task
+            except Exception as exc:
+                logger.warning("Streaming weather context build failed: %s", type(exc).__name__)
+                weather_context_res = None
+
+        if isinstance(weather_context_res, Exception):
+            logger.warning("Parallel streaming weather context build failed: %s", type(weather_context_res).__name__)
+            weather_context = None
+        else:
+            weather_context = weather_context_res
 
         full_answer_parts = []
 
@@ -789,17 +845,12 @@ async def ask_rag_stream(
             content=final_answer,
         )
 
-        try:
-            ConversationSummaryService.maybe_update_summary(
-                session=session,
-                conversation_id=conversation.id,
-                user_id=conversation.user_id,
-            )
-        except ConversationSummaryError:
-            logger.warning(
-                "Conversation summary skipped after streaming for %s",
-                conversation.id,
-            )
+        # Schedule background conversation summary update without delaying SSE completion
+        background_tasks.add_task(
+            run_conversation_summary_background,
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+        )
 
         # 10. Image/video suggestions
         suggested_media = suggest_media_safely(
