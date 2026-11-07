@@ -5,6 +5,7 @@ import '../../../../core/constants/spacing.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/assistant_input_bar.dart';
+import '../widgets/conversation_history_sheet.dart';
 
 /// Dedicated full-screen AI chat box screen (ChatGPT / Claude style)
 /// Decoupled from the Voice Orb screen while sharing the same Riverpod state.
@@ -168,6 +169,12 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
           ],
         ),
         actions: [
+          // Lịch sử cuộc trò chuyện
+          IconButton(
+            icon: const Icon(Icons.history_rounded, size: 22, color: AppColors.textPrimary),
+            tooltip: 'Lịch sử cuộc trò chuyện',
+            onPressed: () => ConversationHistorySheet.show(context),
+          ),
           // Button to switch to Voice Mode
           IconButton(
             icon: Container(

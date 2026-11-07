@@ -39,6 +39,7 @@ from app.schemas.place_search import PlaceSearchRequest, PlaceSearchResponse
 from app.schemas.trip_planning import TripPlanningContext
 from app.services.itinerary_generation_service import ItineraryGenerationService
 from app.services.itinerary_persistence_service import ItineraryPersistenceService
+from app.services.itinerary_tools import ITINERARY_EDIT_TOOLS, ItineraryToolExecutor
 from app.services.place_search_service import PlaceSearchService
 from app.services.trip_planning_service import TripPlanningContextExtractionService
 
@@ -874,14 +875,57 @@ def edit_itinerary_for_trip(
     except Exception as cur_err:
         logger.warning("Could not fetch current itinerary before edit for trip %s: %s", trip.id, cur_err)
 
-    # 1. Tự động xác định bằng LLM và RAG xem prompt có phải yêu cầu chỉnh sửa hay không
-    intent_check = ItineraryGenerationService.detect_edit_intent(
-        session=session,
-        trip_id=trip.id,
-        message=request_data.change_prompt,
-        conversation_id=trip.conversation_id,
-        current_user=current_user,
+    # 1. Kiểm tra nhanh các từ khóa chỉnh sửa rõ ràng bằng Regex để BỎ QUA bước gọi LLM detect (tiết kiệm ~3.5 giây)
+    prompt_raw = (request_data.change_prompt or "").strip()
+    prompt_lower = prompt_raw.lower()
+    is_fast_undo = any(kw in prompt_lower for kw in ["quay lại lịch", "lịch trước khi sửa", "hoàn tác", "giữ nguyên lịch cũ", "như cũ"])
+    is_fast_review = any(kw in prompt_lower for kw in [
+        "review", "đánh giá", "tóm tắt", "tom tat", "đọc lịch", "đọc lại", "xem lại lịch",
+        "lịch trình có gì", "lịch trình thế nào", "xem lịch", "lịch hiện tại", "có những điểm nào",
+        "có những gì", "những hoạt động nào", "chi tiết lịch"
+    ])
+    is_obvious_edit_kw = bool(
+        re.search(
+            r"\b(dậy|ngủ|trễ|muộn|sớm|dời|chuyển|bỏ|xóa|xoá|thêm|đổi|thay|ghé|ghé quán|điều chỉnh|cập nhật|bắt đầu|kết thúc|rút gọn|kéo dài|tăng|giảm)\b",
+            prompt_lower,
+        )
+        or re.search(r"(\d{1,2}\s*h|\d{1,2}:\d{2}|ngày\s*\d+|buổi\s*(sáng|trưa|chiều|tối))", prompt_lower)
     )
+
+    intent_check: Dict[str, Any]
+    if is_fast_undo:
+        intent_check = {
+            "is_edit_intent": True,
+            "is_undo": True,
+            "confidence": "HIGH",
+            "change_prompt": prompt_raw,
+            "reason": "Yêu cầu hoàn tác lịch trình.",
+        }
+    elif is_fast_review:
+        intent_check = {
+            "is_edit_intent": True,
+            "is_undo": False,
+            "confidence": "HIGH",
+            "change_prompt": prompt_raw,
+            "reason": "Yêu cầu review, đọc lại hoặc tóm tắt lịch trình hiện tại.",
+        }
+    elif is_obvious_edit_kw:
+        intent_check = {
+            "is_edit_intent": True,
+            "is_undo": False,
+            "confidence": "HIGH",
+            "change_prompt": prompt_raw,
+            "reason": "Nhận diện từ khóa chỉnh sửa lịch trình trực tiếp.",
+        }
+    else:
+        # Chỉ gọi LLM phân loại khi câu nói không rõ ràng (ví dụ: "chỗ này xa quá", "mệt mỏi quá")
+        intent_check = ItineraryGenerationService.detect_edit_intent(
+            session=session,
+            trip_id=trip.id,
+            message=request_data.change_prompt,
+            conversation_id=trip.conversation_id,
+            current_user=current_user,
+        )
 
     # 2. Retrieve & hydrate planning context
     pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
@@ -1053,7 +1097,174 @@ def edit_itinerary_for_trip(
             session.rollback()
             logger.warning("Could not snapshot backup itinerary: %s", snap_err)
 
-    # 3. Re-generate with validated user prompt, existing itinerary context, and overwrite permission
+    # 3. FAST-PATH: Thử áp dụng LLM Function Calling cho các chỉnh sửa vi mô (< 1.0s)
+    # Nếu không phải lệnh đổi số ngày toàn diện, ta phân tích Tool Calls để cập nhật trực tiếp DB
+    if not explicit_days_match and current_details and current_details.days:
+        try:
+            from app.rag.llm import get_chat_llm
+            from langchain_core.messages import SystemMessage, HumanMessage
+
+            # Xây dựng danh sách tóm tắt hoạt động hiện có
+            itin_summary_lines = []
+            for d in current_details.days:
+                acts_str = ", ".join(
+                    f"{a.start_time or '??'}-{a.end_time or '??'}: {a.place.name if a.place else a.title}"
+                    for a in (d.activities or [])
+                )
+                itin_summary_lines.append(f"Ngày {d.day_number}: {acts_str}")
+            itin_overview = "\n".join(itin_summary_lines)
+
+            system_instruction = (
+                "Bạn là Linh AI - Hướng dẫn viên du lịch thông minh của TravelWise.\n"
+                "Nhiệm vụ bắt buộc: Hãy phân tích yêu cầu của du khách và GỌI CÔNG CỤ (tool call) phù hợp trong danh sách tools được cung cấp để thực hiện chỉnh sửa lịch trình.\n"
+                "- Khi du khách muốn dậy trễ, bắt đầu muộn, dời giờ, đổi giờ: BẮT BUỘC gọi tool update_activity_time.\n"
+                "- Khi du khách muốn bỏ, xóa, không đi một điểm nào đó: BẮT BUỘC gọi tool remove_activity.\n"
+                "- Khi du khách muốn thêm, bổ sung quán ăn, cà phê, điểm tham quan: BẮT BUỘC gọi tool add_activity.\n"
+                "- Khi du khách muốn đổi, thay thế một địa điểm này bằng điểm khác: BẮT BUỘC gọi tool replace_activity.\n"
+                "- Khi du khách muốn tráo đổi 2 điểm tham quan với nhau hoặc đổi lịch giữa 2 ngày: BẮT BUỘC gọi tool swap_activities.\n"
+                "- Khi du khách muốn tăng hoặc giảm thời gian tham quan ở một điểm: BẮT BUỘC gọi tool change_activity_duration.\n"
+                "- Khi du khách muốn xóa trắng 1 ngày để nghỉ ngơi / tự do khám phá: BẮT BUỘC gọi tool clear_day_activities.\n"
+                "- Khi du khách muốn review, đọc lại, tóm tắt lịch trình hiện tại: BẮT BUỘC gọi tool review_current_itinerary.\n"
+                "- Khi du khách muốn quay lại lịch cũ, hoàn tác: BẮT BUỘC gọi tool undo_last_edit.\n"
+                "CHÚ Ý:\n"
+                "- Luôn xác định đúng day_number (nếu du khách nói 'mai' hoặc không nói rõ ngày, mặc định là ngày 1 hoặc target_day).\n"
+                "- Tên địa điểm (place_name, old_place_name) nên lấy chính xác theo tên hiển thị trong lịch trình bên dưới.\n"
+                "- BẮT BUỘC phát sinh ít nhất một tool call để thực hiện yêu cầu.\n\n"
+                f"=== LỊCH TRÌNH HIỆN TẠI ===\n{itin_overview}"
+            )
+
+            chat_llm = get_chat_llm(temperature=0.0)
+            llm_with_tools = chat_llm.bind_tools(ITINERARY_EDIT_TOOLS)
+            tool_res = llm_with_tools.invoke([
+                SystemMessage(content=system_instruction),
+                HumanMessage(content=effective_prompt)
+            ])
+
+            if tool_res.tool_calls and len(tool_res.tool_calls) > 0:
+                applied_tool_msgs = []
+                for tc in tool_res.tool_calls:
+                    fn_name = tc.get("name")
+                    fn_args = tc.get("args", {})
+                    success = False
+                    msg = ""
+
+                    if fn_name == "update_activity_time":
+                        success, msg = ItineraryToolExecutor.execute_update_time(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            new_start_time=fn_args.get("new_start_time", "10:00"),
+                            place_name=fn_args.get("place_name"),
+                            new_end_time=fn_args.get("new_end_time"),
+                        )
+                    elif fn_name == "remove_activity":
+                        success, msg = ItineraryToolExecutor.execute_remove_activity(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            place_name=fn_args.get("place_name"),
+                            time_slot=fn_args.get("time_slot"),
+                        )
+                    elif fn_name == "add_activity":
+                        success, msg = ItineraryToolExecutor.execute_add_activity(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            place_name=fn_args.get("place_name", "Điểm tham quan"),
+                            preferred_time=fn_args.get("preferred_time"),
+                            insert_after_place=fn_args.get("insert_after_place"),
+                            note=fn_args.get("note"),
+                        )
+                    elif fn_name == "replace_activity":
+                        success, msg = ItineraryToolExecutor.execute_replace_activity(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            old_place_name=fn_args.get("old_place_name", ""),
+                            new_place_or_category=fn_args.get("new_place_or_category", ""),
+                        )
+                    elif fn_name == "swap_activities":
+                        success, msg = ItineraryToolExecutor.execute_swap_activities(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number_1=fn_args.get("day_number_1", request_data.target_day or 1),
+                            place_name_1=fn_args.get("place_name_1", ""),
+                            day_number_2=fn_args.get("day_number_2"),
+                            place_name_2=fn_args.get("place_name_2", ""),
+                        )
+                    elif fn_name == "change_activity_duration":
+                        success, msg = ItineraryToolExecutor.execute_change_duration(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            place_name=fn_args.get("place_name", ""),
+                            new_duration_minutes=fn_args.get("new_duration_minutes", 90),
+                        )
+                    elif fn_name == "clear_day_activities":
+                        success, msg = ItineraryToolExecutor.execute_clear_day(
+                            session=session,
+                            trip_id=trip.id,
+                            day_number=fn_args.get("day_number", request_data.target_day or 1),
+                            note=fn_args.get("note", "Nghỉ ngơi và tự do khám phá"),
+                        )
+                    elif fn_name == "review_current_itinerary":
+                        success, msg = ItineraryToolExecutor.execute_review_itinerary(
+                            session=session,
+                            trip_id=trip.id,
+                            focus_day=fn_args.get("focus_day", request_data.target_day),
+                            perspective=fn_args.get("perspective", "overview"),
+                            current_user=current_user,
+                        )
+                    elif fn_name == "undo_last_edit":
+                        success, msg = ItineraryToolExecutor.execute_undo(
+                            session=session,
+                            trip_id=trip.id,
+                            current_user=current_user,
+                            allow_overwrite=request_data.allow_overwrite,
+                        )
+
+                    if success:
+                        applied_tool_msgs.append(msg)
+
+                if applied_tool_msgs:
+                    if was_confirmed:
+                        trip_ref = session.get(Trip, trip.id)
+                        if trip_ref and trip_ref.status != "CONFIRMED":
+                            trip_ref.status = "CONFIRMED"
+                            trip_ref.updated_at = _utcnow()
+                            session.add(trip_ref)
+                            session.commit()
+
+                    updated_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                        session=session,
+                        trip_id=trip.id,
+                        current_user=current_user,
+                        check_ownership=True if current_user else False,
+                    )
+
+                    # Nếu chỉ là tool đọc / review lịch trình, trả trực tiếp nội dung review tự nhiên
+                    is_pure_review = any("xin tóm tắt" in m or "Dưới đây là chi tiết lịch trình" in m for m in applied_tool_msgs)
+                    if is_pure_review:
+                        ai_explanation = "\n".join(applied_tool_msgs)
+                    else:
+                        ai_explanation = (
+                            "Mình đã điều chỉnh lịch trình theo ý bạn rồi nhé! "
+                            + " ".join(applied_tool_msgs)
+                        )
+
+                    return ItineraryEditResponse(
+                        status=EditStatusEnum.EDITED.value,
+                        trip_id=trip.id,
+                        conversation_id=trip.conversation_id,
+                        message=ai_explanation,
+                        applied_changes=applied_tool_msgs,
+                        itinerary=updated_details,
+                        warnings=[],
+                    )
+        except Exception as tool_err:
+            logger.warning("Fast-path Function Calling edit failed, falling back to full generation: %s", tool_err)
+
+    # 4. Fallback: Re-generate with validated user prompt, existing itinerary context, and overwrite permission
     gen_res = ItineraryGenerationService.generate_itinerary(
         session=session,
         context=context,

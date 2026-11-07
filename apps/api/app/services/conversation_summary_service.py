@@ -17,10 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 SUMMARY_SYSTEM_PROMPT = """Bạn là bộ nhớ tóm tắt hội thoại của TravelWise.
-Hãy hợp nhất summary cũ (nếu có) với các tin nhắn mới và trả về một summary tiếng Việt
-ngắn gọn, dễ đọc, chỉ giữ thông tin hữu ích cho những lần trò chuyện sau:
+Hãy hợp nhất summary cũ (nếu có) với các tin nhắn mới và tạo ra:
+1. TIÊU ĐỀ: 1 tiêu đề thật ngắn gọn từ 3 đến 5 từ tiếng Việt bao quát chủ đề nổi bật người dùng đang quan tâm (không rập khuôn, đặt tự nhiên theo ngữ cảnh cuộc trò chuyện).
+2. TÓM TẮT: Đoạn tóm tắt tiếng Việt ngắn gọn, dễ đọc, chỉ giữ thông tin hữu ích cho những lần trò chuyện sau:
 - sở thích du lịch, địa điểm quan tâm, ngân sách, thời gian và yêu cầu chuyến đi;
-- lịch trình đã thống nhất;
+- thông tin hoặc thỏa thuận đã thống nhất;
 - câu hỏi hoặc yêu cầu chưa được giải quyết;
 - các thông tin quan trọng khác do người dùng trực tiếp cung cấp.
 
@@ -29,7 +30,9 @@ Quy tắc bắt buộc:
 2. Khi người dùng thay đổi yêu cầu, giữ giá trị mới nhất và bỏ giá trị cũ nếu có căn cứ rõ ràng.
 3. Bỏ lời chào, nội dung lặp lại và chi tiết không hữu ích.
 4. Không đưa API key, mật khẩu, token hoặc bí mật vào summary.
-5. Chỉ trả về summary tiếng Việt, không thêm lời dẫn, tiêu đề hay Markdown không cần thiết.
+5. Định dạng kết quả chính xác theo mẫu:
+TIÊU ĐỀ: <3 đến 5 từ>
+TÓM TẮT: <nội dung tóm tắt>
 """
 
 
@@ -174,12 +177,35 @@ class ConversationSummaryService:
                         ),
                     ]
                 )
-                summary_text = extract_response_text(
+                full_text = extract_response_text(
                     getattr(response, "content", response)
                 ).strip()
-                if not summary_text:
+                if not full_text:
                     raise ConversationSummaryError("LLM returned an empty summary")
 
+                extracted_title = None
+                summary_text = full_text
+
+                # Parse TIÊU ĐỀ: and TÓM TẮT:
+                import re
+                title_match = re.search(r"(?i)^TIÊU ĐỀ:\s*(.+)$", full_text, re.MULTILINE)
+                summary_match = re.search(r"(?i)^TÓM TẮT:\s*([\s\S]+)$", full_text, re.MULTILINE)
+
+                if title_match:
+                    raw_title = title_match.group(1).strip()
+                    # Clean title quotes or extra markers
+                    raw_title = re.sub(r"^[\"']|[\"']$", "", raw_title).strip()
+                    if raw_title:
+                        extracted_title = raw_title[:255]
+
+                if summary_match:
+                    summary_text = summary_match.group(1).strip()
+                elif title_match:
+                    # Remove the TIÊU ĐỀ line from summary
+                    summary_text = re.sub(r"(?i)^TIÊU ĐỀ:\s*.+$", "", full_text, flags=re.MULTILINE).strip()
+
+                # Chỉ cập nhật tiêu đề cuộc trò chuyện trong lần tóm tắt đầu tiên (không thay đổi ở các lần sau)
+                is_first_summary = current is None
                 now = _utcnow()
                 if current is None:
                     current = ConversationSummary(
@@ -192,6 +218,11 @@ class ConversationSummaryService:
                     current.summary = summary_text[: cls.MAX_SUMMARY_LENGTH]
                     current.last_summarized_message_id = new_messages[-1].id
                     current.updated_at = now
+
+                if is_first_summary and extracted_title:
+                    conversation.title = extracted_title
+                    session.add(conversation)
+
                 session.add(current)
                 session.commit()
                 session.refresh(current)

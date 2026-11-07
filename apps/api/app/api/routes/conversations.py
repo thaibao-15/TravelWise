@@ -47,7 +47,7 @@ def list_conversations(
     limit: int = 50,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
-) -> List[Conversation]:
+) -> List[dict]:
     return ConversationService.list_user_conversations(
         session=session,
         user_id=current_user.id,

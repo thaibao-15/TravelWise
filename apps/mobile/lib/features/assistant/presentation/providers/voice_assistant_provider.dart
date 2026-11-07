@@ -1126,6 +1126,24 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           userPrompt: _lastLiveKitUserTranscript,
         ),
       );
+    } else if (action == 'TRIGGER_EDIT') {
+      final targetTripId =
+          state.savedTripId ??
+          (state.tripPreview?.id != null &&
+                  state.tripPreview!.id.isNotEmpty &&
+                  state.tripPreview!.id != '0'
+              ? state.tripPreview!.id.toString()
+              : _activeTripIdFromState(context));
+
+      final editPrompt = _lastLiveKitUserTranscript.trim();
+      if (editPrompt.isNotEmpty &&
+          (state.tripPreview != null || targetTripId != null)) {
+        log('livekit_trigger_edit', {
+          'targetTripId': targetTripId,
+          'prompt': editPrompt,
+        });
+        unawaited(editCurrentOrSavedTrip(instruction: editPrompt));
+      }
     } else if (action == 'TRIGGER_SAVE' && state.conversationId != null) {
       unawaited(saveCurrentTrip(convId: state.conversationId));
     }
@@ -1380,7 +1398,6 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   }
 
   /// Clears the chat conversation history and planning state.
-
   void clearConversation() {
     log('chat_clear_conversation');
     _requestGeneration++;
@@ -1398,21 +1415,57 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     state = state.copyWith(
       messages: [],
-
+      clearConversationId: true,
       currentTranscript: '',
-
       planningState: TripPlanningState.idle,
-
       clearTripPreview: true,
-
       planningContext: null,
-
       planningContextSummary: null,
-
       voiceState: VoiceState.idle,
-
       isRecording: false,
     );
+  }
+
+  /// Load messages from an existing conversation and set it as active.
+  Future<void> loadConversation(int conversationId) async {
+    log('load_conversation_by_id', {'conversationId': conversationId});
+    _audioService.abortStream();
+    stopAudio();
+    _abortListening();
+
+    try {
+      final response = await _dio.get('/api/v1/conversations/$conversationId/messages');
+      if (response.statusCode == 200 && response.data is List) {
+        final rawMessages = response.data as List;
+        final loadedMessages = <ChatMessage>[];
+
+        for (final item in rawMessages) {
+          if (item is Map<String, dynamic>) {
+            final sender = item['sender']?.toString().toUpperCase() ?? '';
+            final content = item['content']?.toString() ?? '';
+            final createdAt = DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now();
+
+            loadedMessages.add(
+              ChatMessage(
+                text: content,
+                isUser: sender == 'USER',
+                timestamp: createdAt,
+              ),
+            );
+          }
+        }
+
+        state = state.copyWith(
+          conversationId: conversationId,
+          messages: loadedMessages,
+          currentTranscript: '',
+          voiceState: VoiceState.idle,
+          isRecording: false,
+        );
+      }
+    } catch (e) {
+      log('load_conversation_failed: $e');
+    }
   }
 
   /// AI tự động chào và giới thiệu với người dùng khi mở màn hình Trợ lý du lịch.
@@ -3362,43 +3415,32 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
       state = state.copyWith(
         planningState: TripPlanningState.previewReady,
-
         tripPreview: trip,
-
         savedTripId: trip.id.isNotEmpty ? trip.id : state.savedTripId,
       );
 
       _ref.read(currentTripPreviewProvider.notifier).state = trip;
 
       final previewMsg =
-          'Mình đã hoàn thành lịch trình ${trip.title} (${trip.daysCount} ngày, ${trip.totalStops} địa điểm)! Bạn có thể xem chi tiết ngay bên dưới hoặc nói yêu cầu để mình chỉnh sửa lịch trình nhé.';
+          'Mình đã hoàn thành lịch trình ${trip.title} (${trip.daysCount} ngày, ${trip.totalStops} địa điểm)!';
 
       final aiMsg = ChatMessage(
         text: previewMsg,
-
         isUser: false,
-
         timestamp: DateTime.now(),
-
         tripItinerary: trip,
       );
 
       state = state.copyWith(
         messages: [...state.messages, aiMsg],
-
-        currentTranscript: previewMsg,
+        voiceState: VoiceState.idle,
       );
 
       if (_isVoiceSession) {
         _userKeepMicOn = true;
       }
 
-      if (state.isTtsEnabled) {
-        _ttsCancelled = false;
-        await _playTts(previewMsg);
-      } else {
-        _resumeListeningIfPersistent();
-      }
+      _resumeListeningIfPersistent();
     } catch (e) {
       log('generate_itinerary_error', {'error': e.toString()});
 
@@ -3702,7 +3744,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
         final editMsg =
             serverMsg ??
-            'Đã cập nhật lịch trình theo yêu cầu của bạn: "$instruction".';
+            'Đã cập nhật lịch trình theo yêu cầu: "$instruction".';
         final aiMsg = ChatMessage(
           text: editMsg,
           isUser: false,
@@ -3711,19 +3753,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         );
         state = state.copyWith(
           messages: [...state.messages, aiMsg],
-          currentTranscript: editMsg,
+          voiceState: VoiceState.idle,
         );
 
         if (_isVoiceSession) {
           _userKeepMicOn = true;
         }
-        if (state.isTtsEnabled) {
-          _ttsCancelled = false;
-          await _playTts(editMsg);
-        } else {
-          state = state.copyWith(voiceState: VoiceState.idle);
-          _resumeListeningIfPersistent();
-        }
+        _resumeListeningIfPersistent();
       } else {
         state = state.copyWith(
           planningState: wasSaved

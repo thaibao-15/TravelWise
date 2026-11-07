@@ -52,7 +52,7 @@ class TestConversationSummaryService(unittest.TestCase):
     def test_creates_summary_and_tracks_last_message(self, get_llm):
         self._add_messages(8)
         get_llm.return_value.invoke.return_value = Mock(
-            content="Người dùng muốn đi Đà Nẵng trong 3 ngày."
+            content="TIÊU ĐỀ: Khám phá Hội An\nTÓM TẮT: Người dùng muốn đi Đà Nẵng trong 3 ngày."
         )
 
         with Session(self.engine) as session:
@@ -69,7 +69,35 @@ class TestConversationSummaryService(unittest.TestCase):
             self.assertEqual(
                 summary.summary, "Người dùng muốn đi Đà Nẵng trong 3 ngày."
             )
+            conversation = session.get(Conversation, self.conversation_id)
+            self.assertEqual(conversation.title, "Khám phá Hội An")
             get_llm.return_value.invoke.assert_called_once()
+
+    @patch("app.services.conversation_summary_service.get_chat_llm")
+    def test_does_not_overwrite_title_on_subsequent_summary(self, get_llm):
+        self._add_messages(8)
+        get_llm.return_value.invoke.return_value = Mock(
+            content="TIÊU ĐỀ: Tiêu đề mới không được ghi đè\nTÓM TẮT: Summary mới"
+        )
+
+        with Session(self.engine) as session:
+            old = ConversationSummary(
+                conversation_id=self.conversation_id,
+                summary="Ngân sách 5 triệu.",
+                last_summarized_message_id=2,
+            )
+            session.add(old)
+            conversation = session.get(Conversation, self.conversation_id)
+            conversation.title = "Tiêu đề ban đầu"
+            session.add(conversation)
+            session.commit()
+
+            ConversationSummaryService.maybe_update_summary(
+                session, self.conversation_id, self.user_id
+            )
+            session.refresh(conversation)
+            # Tiêu đề vẫn phải giữ nguyên là "Tiêu đề ban đầu"
+            self.assertEqual(conversation.title, "Tiêu đề ban đầu")
 
     @patch("app.services.conversation_summary_service.get_chat_llm")
     def test_updates_existing_summary_and_preserves_old_summary_in_prompt(

@@ -69,16 +69,33 @@ class ConversationService:
         user_id: int,
         skip: int = 0,
         limit: int = 50,
-    ) -> List[Conversation]:
-        """List all conversations owned by a user, ordered by recent update."""
+    ) -> List[dict]:
+        """List all conversations owned by a user, ordered by recent update with optional summary."""
+        from app.models.conversation_summary import ConversationSummary
+
         statement = (
-            select(Conversation)
+            select(Conversation, ConversationSummary.summary)
+            .outerjoin(ConversationSummary, ConversationSummary.conversation_id == Conversation.id)
             .where(Conversation.user_id == user_id)
             .order_by(Conversation.updated_at.desc())
             .offset(skip)
             .limit(limit)
         )
-        return list(session.exec(statement).all())
+        rows = session.exec(statement).all()
+        results = []
+        for conv, summary in rows:
+            display_title = conv.title or f"Cuộc trò chuyện #{conv.id}"
+            results.append(
+                {
+                    "id": conv.id,
+                    "user_id": conv.user_id,
+                    "title": display_title,
+                    "summary": summary,
+                    "created_at": conv.created_at,
+                    "updated_at": conv.updated_at,
+                }
+            )
+        return results
 
     @staticmethod
     def update_conversation_timestamp(
