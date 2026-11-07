@@ -87,6 +87,42 @@ class TestRAGChain(unittest.TestCase):
         self.assertNotIn(secret_leak, error_message)
         self.assertIn("lỗi", error_message.lower())
 
+    def test_contextualize_question_heuristic_stitching(self):
+        """contextualize_question should stitch location entity from history without calling LLM."""
+        from langchain_core.messages import HumanMessage, AIMessage
+
+        mock_llm = MagicMock()
+        chain = RAGChain(
+            retriever=MagicMock(),
+            llm=mock_llm,
+        )
+
+        history = [
+            HumanMessage(content="Chùa Linh Ứng ở đâu vậy?"),
+            AIMessage(content="Chùa Linh Ứng nằm ở Bán đảo Sơn Trà, Đà Nẵng."),
+        ]
+
+        # 1. Follow-up short query should stitch recent entity
+        res_followup = chain.contextualize_question("Vé vào cổng bao nhiêu?", chat_history=history)
+        self.assertIn("Chùa Linh Ứng", res_followup)
+        self.assertIn("Vé vào cổng bao nhiêu?", res_followup)
+
+        # 2. Pronoun query should stitch entity
+        res_pronoun = chain.contextualize_question("Nó mở cửa mấy giờ?", chat_history=history)
+        self.assertIn("Chùa Linh Ứng", res_pronoun)
+
+        # 3. New place query should NOT stitch old entity
+        res_new_place = chain.contextualize_question("Bà Nà Hills có cáp treo không?", chat_history=history)
+        self.assertEqual(res_new_place, "Bà Nà Hills có cáp treo không?")
+        self.assertNotIn("Chùa Linh Ứng", res_new_place)
+
+        # 4. Long standalone query should NOT stitch entity
+        res_standalone = chain.contextualize_question("Thời tiết hôm nay tại miền Trung thế nào bạn?", chat_history=history)
+        self.assertEqual(res_standalone, "Thời tiết hôm nay tại miền Trung thế nào bạn?")
+
+        # 5. Crucial: LLM must NEVER be invoked (0ms latency)
+        mock_llm.invoke.assert_not_called()
+
     @unittest.skipUnless(_chroma_has_data(), "Chroma knowledge base not available (e.g. CI)")
     def test_chua_linh_ung_query_e2e(self):
         """RAG chain should successfully answer 'Chùa Linh Ứng có gì đặc biệt?'."""
