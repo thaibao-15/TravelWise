@@ -23,20 +23,20 @@ class Avatar3dOption {
 /// Pre-configured 3D avatars available in assets/models
 const List<Avatar3dOption> kAvailableAvatars = [
   Avatar3dOption(
+    id: 'nam_c',
+    name: 'Nam (Anime 3D)',
+    subtitle: 'Năng động, lịch lãm, khẩu hình nhép môi 3D chuẩn xác',
+    assetPath: 'assets/models/Nam_C.glb',
+    tag: 'Khuyên dùng',
+    iconEmoji: '🤵',
+  ),
+  Avatar3dOption(
     id: 'avatar_sample_a',
     name: 'Linh (Anime 3D)',
     subtitle: 'Năng động, cử động nhép môi tự nhiên theo âm thanh',
     assetPath: 'assets/models/AvatarSample_A.glb',
-    tag: 'Khuyên dùng',
+    tag: 'Anime Nữ',
     iconEmoji: '✨',
-  ),
-  Avatar3dOption(
-    id: 'linh_classic',
-    name: 'Linh Classic',
-    subtitle: 'Thanh lịch, trang nhã, phong cách truyền thống',
-    assetPath: 'assets/models/linh_avatar.glb',
-    tag: 'Cổ điển',
-    iconEmoji: '🌸',
   ),
 ];
 
@@ -62,8 +62,8 @@ class Avatar3dState {
   final bool hasSkeleton;
 
   const Avatar3dState({
-    this.selectedModelPath = 'assets/models/AvatarSample_A.glb',
-    this.modelName = 'Linh (Anime 3D)',
+    this.selectedModelPath = 'assets/models/Nam_C.glb',
+    this.modelName = 'Nam (Anime 3D)',
     this.isLoading = false,
     this.error,
     this.userOrbitYaw = 0.0,

@@ -139,9 +139,10 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
     try {
       final assetPaths = [
         chosenPath,
+        'assets/models/Nam_C.glb',
+        'assets/models/Nam_C.vrm',
         'assets/models/AvatarSample_A.glb',
         'assets/models/AvatarSample_A.vrm',
-        'assets/models/linh_avatar.glb',
         'assets/models/model.vrm',
         'assets/models/model.glb',
       ];
@@ -191,10 +192,20 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
+            final option = kAvailableAvatars.firstWhere(
+              (a) => a.assetPath == chosenPath || a.assetPath == successfulPath,
+              orElse: () => Avatar3dOption(
+                id: 'custom',
+                name: displayName,
+                subtitle: '',
+                assetPath: chosenPath,
+                tag: '',
+              ),
+            );
             ref
                 .read(avatar3dStateProvider.notifier)
                 .setLoaded(
-                  modelName: chosenPath.split('/').last,
+                  modelName: option.name,
                   hasMorphTargets: model.hasMorphTargets,
                   hasSkeleton: model.hasSkeleton,
                 );
@@ -297,6 +308,14 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                         );
 
                         final bool isSkinned = _loadedModel!.skins.isNotEmpty;
+                        final bool isNam = _loadedModel!.name.toLowerCase().contains('nam');
+
+                        // Góc cận cảnh chân dung bán thân (Bust-up Portrait):
+                        // Cận mặt hơn thêm một nấc, làm nổi bật ánh mắt & khẩu hình nhưng vẫn giữ trọn bờ vai cân xứng
+                        final double camDist = isSkinned ? 0.67 : 0.88;
+                        final double tgtY = isSkinned
+                            ? (isNam ? 1.50 : 1.32)
+                            : 1.14;
 
                         return CustomPaint(
                           size: Size(constraints.maxWidth, constraints.maxHeight),
@@ -307,8 +326,8 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                             orbitYaw: avatarState.userOrbitYaw,
                             orbitPitch: avatarState.userOrbitPitch,
                             zoom: avatarState.userZoom,
-                            cameraDistance: isSkinned ? 1.10 : 1.18,
-                            targetY: isSkinned ? 1.20 : 1.14,
+                            cameraDistance: camDist,
+                            targetY: tgtY,
                           ),
                         );
                       },
@@ -491,28 +510,30 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
     Color dotColor;
     String statusText;
 
+    final String avatarName = ref.watch(avatar3dStateProvider).modelName;
+
     switch (state) {
       case VoiceState.speaking:
         dotColor = const Color(0xFF0284C7);
-        statusText = 'Linh AI 3D • Đang nói';
+        statusText = '$avatarName • Đang nói';
         break;
       case VoiceState.listening:
         dotColor = const Color(0xFF10B981);
-        statusText = 'Linh AI 3D • Đang nghe bạn';
+        statusText = '$avatarName • Đang nghe bạn';
         break;
       case VoiceState.thinking:
       case VoiceState.processing:
       case VoiceState.connecting:
         dotColor = const Color(0xFF0D9488);
-        statusText = 'Linh AI 3D • Đang suy nghĩ';
+        statusText = '$avatarName • Đang suy nghĩ';
         break;
       case VoiceState.error:
         dotColor = const Color(0xFFEF4444);
-        statusText = 'Linh AI 3D • Trạng thái nghỉ';
+        statusText = '$avatarName • Trạng thái nghỉ';
         break;
       case VoiceState.idle:
         dotColor = const Color(0xFF10B981);
-        statusText = 'Linh AI 3D • Sẵn sàng';
+        statusText = '$avatarName • Sẵn sàng';
         break;
     }
 

@@ -102,10 +102,6 @@ class AvatarAnimationService {
   double _smoothAa = 0.0;
   double _smoothOh = 0.0;
   double _smoothEe = 0.0;
-  VoiceState? _lastVoiceState;
-  double? _speakingStartSeconds;
-  double? _speakingEndSeconds;
-  String _lastSpeechText = '';
 
   void reset() {
     _blinkTimer = 0.0;
@@ -115,10 +111,6 @@ class AvatarAnimationService {
     _smoothAa = 0.0;
     _smoothOh = 0.0;
     _smoothEe = 0.0;
-    _lastVoiceState = null;
-    _speakingStartSeconds = null;
-    _speakingEndSeconds = null;
-    _lastSpeechText = '';
   }
 
   /// Computes frame animation targets.
