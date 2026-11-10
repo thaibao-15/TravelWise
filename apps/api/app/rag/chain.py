@@ -96,11 +96,22 @@ def attach_images_to_messages(messages: Sequence[Any], image_urls: Optional[Sequ
     existing_text = extract_response_text(getattr(last_msg, "content", last_msg))
 
     guidance = (
-        "\n\n[HƯỚNG DẪN NHẬN DIỆN THỊ GIÁC]: "
-        "Người dùng đã đính kèm hình ảnh địa điểm du lịch. Hãy quan sát thật kỹ các đặc điểm kiến trúc, "
-        "danh lam thắng cảnh, màu sắc, phong cảnh thiên nhiên hoặc chi tiết nổi bật trong ảnh để xác định chính xác "
-        "đây là địa điểm nào (nêu rõ tên địa danh, thành phố/tỉnh thành). Sau đó hãy giới thiệu ngắn gọn, cung cấp các thông tin "
-        "hữu ích như vị trí, điểm nổi bật, trải nghiệm du lịch tại nơi này."
+        "\n\n[CHỈ THỊ THỊ GIÁC ĐA NĂNG GEMINI VISION - LINH AI]:\n"
+        "Người dùng đã gửi một hình ảnh. Bạn hãy phân tích hình ảnh theo 3 trường hợp nghiệp vụ du lịch sau:\n\n"
+        "1. NẾU LÀ ẢNH MENU / THỰC ĐƠN QUÁN ĂN:\n"
+        "   - Đọc tên các món ăn và giá tiền trên menu.\n"
+        "   - Gợi ý 2-3 món ĐẶC SẢN NỔI TIẾNG NHẤT bắt buộc phải thử tại quán.\n"
+        "   - Cảnh báo rõ món nào cay, món nào có dị ứng phổ biến (hải sản, đậu phộng, thịt bò).\n"
+        "   - Gợi ý combo hoặc ước tính chi phí cho 1-2 người ăn no nê.\n\n"
+        "2. NẾU LÀ ẢNH DI TÍCH / TƯỢNG / KIẾN TRÚC / PHONG CẢNH:\n"
+        "   - Xác định chính xác tên địa danh, công trình, cổ vật hoặc bức tượng trong ảnh.\n"
+        "   - Đóng vai Hướng dẫn viên du lịch bản địa: Thuyết minh ngắn gọn 1-2 phút về nguồn gốc lịch sử, câu chuyện truyền thuyết hoặc ý nghĩa văn hóa độc đáo của nơi này.\n"
+        "   - Mách nước góc chụp ảnh sống ảo đẹp nhất hoặc lưu ý trang phục/quy định tham quan.\n\n"
+        "3. NẾU LÀ ẢNH VÉ MÁY BAY / BOOKING KHÁCH SẠN / VÉ THAM QUAN:\n"
+        "   - Tự động bóc tách thông tin: Mã đặt chỗ, Tên hãng/Khách sạn, Ngày giờ hạ cánh/nhận phòng, Địa chỉ.\n"
+        "   - Tóm tắt lại ngắn gọn và hỏi: 'Em đã ghi nhận chuyến bay/khách sạn của anh/chị. Anh/chị có muốn em cập nhật mốc giờ này vào lịch trình chuyến đi không?'\n\n"
+        "4. NẾU LÀ HÌNH ẢNH KHÁC:\n"
+        "   - Miêu tả chi tiết bức ảnh và trả lời đúng trọng tâm câu hỏi của người dùng bằng giọng điệu trợ lý Linh AI thân thiện, ấm áp."
     )
 
     content_parts: List[Dict[str, Any]] = [

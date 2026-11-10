@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../../../map/presentation/screens/map_screen.dart';
 import 'assistant_chat_screen.dart';
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/app_network_image.dart';
@@ -10,6 +9,8 @@ import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../auth/presentation/providers/auth_state.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
+import '../models/chat_media.dart';
+import '../../services/media_upload_service.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/ai_3d_avatar.dart';
 import '../widgets/location_suggestions.dart';
@@ -1002,11 +1003,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
               const SizedBox(width: 24),
 
-              // Nút bên phải: Bản đồ
+              // Nút bên phải: AI Lens (Camera Du Lịch Đa Năng với Gemini Vision)
               _buildCircleActionButton(
-                icon: Icons.location_on_outlined,
-                label: 'Bản đồ',
-                onTap: () => _openMapModal(context),
+                icon: Icons.camera_alt_outlined,
+                label: 'AI Lens',
+                onTap: () => _openCameraForAi(context, notifier),
               ),
             ],
           ),
@@ -2061,10 +2062,45 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     ).push(MaterialPageRoute(builder: (_) => const AssistantChatScreen()));
   }
 
-  void _openMapModal(BuildContext context) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const MapScreen()));
+  /// Mở Camera chụp ảnh trực tiếp và gửi sang cho Trợ lý Linh AI (Gemini Vision)
+  Future<void> _openCameraForAi(
+    BuildContext context,
+    VoiceAssistantNotifier notifier,
+  ) async {
+    final uploadService = MediaUploadService();
+    try {
+      final photo = await uploadService.takePhoto();
+      if (photo == null || !mounted) return;
+
+      // Hiển thị thông báo đang tải ảnh lên
+      _showTopBanner(
+        text: 'AI Lens đang phân tích hình ảnh...',
+        icon: Icons.auto_awesome_rounded,
+        color: const Color(0xFF0284C7),
+      );
+
+      final media = await uploadService.uploadAttachment(
+        photo,
+        ChatMediaType.image,
+      );
+
+      if (!mounted) return;
+
+      // Gửi sang LLM kèm câu lệnh thị giác mặc định để Gemini Vision nhận diện & thuyết minh bằng giọng nói
+      await notifier.sendMessage(
+        'Hãy nhìn hình ảnh này và cho mình biết thông tin chi tiết về nó nhé.',
+        isVoiceMode: true,
+        media: [media],
+      );
+    } catch (e) {
+      if (mounted) {
+        _showTopBanner(
+          text: 'Không thể xử lý ảnh: $e',
+          icon: Icons.error_outline_rounded,
+          color: AppColors.error,
+        );
+      }
+    }
   }
 
   void _openDirectAiEditSheet(

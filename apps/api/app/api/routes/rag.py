@@ -6,6 +6,7 @@ import logging
 import re
 import sys
 import unicodedata
+import unittest.mock
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -617,6 +618,7 @@ async def ask_knowledge(
         logger.error(
             "Unexpected error in /rag/ask: %s",
             type(exc).__name__,
+            exc_info=True,
         )
 
         raise HTTPException(

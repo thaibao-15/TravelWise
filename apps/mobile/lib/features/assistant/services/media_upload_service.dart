@@ -69,6 +69,31 @@ class MediaUploadService {
     }
   }
 
+  /// Chụp ảnh trực tiếp từ Camera điện thoại
+  Future<XFile?> takePhoto() async {
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      if (photo == null) return null;
+
+      final length = await photo.length();
+      if (length > maxImageSizeBytes) {
+        throw MediaUploadException(
+          'Hình ảnh quá lớn (${(length / (1024 * 1024)).toStringAsFixed(1)} MB). Vui lòng chụp ảnh dưới 20 MB.',
+        );
+      }
+      return photo;
+    } on MediaUploadException {
+      rethrow;
+    } catch (e) {
+      throw MediaUploadException('Không thể mở máy ảnh: $e');
+    }
+  }
+
   /// Pick a video from the device gallery
   Future<XFile?> pickVideo() async {
     try {

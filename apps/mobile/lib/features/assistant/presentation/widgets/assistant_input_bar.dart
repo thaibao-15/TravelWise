@@ -153,6 +153,44 @@ class _AssistantInputBarState extends ConsumerState<AssistantInputBar>
                   leading: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF10B981)),
+                  ),
+                  title: const Text('Chụp ảnh thực tế', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Quét menu món ăn, chụp di tích hoặc vé máy bay', style: TextStyle(fontSize: 12)),
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    try {
+                      final photo = await _uploadService.takePhoto();
+                      if (photo != null) {
+                        final previewBytes = await photo.readAsBytes();
+                        setState(() {
+                          _attachments.add(_PickedItem(
+                            file: photo,
+                            type: ChatMediaType.image,
+                            previewBytes: previewBytes,
+                          ));
+                          _isKeyboardMode = true;
+                        });
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(e.toString()),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),

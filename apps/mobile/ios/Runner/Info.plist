@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TravelWise cần microphone để trò chuyện với trợ lý AI.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TravelWise cần quyền truy cập máy ảnh để quét menu món ăn, nhận diện di tích và vé máy bay.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TravelWise cần quyền truy cập thư viện ảnh để bạn tải ảnh lên cho trợ lý AI.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
