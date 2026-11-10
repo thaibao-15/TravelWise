@@ -9,3 +9,5 @@ htmlcov
 data/
 chroma/
 data/chroma/
+app/static/uploads/*
+!app/static/uploads/.gitkeep
