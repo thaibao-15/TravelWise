@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
+import '../providers/avatar_state_provider.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../screens/assistant_chat_screen.dart';
 
@@ -13,6 +14,9 @@ class AssistantHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
+    final avatar3d = ref.watch(avatar3dStateProvider);
+    final avatarName = avatar3d.shortName;
+    final avatarInitial = avatarName.isNotEmpty ? avatarName[0] : 'A';
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -41,10 +45,10 @@ class AssistantHeader extends ConsumerWidget {
                     ),
                   ],
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
-                    'L',
-                    style: TextStyle(
+                    avatarInitial,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
@@ -176,9 +180,9 @@ class AssistantHeader extends ConsumerWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text(
-                    'Linh AI',
-                    style: TextStyle(
+                  Text(
+                    '$avatarName AI',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,

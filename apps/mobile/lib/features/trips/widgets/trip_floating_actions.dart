@@ -9,6 +9,7 @@ class TripFloatingActions extends StatelessWidget {
   final bool isListening;
   final bool isRevising;
   final bool isSpeaking;
+  final String? avatarName;
 
   const TripFloatingActions({
     super.key,
@@ -18,10 +19,12 @@ class TripFloatingActions extends StatelessWidget {
     this.isListening = false,
     this.isRevising = false,
     this.isSpeaking = false,
+    this.avatarName,
   });
 
   @override
   Widget build(BuildContext context) {
+    final name = avatarName ?? 'AI';
     final List<Color> micGradient = isListening
         ? const [Color(0xFFEF4444), Color(0xFFF97316)]
         : isSpeaking
@@ -31,7 +34,7 @@ class TripFloatingActions extends StatelessWidget {
     final String micTooltip = isListening
         ? 'Chạm để gửi yêu cầu giọng nói'
         : isRevising
-            ? 'Linh AI đang cập nhật lịch trình...'
+            ? '$name đang cập nhật lịch trình...'
             : isSpeaking
                 ? 'Dừng giọng đọc AI'
                 : 'Nói trực tiếp để chỉnh sửa lịch trình';

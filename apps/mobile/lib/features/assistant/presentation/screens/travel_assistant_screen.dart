@@ -10,6 +10,7 @@ import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../auth/presentation/providers/auth_state.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
+import '../providers/avatar_state_provider.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/ai_3d_avatar.dart';
 import '../widgets/location_suggestions.dart';
@@ -570,6 +571,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
+
     // Lấy câu nói gần nhất của AI trong hội thoại (ưu tiên bỏ qua các thông báo đính kèm lịch trình)
     String latestAiSpeech = '';
     if (state.messages.isNotEmpty) {
@@ -588,7 +591,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
         latestAiSpeech = state.currentTranscript;
       } else {
         latestAiSpeech =
-            'Xin chào bạn! Mình là Linh AI - trợ lý du lịch TravelWise với giọng Nữ Đà Nẵng ngọt ngào. Hôm nay bạn muốn lên lịch trình khám phá điểm đến nào?';
+            'Xin chào bạn! Mình là $avatarName AI - trợ lý du lịch đồng hành cùng bạn tại TravelWise. Hôm nay bạn muốn lên lịch trình hay khám phá điểm đến nào?';
       }
     }
 
@@ -626,7 +629,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                     displayText = state.currentTranscript;
                   } else if (isThinking) {
                     displayText =
-                        'Linh AI đang suy nghĩ và tổng hợp thông tin tốt nhất cho bạn...';
+                        '$avatarName AI đang suy nghĩ và tổng hợp thông tin tốt nhất cho bạn...';
                   } else {
                     displayText = latestAiSpeech;
                   }
@@ -728,10 +731,10 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                                       isUserSpeaking
                                           ? 'Bạn đang nói...'
                                           : (isThinking
-                                                ? 'Linh AI đang xử lý...'
+                                                ? '$avatarName AI đang xử lý...'
                                                 : (isSpeaking
-                                                      ? 'Linh AI đang đọc giọng nói...'
-                                                      : 'Linh AI • Trợ lý du lịch')),
+                                                      ? '$avatarName AI đang đọc giọng nói...'
+                                                      : '$avatarName AI • Trợ lý du lịch')),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
@@ -813,6 +816,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
     final isListening =
         state.voiceState == VoiceState.listening ||
         state.voiceState == VoiceState.connecting;
@@ -1058,8 +1062,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
           ] else if (isThinking) ...[
             Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
-                SizedBox(
+              children: [
+                const SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
@@ -1067,10 +1071,10 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                     valueColor: AlwaysStoppedAnimation(Color(0xFF0284C7)),
                   ),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'Linh AI đang suy nghĩ câu trả lời...',
-                  style: TextStyle(
+                  '$avatarName AI đang suy nghĩ câu trả lời...',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF0284C7),
@@ -1080,7 +1084,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
             ),
           ] else ...[
             Text(
-              _resolveVoiceStateStatus(state),
+              _resolveVoiceStateStatus(state, avatarName),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1104,6 +1108,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantNotifier notifier, {
     VoidCallback? onExpand,
   }) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
     // 1. Nếu có chuyến đi đã tạo nhưng đang thu gọn: Hiển thị thanh tóm tắt chuyến đi
     if (state.tripPreview != null) {
       final trip = state.tripPreview!;
@@ -1353,8 +1358,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Row(
+                children: [
+                  const Row(
                     children: [
                       Text(
                         'Lịch trình',
@@ -1375,12 +1380,12 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                       ),
                     ],
                   ),
-                  SizedBox(height: 1),
+                  const SizedBox(height: 1),
                   Text(
-                    'Chạm để Linh AI lên kế hoạch hoặc nói với AI',
+                    'Chạm để $avatarName AI lên kế hoạch hoặc nói với AI',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF64748B),
                     ),
@@ -1555,6 +1560,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
     // 1. Nếu đang tạo lịch trình (Generating)
     if (state.planningState == TripPlanningState.generating) {
       return Center(
@@ -1940,8 +1946,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Text(
+                    children: [
+                      const Text(
                         'Lên lịch trình Đà Nẵng 3 ngày 2 đêm',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1951,12 +1957,12 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'Chạm để Linh AI lên kế hoạch chi tiết',
+                        'Chạm để $avatarName AI lên kế hoạch chi tiết',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 11.5,
                           color: Color(0xFF64748B),
                         ),
@@ -2023,21 +2029,21 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     );
   }
 
-  String _resolveVoiceStateStatus(VoiceAssistantState state) {
+  String _resolveVoiceStateStatus(VoiceAssistantState state, [String avatarName = 'AI']) {
     switch (state.voiceState) {
       case VoiceState.listening:
         return 'Đang nghe bạn nói... (Nói xong tự động trả lời)';
       case VoiceState.thinking:
       case VoiceState.processing:
-        return 'Linh AI đang suy nghĩ câu trả lời...';
+        return '$avatarName AI đang suy nghĩ câu trả lời...';
       case VoiceState.speaking:
-        return 'Linh AI đang nói... (Chạm mic để ngắt lời)';
+        return '$avatarName AI đang nói... (Chạm mic để ngắt lời)';
       case VoiceState.connecting:
         return 'Đang mở micro kết nối thời gian thực...';
       case VoiceState.error:
         return state.error ?? 'Đã có lỗi, chạm micro để thử lại';
       case VoiceState.idle:
-        return 'Chạm micro để nói chuyện trực tiếp với Linh AI';
+        return 'Chạm micro để nói chuyện trực tiếp với $avatarName AI';
     }
   }
 
@@ -2073,6 +2079,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     Trip trip, {
     int? targetDay,
   }) {
+    final avatarName = ref.read(avatar3dStateProvider).shortName;
     final editCtrl = TextEditingController();
     showModalBottomSheet(
       context: context,
@@ -2109,19 +2116,19 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Chỉnh sửa lịch trình với Linh AI',
-                          style: TextStyle(
+                          'Chỉnh sửa lịch trình với $avatarName AI',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        Text(
+                        const Text(
                           'Nhập yêu cầu bên dưới hoặc chạm Mic trên màn hình để nói trực tiếp',
                           style: TextStyle(
                             fontSize: 12,
@@ -2236,6 +2243,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       builder: (ctx) => Consumer(
         builder: (ctx, modalRef, _) {
           final liveState = modalRef.watch(voiceAssistantProvider);
+          final avatarName = modalRef.watch(avatar3dStateProvider).shortName;
           final liveTrip = liveState.tripPreview ?? trip;
           final isRevising =
               liveState.planningState == TripPlanningState.revising;
@@ -2273,8 +2281,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
-                        children: const [
-                          SizedBox(
+                        children: [
+                          const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
@@ -2284,11 +2292,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                               ),
                             ),
                           ),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Linh AI đang cập nhật lịch trình theo yêu cầu của bạn...',
-                              style: TextStyle(
+                              '$avatarName AI đang cập nhật lịch trình theo yêu cầu của bạn...',
+                              style: const TextStyle(
                                 color: Color(0xFFB45309),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 12,
@@ -2419,6 +2427,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     BuildContext context,
     VoiceAssistantNotifier notifier,
   ) {
+    final avatarName = ref.read(avatar3dStateProvider).shortName;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2443,9 +2452,9 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                 ),
               ),
             ),
-            const Text(
-              'Gợi ý yêu cầu cho Linh AI',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Text(
+              'Gợi ý yêu cầu cho $avatarName AI',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 14),
             ListTile(

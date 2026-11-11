@@ -9,6 +9,7 @@ class Avatar3dOption {
   final String assetPath;
   final String tag;
   final String iconEmoji;
+  final String gender; // 'Nam' hoặc 'Nữ'
 
   const Avatar3dOption({
     required this.id,
@@ -17,6 +18,7 @@ class Avatar3dOption {
     required this.assetPath,
     required this.tag,
     this.iconEmoji = '💃',
+    this.gender = 'Nữ',
   });
 }
 
@@ -29,6 +31,7 @@ const List<Avatar3dOption> kAvailableAvatars = [
     assetPath: 'assets/models/Nam_C.glb',
     tag: 'Khuyên dùng',
     iconEmoji: '🤵',
+    gender: 'Nam',
   ),
   Avatar3dOption(
     id: 'avatar_sample_a',
@@ -37,6 +40,7 @@ const List<Avatar3dOption> kAvailableAvatars = [
     assetPath: 'assets/models/AvatarSample_A.glb',
     tag: 'Anime Nữ',
     iconEmoji: '✨',
+    gender: 'Nữ',
   ),
 ];
 
@@ -95,6 +99,34 @@ class Avatar3dState {
       hasMorphTargets: hasMorphTargets ?? this.hasMorphTargets,
       hasSkeleton: hasSkeleton ?? this.hasSkeleton,
     );
+  }
+
+  /// Giới tính của avatar hiện tại ('Nam' hoặc 'Nữ')
+  String get gender {
+    final option = kAvailableAvatars.firstWhere(
+      (a) => a.assetPath == selectedModelPath,
+      orElse: () => Avatar3dOption(
+        id: 'fallback',
+        name: modelName,
+        subtitle: '',
+        assetPath: selectedModelPath,
+        tag: '',
+        gender: (selectedModelPath.toLowerCase().contains('nam') || modelName.toLowerCase().contains('nam'))
+            ? 'Nam'
+            : 'Nữ',
+      ),
+    );
+    return option.gender;
+  }
+
+  /// Tên gọi đại diện ngắn gọn của avatar đang chọn ('Nam' hoặc 'Linh')
+  String get shortName {
+    if (gender == 'Nam' ||
+        modelName.toLowerCase().contains('nam') ||
+        selectedModelPath.toLowerCase().contains('nam')) {
+      return 'Nam';
+    }
+    return 'Linh';
   }
 }
 

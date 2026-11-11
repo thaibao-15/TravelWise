@@ -239,6 +239,20 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
       },
     );
 
+    // Đồng bộ tự động giọng nói theo giới tính của model 3D (Nam -> giọng Nam, Nữ -> giọng Nữ)
+    ref.listen<String>(
+      avatar3dStateProvider.select((s) => s.gender),
+      (prevGender, nextGender) {
+        final currentSpeaker = ref.read(voiceAssistantProvider).speakerId;
+        final isCurrentMale = currentSpeaker.contains('Nam');
+        if (nextGender == 'Nam' && !isCurrentMale) {
+          ref.read(voiceAssistantProvider.notifier).setSpeakerId('HaNoi-Nam-1-BL');
+        } else if (nextGender == 'Nữ' && isCurrentMale) {
+          ref.read(voiceAssistantProvider.notifier).setSpeakerId('DaNang-Nu-1-BL');
+        }
+      },
+    );
+
     final avatarState = ref.watch(avatar3dStateProvider);
 
     return LayoutBuilder(

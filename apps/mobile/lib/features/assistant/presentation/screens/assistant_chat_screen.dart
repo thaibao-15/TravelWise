@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/spacing.dart';
+import '../providers/avatar_state_provider.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/assistant_input_bar.dart';
@@ -79,6 +80,9 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(voiceAssistantProvider);
     final notifier = ref.read(voiceAssistantProvider.notifier);
+    final avatar3d = ref.watch(avatar3dStateProvider);
+    final avatarName = avatar3d.shortName;
+    final avatarInitial = avatarName.isNotEmpty ? avatarName[0] : 'A';
 
     // Auto-scroll when new messages arrive
     ref.listen<int>(
@@ -112,10 +116,10 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
                   end: Alignment.bottomRight,
                 ),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'L',
-                  style: TextStyle(
+                  avatarInitial,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -128,9 +132,9 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Linh AI • Trợ lý du lịch',
-                    style: TextStyle(
+                  Text(
+                    '$avatarName AI • Trợ lý du lịch',
+                    style: const TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -306,7 +310,7 @@ class _AssistantChatScreenState extends ConsumerState<AssistantChatScreen> {
 }
 
 /// Placeholder when there are no messages yet
-class _EmptyChatPlaceholder extends StatelessWidget {
+class _EmptyChatPlaceholder extends ConsumerWidget {
   final void Function(String prompt) onSuggestionSelected;
 
   const _EmptyChatPlaceholder({required this.onSuggestionSelected});
@@ -319,7 +323,8 @@ class _EmptyChatPlaceholder extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -347,9 +352,9 @@ class _EmptyChatPlaceholder extends StatelessWidget {
               child: const Icon(Icons.auto_awesome, color: Colors.white, size: 30),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Trò chuyện cùng Linh AI',
-              style: TextStyle(
+            Text(
+              'Trò chuyện cùng $avatarName AI',
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: AppColors.textPrimary,
@@ -423,11 +428,14 @@ class _EmptyChatPlaceholder extends StatelessWidget {
 }
 
 /// Thinking animation bubble when AI is preparing a response
-class _ThinkingBubble extends StatelessWidget {
+class _ThinkingBubble extends ConsumerWidget {
   const _ThinkingBubble();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
+    final avatarInitial = avatarName.isNotEmpty ? avatarName[0] : 'A';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -442,10 +450,10 @@ class _ThinkingBubble extends StatelessWidget {
                 colors: [AppColors.primary, AppColors.secondary],
               ),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                'L',
-                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                avatarInitial,
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -455,18 +463,18 @@ class _ThinkingBubble extends StatelessWidget {
               color: AppColors.aiBubble,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'Linh AI đang suy nghĩ...',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                  '$avatarName AI đang suy nghĩ...',
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                 ),
               ],
             ),

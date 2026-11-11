@@ -5,6 +5,7 @@ import '../../../../core/constants/spacing.dart';
 import '../../../../core/constants/text_styles.dart';
 import '../../../../shared/widgets/bottom_nav_bar.dart';
 import '../../../../shared/widgets/main_shell.dart';
+import '../../assistant/presentation/providers/avatar_state_provider.dart';
 import '../../assistant/presentation/providers/voice_assistant_provider.dart';
 import '../../map/presentation/screens/map_screen.dart';
 import '../data/repositories/trip_repository.dart';
@@ -108,6 +109,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             return Consumer(
               builder: (ctx, modalRef, _) {
                 final modalVoiceState = modalRef.watch(voiceAssistantProvider);
+                final avatarName = modalRef.watch(avatar3dStateProvider).shortName;
                 final bool isModalListening = modalVoiceState.isRecording ||
                     modalVoiceState.voiceState == VoiceState.connecting ||
                     modalVoiceState.voiceState == VoiceState.listening;
@@ -248,8 +250,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                           ? 'Đang nghe: "${modalVoiceState.currentTranscript}"'
                                           : 'Đang lắng nghe giọng nói của bạn... (tự động gửi khi bạn ngừng nói)')
                                       : isModalRevising
-                                          ? 'Linh AI đang cập nhật lịch trình trực tiếp...'
-                                          : 'Linh AI đang phản hồi...',
+                                          ? '$avatarName AI đang cập nhật lịch trình trực tiếp...'
+                                          : '$avatarName AI đang phản hồi...',
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w600,
@@ -509,6 +511,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     required bool isRevising,
     required bool isSpeaking,
   }) {
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
     final transcript = voiceState.currentTranscript.trim();
 
     return Positioned(
@@ -576,8 +579,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       isListening
                           ? 'Đang nghe yêu cầu chỉnh sửa (Ngày $selectedDay)...'
                           : isRevising
-                              ? 'Linh AI đang cập nhật lịch trình...'
-                              : 'Linh AI phản hồi trực tiếp',
+                              ? '$avatarName AI đang cập nhật lịch trình...'
+                              : '$avatarName AI phản hồi trực tiếp',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -703,6 +706,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Widget build(BuildContext context) {
     final selectedDay = ref.watch(selectedDayProvider);
     final voiceState = ref.watch(voiceAssistantProvider);
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
 
     ref.listen<VoiceAssistantState>(voiceAssistantProvider, (prev, next) {
       if (!mounted) return;
@@ -720,10 +724,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             Navigator.of(_activeModalContext!).pop();
           }
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Linh AI đã cập nhật lịch trình ngay tại trang!'),
+            SnackBar(
+              content: Text('$avatarName AI đã cập nhật lịch trình ngay tại trang!'),
               backgroundColor: AppColors.success,
-              duration: Duration(seconds: 2),
+              duration: const Duration(seconds: 2),
             ),
           );
         } else {
@@ -984,7 +988,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                 isRevising: isRevising,
                 isSpeaking: isSpeaking,
               ),
-            TripFloatingActions(
+            TripFloatingActions(
+              avatarName: '$avatarName AI',
               onOpenMap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(

@@ -199,6 +199,7 @@ class _AvatarVoiceSettingsSheetState
     final avatarNotifier = ref.read(avatar3dStateProvider.notifier);
     final voiceNotifier = ref.read(voiceAssistantProvider.notifier);
     final voicesAsync = ref.watch(apiTtsVoicesProvider);
+    final voicesList = voicesAsync.asData?.value ?? kAvailableVoices;
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.82,
@@ -328,10 +329,16 @@ class _AvatarVoiceSettingsSheetState
               controller: _tabController,
               children: [
                 // TAB 1: 3D AVATAR SELECTION
-                _buildAvatarTab(avatarState, avatarNotifier),
+                _buildAvatarTab(
+                  avatarState,
+                  avatarNotifier,
+                  voiceState,
+                  voiceNotifier,
+                  voicesList,
+                ),
 
                 // TAB 2: VOICE & SPEED SELECTION
-                _buildVoiceTab(voiceState, voiceNotifier, voicesAsync),
+                _buildVoiceTab(voiceState, voiceNotifier, voicesAsync, avatarState),
               ],
             ),
           ),
@@ -397,6 +404,9 @@ class _AvatarVoiceSettingsSheetState
   Widget _buildAvatarTab(
     Avatar3dState avatarState,
     Avatar3dNotifier avatarNotifier,
+    VoiceAssistantState voiceState,
+    VoiceAssistantNotifier voiceNotifier,
+    List<TtsVoiceOption> allVoices,
   ) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
@@ -420,6 +430,35 @@ class _AvatarVoiceSettingsSheetState
                   avatar.assetPath,
                   modelName: avatar.name,
                 );
+
+                // Tự động chuyển giọng sang giới tính tương ứng của model 3D
+                final targetGender = avatar.gender;
+                final currentVoice = allVoices.firstWhere(
+                  (v) => v.id == voiceState.speakerId,
+                  orElse: () => allVoices.first,
+                );
+
+                if (currentVoice.gender != targetGender) {
+                  final matchingVoice = allVoices.firstWhere(
+                    (v) => v.gender == targetGender,
+                    orElse: () => targetGender == 'Nam'
+                        ? const TtsVoiceOption(
+                            id: 'HaNoi-Nam-1-BL',
+                            name: 'Nam Hà Nội',
+                            region: 'Miền Bắc',
+                            gender: 'Nam',
+                            description: 'Trầm ấm, truyền cảm',
+                          )
+                        : const TtsVoiceOption(
+                            id: 'DaNang-Nu-1-BL',
+                            name: 'Nữ Đà Nẵng',
+                            region: 'Miền Trung',
+                            gender: 'Nữ',
+                            description: 'Trong trẻo, ngọt ngào',
+                          ),
+                  );
+                  voiceNotifier.setSpeakerId(matchingVoice.id);
+                }
               },
               borderRadius: BorderRadius.circular(16),
               child: AnimatedContainer(
@@ -548,13 +587,20 @@ class _AvatarVoiceSettingsSheetState
     VoiceAssistantState voiceState,
     VoiceAssistantNotifier voiceNotifier,
     AsyncValue<List<TtsVoiceOption>> voicesAsync,
+    Avatar3dState avatarState,
   ) {
     final regions = ['Tất cả', 'Miền Bắc', 'Miền Trung', 'Miền Nam'];
     final allVoices = voicesAsync.value ?? kAvailableVoices;
 
+    // Ràng buộc giới tính theo model 3D đang chọn:
+    // Model 3D Nam chỉ hiển thị & chọn giọng Nam.
+    // Model 3D Nữ chỉ hiển thị & chọn giọng Nữ.
+    final requiredGender = avatarState.gender;
+    final genderMatchingVoices = allVoices.where((v) => v.gender == requiredGender).toList();
+
     var filteredVoices = _selectedRegionFilter == 'Tất cả'
-        ? allVoices
-        : allVoices.where((v) => v.region == _selectedRegionFilter).toList();
+        ? genderMatchingVoices
+        : genderMatchingVoices.where((v) => v.region == _selectedRegionFilter).toList();
 
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
@@ -572,6 +618,37 @@ class _AvatarVoiceSettingsSheetState
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
       children: [
+        // THÔNG BÁO RÀNG BUỘC GIỚI TÍNH MODEL 3D
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                requiredGender == 'Nam' ? Icons.male_rounded : Icons.female_rounded,
+                size: 18,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Đang đồng bộ giọng $requiredGender cho nhân vật ${avatarState.modelName}.',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
         // 1. SPEED SELECTOR
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

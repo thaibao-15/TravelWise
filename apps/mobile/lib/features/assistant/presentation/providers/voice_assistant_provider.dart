@@ -27,6 +27,7 @@ import '../../../trips/providers/trip_provider.dart';
 import '../../../livekit/data/services/livekit_api_service.dart';
 
 import '../models/chat_media.dart';
+import 'avatar_state_provider.dart';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -360,8 +361,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     String? speed,
     String? sampleText,
   }) async {
+    final avatarName = _currentAvatarName();
     final text =
-        sampleText ?? 'Xin chào bạn! Mình là trợ lý du lịch AI TravelWise.';
+        sampleText ?? 'Xin chào bạn! Mình là $avatarName, trợ lý du lịch AI của bạn tại TravelWise.';
     final spd = speed ?? state.ttsSpeed;
     _audioService.stopTts();
     _audioService.initStreamingQueue(
@@ -434,7 +436,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   bool _isVoiceSession = false;
   bool _userKeepMicOn = false;
-  final bool _useLiveKitVoice = true;
+  final bool _useLiveKitVoice;
   Room? _liveKitRoom;
   EventsListener<RoomEvent>? _liveKitListener;
   CancelListenFunc? _cancelLiveKitListener;
@@ -480,10 +482,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       pauseFor: Duration(milliseconds: 900),
       finalPauseFor: Duration(milliseconds: 400),
     ),
+    bool useLiveKitVoice = true,
   }) : _audioService = audioService ?? VoiceAudioService(),
-
        _config = config,
-
+       _useLiveKitVoice = useLiveKitVoice,
        super(const VoiceAssistantState());
 
   Dio get _dio => _ref.read(dioClientProvider).dio;
@@ -1468,8 +1470,16 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
-  /// AI tự động chào và giới thiệu với người dùng khi mở màn hình Trợ lý du lịch.
+  /// Lấy danh xưng ngắn gọn của avatar đang hiển thị ('Nam' hoặc 'Linh')
+  String _currentAvatarName() {
+    try {
+      return _ref.read(avatar3dStateProvider).shortName;
+    } catch (_) {
+      return state.speakerId.contains('Nam') ? 'Nam' : 'Linh';
+    }
+  }
 
+  /// AI tự động chào và giới thiệu với người dùng khi mở màn hình Trợ lý du lịch.
   Future<void> greetUser({String? userName}) async {
     if (_hasGreeted || state.messages.isNotEmpty) return;
 
@@ -1479,10 +1489,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         ? userName.trim()
         : 'bạn';
 
+    final avatarName = _currentAvatarName();
     final greetingText =
-        'Xin chào $displayName! Mình là Linh AI - trợ lý du lịch đồng hành cùng bạn tại TravelWise. Hôm nay bạn muốn lên lịch trình hay khám phá điểm đến nào?';
+        'Xin chào $displayName! Mình là $avatarName AI - trợ lý du lịch đồng hành cùng bạn tại TravelWise. Hôm nay bạn muốn lên lịch trình hay khám phá điểm đến nào?';
 
-    log('ai_greeting_user', {'displayName': displayName});
+    log('ai_greeting_user', {'displayName': displayName, 'avatar': avatarName});
 
     final greetingMsg = ChatMessage(
       text: greetingText,
@@ -3368,9 +3379,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       final tripMap = effectiveCtx?['trip'] as Map<String, dynamic>?;
       final destMap = tripMap?['destination'] as Map<String, dynamic>?;
       final city = destMap?['city']?.toString().trim();
+      final avatarName = _currentAvatarName();
       final filler = (city != null && city.isNotEmpty)
-          ? 'Dạ, bạn đợi Linh một chút để lên lịch trình $city nhé!'
-          : 'Dạ, bạn đợi Linh một chút để thiết kế lịch trình cho bạn nhé!';
+          ? 'Dạ, bạn đợi $avatarName một chút để lên lịch trình $city nhé!'
+          : 'Dạ, bạn đợi $avatarName một chút để thiết kế lịch trình cho bạn nhé!';
       _startFillerTts(filler);
     }
 
@@ -3668,7 +3680,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     );
 
     if (_isVoiceSession && state.isTtsEnabled && !state.isMuted) {
-      _startFillerTts('Dạ, đợi Linh cập nhật lại lịch trình theo ý bạn nhé!');
+      final avatarName = _currentAvatarName();
+      _startFillerTts('Dạ, đợi $avatarName cập nhật lại lịch trình theo ý bạn nhé!');
     }
 
     try {

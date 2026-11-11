@@ -4,6 +4,7 @@ import '../../../../core/constants/colors.dart';
 import '../../../auth/auth_di.dart';
 import '../../services/conversation_api_service.dart';
 import '../models/conversation_item.dart';
+import '../providers/avatar_state_provider.dart';
 import '../providers/voice_assistant_provider.dart';
 
 /// Bottom Sheet hiển thị danh sách các cuộc trò chuyện của User trong Voice Chat.
@@ -129,6 +130,7 @@ class _ConversationHistorySheetState
     final activeId = ref.watch(
       voiceAssistantProvider.select((s) => s.conversationId),
     );
+    final avatarName = ref.watch(avatar3dStateProvider).shortName;
 
     return Container(
       constraints: BoxConstraints(
@@ -171,11 +173,11 @@ class _ConversationHistorySheetState
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Lịch sử trò chuyện',
                         style: TextStyle(
                           fontSize: 16.5,
@@ -184,8 +186,8 @@ class _ConversationHistorySheetState
                         ),
                       ),
                       Text(
-                        'Xem lại các cuộc hội thoại cùng Linh AI',
-                        style: TextStyle(
+                        'Xem lại các cuộc hội thoại cùng $avatarName AI',
+                        style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),
@@ -271,10 +273,10 @@ class _ConversationHistorySheetState
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  const Text(
-                                    'Hãy bắt đầu trò chuyện bằng giọng nói hoặc tin nhắn với Linh AI!',
+                                  Text(
+                                    'Hãy bắt đầu trò chuyện bằng giọng nói hoặc tin nhắn với $avatarName AI!',
                                     textAlign: TextAlign.center,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12.5,
                                       color: AppColors.textSecondary,
                                     ),

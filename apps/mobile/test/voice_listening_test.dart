@@ -126,7 +126,11 @@ class FakeVoiceAudioService implements VoiceAudioService {
 /// Captures submissions instead of calling the backend.
 class _TestNotifier extends VoiceAssistantNotifier {
   _TestNotifier(super.ref, FakeVoiceAudioService audio)
-    : super(audioService: audio, config: _config);
+    : super(
+        audioService: audio,
+        config: _config,
+        useLiveKitVoice: false,
+      );
 
   static const _config = VoiceListeningConfig(
     pauseFor: Duration(milliseconds: 3500),
@@ -229,6 +233,7 @@ class _StreamingTestNotifier extends VoiceAssistantNotifier {
           pauseFor: Duration(milliseconds: 1200),
           finalPauseFor: Duration(milliseconds: 650),
         ),
+        useLiveKitVoice: false,
       );
 
   @override
