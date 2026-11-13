@@ -152,7 +152,7 @@ void main() {
       expect(find.byType(Ai3dAvatar), findsOneWidget);
 
       // Status pill should display listening state
-      expect(find.text('Linh AI 3D • Đang nghe bạn'), findsOneWidget);
+      expect(find.text('Nam (Anime 3D) • Đang nghe bạn'), findsOneWidget);
 
       // Test drag gesture for camera orbit
       await tester.drag(find.byType(Ai3dAvatar), const Offset(50, -20));

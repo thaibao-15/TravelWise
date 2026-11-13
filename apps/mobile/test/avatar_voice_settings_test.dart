@@ -13,22 +13,22 @@ void main() {
       addTearDown(container.dispose);
 
       final initial = container.read(avatar3dStateProvider);
-      expect(initial.selectedModelPath, equals('assets/models/AvatarSample_A.glb'));
-      expect(initial.modelName, equals('Linh (Anime 3D)'));
+      expect(initial.selectedModelPath, equals('assets/models/Nam_C.glb'));
+      expect(initial.modelName, equals('Nam (Anime 3D)'));
 
-      // Switch to Linh Classic
+      // Switch to Linh (Anime 3D)
       container
           .read(avatar3dStateProvider.notifier)
-          .selectAvatarModel('assets/models/linh_avatar.glb', modelName: 'Linh Classic');
+          .selectAvatarModel('assets/models/AvatarSample_A.glb', modelName: 'Linh (Anime 3D)');
 
       final updated = container.read(avatar3dStateProvider);
-      expect(updated.selectedModelPath, equals('assets/models/linh_avatar.glb'));
-      expect(updated.modelName, equals('Linh Classic'));
+      expect(updated.selectedModelPath, equals('assets/models/AvatarSample_A.glb'));
+      expect(updated.modelName, equals('Linh (Anime 3D)'));
       expect(updated.isLoading, isTrue);
 
       // Set loaded
       container.read(avatar3dStateProvider.notifier).setLoaded(
-            modelName: 'Linh Classic',
+            modelName: 'Linh (Anime 3D)',
             hasMorphTargets: true,
             hasSkeleton: true,
           );
@@ -57,8 +57,8 @@ void main() {
     test('Pre-configured avatars and regional voices are populated correctly', () {
       expect(kAvailableAvatars.length, greaterThanOrEqualTo(2));
       final avatarPaths = kAvailableAvatars.map((a) => a.assetPath).toList();
+      expect(avatarPaths, contains('assets/models/Nam_C.glb'));
       expect(avatarPaths, contains('assets/models/AvatarSample_A.glb'));
-      expect(avatarPaths, contains('assets/models/linh_avatar.glb'));
 
       expect(kAvailableVoices.length, greaterThanOrEqualTo(5));
       final voiceIds = kAvailableVoices.map((v) => v.id).toList();
