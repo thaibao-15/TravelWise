@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/dio_client.dart';
 import '../../../auth/auth_di.dart';
 import '../../models/trip_model.dart';
 
@@ -306,7 +307,14 @@ class TripRepository {
             : null,
       };
 
-      final response = await _dio.post('/api/v1/trips/generate', data: payload);
+      final response = await _dio.post(
+        '/api/v1/trips/generate',
+        data: payload,
+        // AI generation is long-running; extend timeout to avoid browser CORS errors.
+        options: Options(
+          receiveTimeout: ApiConfig.longReceiveTimeout,
+        ),
+      );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final trip = Trip.fromJson(response.data as Map<String, dynamic>);
         _log('generateItineraryDirect_success', {
@@ -344,6 +352,12 @@ class TripRepository {
             'user_prompt': userPrompt,
           'context': ?context,
         },
+        // AI itinerary generation is a long-running LLM call; use an extended
+        // timeout to prevent the browser (Flutter Web) from aborting the
+        // request and surfacing a misleading CORS / XMLHttpRequest error.
+        options: Options(
+          receiveTimeout: ApiConfig.longReceiveTimeout,
+        ),
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final generated = response.data as Map<String, dynamic>;
@@ -460,6 +474,10 @@ class TripRepository {
           'allow_overwrite': true,
           'target_day': ?targetDay,
         },
+        // AI editing is long-running; extend timeout to avoid browser CORS errors.
+        options: Options(
+          receiveTimeout: ApiConfig.longReceiveTimeout,
+        ),
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         return response.data as Map<String, dynamic>;

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../storage/secure_storage_service.dart';
+import 'dio_web_config.dart' if (dart.library.io) 'dio_native_config.dart';
 
 /// API configuration constants.
 /// Switch [baseUrl] based on runtime target (emulator vs real device).
@@ -23,6 +24,9 @@ class ApiConfig {
 
   static const Duration connectTimeout = Duration(seconds: 60);
   static const Duration receiveTimeout = Duration(seconds: 120);
+
+  /// Extended timeout for long-running AI endpoints (e.g. itinerary generation).
+  static const Duration longReceiveTimeout = Duration(seconds: 300);
 }
 
 /// Factory that creates a configured Dio instance with auth interceptor.
@@ -43,6 +47,10 @@ class DioClient {
         },
       ),
     );
+
+    // On Flutter Web, configure the browser adapter to use Fetch API instead
+    // of XMLHttpRequest to avoid false CORS errors on long-running requests.
+    configurePlatformAdapter(_dio);
 
     _dio.interceptors.add(_authInterceptor());
     if (kDebugMode) {

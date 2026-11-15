@@ -94,6 +94,9 @@ CREATE TABLE places (
     category_id BIGINT,
     rating_avg DECIMAL(3, 2) DEFAULT 0.0,
     review_count INT DEFAULT 0,
+    source NVARCHAR(50) NULL,
+    osm_type NVARCHAR(20) NULL,
+    osm_id BIGINT NULL,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
     is_deleted BIT DEFAULT 0,
@@ -378,11 +381,17 @@ CREATE TABLE conversation_summaries (
 CREATE TABLE trips (
     id BIGINT IDENTITY PRIMARY KEY,
     user_id BIGINT,
+    conversation_id BIGINT,
     name NVARCHAR(255),
+    destination_city NVARCHAR(255),
+    destination_country NVARCHAR(100),
+    status NVARCHAR(50) DEFAULT 'DRAFT',
     start_date DATE,
     end_date DATE,
     created_at DATETIME DEFAULT GETDATE(),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    updated_at DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );
 
 CREATE TABLE trip_items (
