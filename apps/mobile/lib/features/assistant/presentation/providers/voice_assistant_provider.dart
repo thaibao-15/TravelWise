@@ -872,15 +872,34 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     final participant = _liveKitRoom?.localParticipant;
     if (participant == null) return;
     await participant.setMicrophoneEnabled(false);
+    final room = _liveKitRoom;
+    if (room != null &&
+        room.connectionState == ConnectionState.connected &&
+        room.localParticipant != null) {
+      try {
+        await room.localParticipant!.publishData(
+          utf8.encode(
+            jsonEncode(<String, String>{
+              'type': 'command',
+              'command': 'stop_speaking',
+            }),
+          ),
+          reliable: true,
+        );
+      } catch (_) {}
+    }
     state = state.copyWith(
       voiceState: VoiceState.idle,
       isRecording: false,
       isMuted: true,
+      currentTranscript: '',
     );
   }
 
   Future<void> stopLiveKitSpeaking() async {
     final room = _liveKitRoom;
+    stopAudio();
+    state = state.copyWith(voiceState: VoiceState.listening, isRecording: true);
     if (room == null ||
         room.connectionState != ConnectionState.connected ||
         room.localParticipant == null) {
@@ -977,6 +996,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         final text = payload['text']?.toString() ?? '';
         final isFinal = payload['is_final'] == true;
         if (role == 'user') {
+          // Nếu người dùng đã chủ động tắt/tạm dừng micro (isMuted), bỏ qua in-flight user transcripts
+          if (state.isMuted) return;
           state = state.copyWith(
             currentTranscript: text,
             voiceState: isFinal ? VoiceState.thinking : VoiceState.listening,
@@ -1001,9 +1022,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
       if (type == 'state') {
         final next = switch (payload['state']?.toString()) {
-          'analyzing' => VoiceState.thinking,
+          'analyzing' => state.isMuted ? VoiceState.idle : VoiceState.thinking,
           'speaking' => VoiceState.speaking,
-          'ready' || 'listening' => VoiceState.listening,
+          'ready' || 'listening' => state.isMuted ? VoiceState.idle : VoiceState.listening,
           'error' => VoiceState.error,
           _ => null,
         };
@@ -1017,8 +1038,12 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             );
             return;
           }
+          if (state.isMuted && (next == VoiceState.listening || next == VoiceState.thinking)) {
+            return;
+          }
           state = state.copyWith(
             voiceState: next,
+            isRecording: next == VoiceState.listening,
             error: payload['error']?.toString(),
           );
         }
@@ -1110,23 +1135,46 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     final planningState = status == 'collecting_requirements'
         ? TripPlanningState.collectingRequirements
         : (isReady ? TripPlanningState.readyToGenerate : state.planningState);
+
+    final convId =
+        _parseConversationId(payload['conversation_id']) ?? state.conversationId;
+
     state = state.copyWith(
-      conversationId: _parseConversationId(payload['conversation_id']),
-      planningContext: context,
+      conversationId: convId,
+      planningContext: context ?? state.planningContext,
       planningContextSummary: context == null
           ? state.planningContextSummary
           : _formatPlanningContextSummary(context),
       planningState: planningState,
     );
-    if (action == 'TRIGGER_GENERATION' && state.conversationId != null) {
-      unawaited(
-        generateItinerary(
-          convId: state.conversationId!,
-          context: context,
-          userPrompt: _lastLiveKitUserTranscript,
-        ),
-      );
-    } else if (action == 'TRIGGER_EDIT') {
+
+    final transcript = _lastLiveKitUserTranscript.trim();
+    final isCreateCmd = isCreateItineraryCommand(transcript);
+    final quickCtx = _extractQuickPlanningContext(transcript);
+
+    final shouldTriggerGen = action == 'TRIGGER_GENERATION' ||
+        (isCreateCmd && (quickCtx != null || context != null || state.planningContext != null)) ||
+        (isReady && isCreateCmd);
+
+    if (shouldTriggerGen && convId != null) {
+      if (state.planningState != TripPlanningState.generating) {
+        log('livekit_trigger_generation', {
+          'convId': convId,
+          'action': action,
+          'isCreateCmd': isCreateCmd,
+        });
+        unawaited(
+          generateItinerary(
+            convId: convId,
+            context: quickCtx ?? context ?? state.planningContext,
+            userPrompt: transcript.isNotEmpty ? transcript : null,
+          ),
+        );
+      }
+    } else if (action == 'TRIGGER_EDIT' ||
+        (transcript.isNotEmpty &&
+            _looksLikePotentialEditRequest(transcript) &&
+            (state.tripPreview != null || state.savedTripId != null))) {
       final targetTripId =
           state.savedTripId ??
           (state.tripPreview?.id != null &&
@@ -1135,7 +1183,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
               ? state.tripPreview!.id.toString()
               : _activeTripIdFromState(context));
 
-      final editPrompt = _lastLiveKitUserTranscript.trim();
+      final editPrompt = transcript;
       if (editPrompt.isNotEmpty &&
           (state.tripPreview != null || targetTripId != null)) {
         log('livekit_trigger_edit', {
@@ -1144,8 +1192,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         });
         unawaited(editCurrentOrSavedTrip(instruction: editPrompt));
       }
-    } else if (action == 'TRIGGER_SAVE' && state.conversationId != null) {
-      unawaited(saveCurrentTrip(convId: state.conversationId));
+    } else if ((action == 'TRIGGER_SAVE' ||
+            _looksLikeSaveTripRequest(transcript)) &&
+        convId != null) {
+      unawaited(saveCurrentTrip(convId: convId));
     }
   }
 

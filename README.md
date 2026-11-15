@@ -103,33 +103,24 @@ LIVEKIT_AGENT_NAME=travelwise-voice-assistant
 > - Lấy `GEMINI_API_KEY` miễn phí tại [Google AI Studio](https://aistudio.google.com/apikey).
 > - Lấy `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` miễn phí tại [LiveKit Cloud](https://cloud.livekit.io/).
 
-### Bước 3 — Tạo Database trên SQL Server
+### Bước 3 & 4 — Thiết lập Database & Migration (Alembic)
 
-Kết nối vào SQL Server (dùng SSMS, Azure Data Studio hoặc sqlcmd) và chạy câu lệnh tạo database & bảng `users`:
+Chọn **1 trong 2 cách** tùy theo hiện trạng:
 
+#### Cách 1: Đã chạy script `TravelWiseDB.sql` hoặc Database đã có sẵn bảng (Khuyên dùng khi import data có sẵn)
+Nếu bạn đã import file `TravelWiseDB.sql` vào SQL Server, các bảng và dữ liệu mẫu đã có sẵn. Hãy đồng bộ phiên bản hiện tại với Alembic (không chạy lệnh tạo lại bảng):
+```bash
+uv run alembic stamp head
+```
+
+#### Cách 2: Khởi tạo từ Database trống
+1. Kết nối vào SQL Server và tạo database trống:
 ```sql
 CREATE DATABASE TravelWiseDB;
 GO
-
-USE TravelWiseDB;
-GO
-
-CREATE TABLE users (
-    id          BIGINT IDENTITY PRIMARY KEY,
-    email       NVARCHAR(255) UNIQUE NOT NULL,
-    password    NVARCHAR(MAX),
-    full_name   NVARCHAR(255),
-    avatar_url  NVARCHAR(MAX),
-    role        NVARCHAR(20)  DEFAULT 'USER',
-    is_active   BIT           DEFAULT 1,
-    created_at  DATETIME      DEFAULT GETDATE(),
-    updated_at  DATETIME      DEFAULT GETDATE()
-);
-GO
 ```
 
-### Bước 4 — Chạy migration database (Alembic)
-
+2. Chạy migration của Alembic để tự động khởi tạo toàn bộ schema:
 ```bash
 uv run alembic upgrade head
 ```

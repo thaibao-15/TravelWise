@@ -128,30 +128,29 @@ def get_planning_signals(
     is_ready_to_generate = None
     planning_action = None
 
-    if not planning_context:
-        return planning_status, is_ready_to_generate, planning_action
-
-    if isinstance(planning_context, dict):
-        planning_state = planning_context.get("planning_state") or {}
-        if isinstance(planning_state, dict):
-            is_ready = bool(planning_state.get("is_ready_to_generate"))
+    is_ready = False
+    if planning_context:
+        if isinstance(planning_context, dict):
+            planning_state = planning_context.get("planning_state") or {}
+            if isinstance(planning_state, dict):
+                is_ready = bool(planning_state.get("is_ready_to_generate"))
+            else:
+                is_ready = bool(
+                    getattr(planning_state, "is_ready_to_generate", False)
+                )
         else:
+            planning_state = getattr(planning_context, "planning_state", None)
             is_ready = bool(
-                getattr(planning_state, "is_ready_to_generate", False)
+                planning_state
+                and getattr(planning_state, "is_ready_to_generate", False)
             )
-    else:
-        planning_state = getattr(planning_context, "planning_state", None)
-        is_ready = bool(
-            planning_state
-            and getattr(planning_state, "is_ready_to_generate", False)
-        )
 
-    is_ready_to_generate = is_ready
-    planning_status = (
-        "ready_to_generate"
-        if is_ready
-        else "collecting_requirements"
-    )
+        is_ready_to_generate = is_ready
+        planning_status = (
+            "ready_to_generate"
+            if is_ready
+            else "collecting_requirements"
+        )
 
     normalized_question = unicodedata.normalize("NFD", user_question.casefold())
     normalized_question = "".join(
@@ -165,6 +164,7 @@ def get_planning_signals(
         "thiet ke lich trinh",
         "tao ngay",
         "tao cho toi",
+        "tao giup",
         "len ke hoach",
         "lap ke hoach",
         "generate itinerary",
@@ -234,8 +234,9 @@ def get_planning_signals(
         any(phrase in normalized_question for phrase in generation_phrases)
         or asks_for_itinerary
     ):
-        if is_ready:
-            planning_action = "TRIGGER_GENERATION"
+        planning_action = "TRIGGER_GENERATION"
+        is_ready_to_generate = True
+        planning_status = "ready_to_generate"
 
     elif is_save_request:
         planning_action = "TRIGGER_SAVE"
@@ -1038,25 +1039,26 @@ async def ask_rag_stream(
             "content": final_answer,
         }
 
+        (
+            planning_status,
+            is_ready_to_generate,
+            planning_action,
+        ) = get_planning_signals(
+            user_question,
+            planning_context_data,
+        )
+
         if planning_context_data:
             done_payload["planning_context"] = planning_context_data
 
-            (
-                planning_status,
-                is_ready_to_generate,
-                planning_action,
-            ) = get_planning_signals(
-                user_question,
-                planning_context_data,
-            )
-
+        if planning_status:
             done_payload["planning_status"] = planning_status
-            done_payload["is_ready_to_generate"] = (
-                is_ready_to_generate
-            )
 
-            if planning_action:
-                done_payload["planning_action"] = planning_action
+        if is_ready_to_generate is not None:
+            done_payload["is_ready_to_generate"] = is_ready_to_generate
+
+        if planning_action:
+            done_payload["planning_action"] = planning_action
 
         if suggested_media:
             done_payload["media"] = [

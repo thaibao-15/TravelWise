@@ -471,10 +471,41 @@ def generate_itinerary_direct(
         )
 
     if not context:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cần cung cấp context hoặc conversation_id để tạo lịch trình.",
-        )
+        prompt_text = request_data.user_prompt or ""
+        if request_data.conversation_id:
+            from app.models.message import Message
+            last_msgs = session.exec(
+                select(Message)
+                .where(Message.conversation_id == request_data.conversation_id)
+                .order_by(Message.id.desc())
+                .limit(5)
+            ).all()
+            if last_msgs:
+                prompt_text = " ".join([m.content for m in reversed(last_msgs)]) + " " + prompt_text
+
+        dest_city = "Đà Nẵng"
+        for city in [
+            "Đà Nẵng", "Hội An", "Huế", "Đà Lạt", "Nha Trang", "Phú Quốc",
+            "Hà Nội", "TP. Hồ Chí Minh", "Sa Pa", "Hạ Long", "Quy Nhơn", "Vũng Tàu",
+            "Ninh Bình", "Phan Thiết", "Mũi Né", "Cần Thơ", "Hà Giang",
+        ]:
+            if city.lower() in prompt_text.lower():
+                dest_city = city
+                break
+
+        duration = 3
+        day_m = re.search(r'(\d+)\s*(?:ngày|ngay)', prompt_text, re.IGNORECASE)
+        if day_m:
+            try:
+                duration = max(1, min(14, int(day_m.group(1))))
+            except ValueError:
+                pass
+
+        context = TripPlanningContext()
+        context.trip.destination.city = dest_city
+        context.trip.destination.country = "Việt Nam"
+        context.trip.dates.duration_days = duration
+        context.planning_state.is_ready_to_generate = True
 
     if request_data and request_data.current_location:
         context.current_location = request_data.current_location

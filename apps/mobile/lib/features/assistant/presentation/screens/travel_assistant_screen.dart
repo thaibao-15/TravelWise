@@ -841,9 +841,14 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
               // Nút giữa: Voice Orb Mic lớn (Hỗ trợ 1-tap barge-in ngắt lời tức thì)
               GestureDetector(
-                onTap: (isSpeaking || isThinking)
-                    ? notifier.bargeIn
-                    : notifier.toggleRecording,
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (isSpeaking) {
+                    notifier.bargeIn();
+                  } else {
+                    notifier.toggleRecording();
+                  }
+                },
                 child: SizedBox(
                   width: 96,
                   height: 96,

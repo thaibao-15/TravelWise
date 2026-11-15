@@ -96,13 +96,22 @@ EMBEDDING_PROVIDER=auto
 
 ### 4. Khởi tạo Database & Chạy Migrations
 
-Kết nối vào SQL Server và tạo cơ sở dữ liệu:
+Bạn có thể lựa chọn 1 trong 2 cách sau tùy theo hiện trạng database:
+
+#### Cách 1: Database đã có sẵn bảng hoặc đã chạy script `TravelWiseDB.sql` (Khuyên dùng khi import data mẫu sẵn)
+Nếu bạn đã chạy file `TravelWiseDB.sql` hoặc database đã tồn tại các bảng (`categories`, `users`, `places`,...), hãy đánh dấu phiên bản hiện tại cho Alembic (không chạy lệnh tạo lại bảng để tránh lỗi `There is already an object named '...'`):
+```bash
+uv run alembic stamp head
+```
+
+#### Cách 2: Khởi tạo từ Database trống hoàn toàn
+1. Kết nối vào SQL Server và tạo database trống:
 ```sql
 CREATE DATABASE TravelWiseDB;
 GO
 ```
 
-Áp dụng các migration của Alembic:
+2. Áp dụng các migration của Alembic để tự động sinh toàn bộ bảng:
 ```bash
 uv run alembic upgrade head
 ```
