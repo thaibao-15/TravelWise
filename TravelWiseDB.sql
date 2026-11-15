@@ -375,6 +375,16 @@ CREATE TABLE conversation_summaries (
         UNIQUE (conversation_id)
 );
 
+CREATE TABLE ai_context (
+    id BIGINT IDENTITY PRIMARY KEY,
+    conversation_id BIGINT,
+    summary NVARCHAR(MAX),
+    updated_at DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_ai_context_conversation_id ON ai_context(conversation_id);
+
 -- =========================================
 -- TRIPS (AI GENERATED)
 -- =========================================
@@ -410,11 +420,25 @@ CREATE TABLE trip_preferences (
     trip_id BIGINT NOT NULL UNIQUE,
 
     travelers INT,
+    adults INT,
+    children INT,
+    group_type NVARCHAR(50),
+
     budget DECIMAL(12,2),
-    transport NVARCHAR(50),
-    travel_style NVARCHAR(50),
+    budget_currency NVARCHAR(10) DEFAULT 'VND',
+    budget_scope NVARCHAR(50),
+
+    duration_days INT,
+    nights INT,
+
+    transport NVARCHAR(100),
+    travel_style NVARCHAR(100),
     interests NVARCHAR(MAX),
     special_requirements NVARCHAR(MAX),
+
+    place_requirements NVARCHAR(MAX),
+    schedule_constraints NVARCHAR(MAX),
+    raw_context_snapshot NVARCHAR(MAX),
 
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
