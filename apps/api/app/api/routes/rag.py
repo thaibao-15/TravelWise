@@ -137,15 +137,14 @@ def get_planning_signals(
                 trip_d = planning_context.setdefault("trip", {})
                 dates_d = trip_d.setdefault("dates", {})
                 dates_d["duration_days"] = num_days
-                planning_context.setdefault("planning_state", {})["is_ready_to_generate"] = bool(
-                    trip_d.get("destination", {}).get("city")
-                )
+                # Chỉ cập nhật is_ready_to_generate nếu có thông tin destination trong trip
+                if trip_d.get("destination", {}).get("city"):
+                    planning_context.setdefault("planning_state", {})["is_ready_to_generate"] = True
             else:
                 planning_context.trip.dates.duration_days = num_days
                 if hasattr(planning_context, "planning_state"):
-                    planning_context.planning_state.is_ready_to_generate = bool(
-                        planning_context.trip.destination.city
-                    )
+                    if getattr(getattr(planning_context, "trip", None), "destination", None) and getattr(planning_context.trip.destination, "city", None):
+                        planning_context.planning_state.is_ready_to_generate = True
         except Exception:
             pass
 

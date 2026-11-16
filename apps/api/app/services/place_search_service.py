@@ -261,6 +261,7 @@ class PlaceSearchService:
                 selectinload(Place.hotel_detail),
                 selectinload(Place.opening_hours),
                 selectinload(Place.images),
+                selectinload(Place.knowledge_items),
             )
         )
         all_places = list(session.exec(statement).all())
@@ -442,33 +443,46 @@ class PlaceSearchService:
                 match_reasons.append("Địa điểm được ưu tiên yêu cầu")
 
             # (3) Destination relevance
-            if matches_primary_destination:
-                score += 1.5
-                match_reasons.append(f"Thuộc điểm đến chính '{primary_city}'")
-            elif matches_additional_destination:
+            if matches_additional_destination and not matches_primary_destination:
                 score += 1.0
                 match_reasons.append("Thuộc điểm đến kết hợp trong chuyến đi")
+            elif matches_additional_destination and matches_primary_destination:
+                # Địa điểm giáp ranh hoặc kết hợp cả điểm chính lẫn điểm đến bổ sung
+                score += 2.0
+                match_reasons.append(f"Thuộc điểm đến chính '{primary_city}' và kết hợp trong chuyến đi")
+            elif matches_primary_destination:
+                score += 1.5
+                match_reasons.append(f"Thuộc điểm đến chính '{primary_city}'")
 
             # (4) Category inclusion filter/boost
             if categories_to_include_norm:
                 cat_match = False
+                is_direct_category = False
                 for inc_cat in categories_to_include_norm:
-                    # Check direct or synonym match
-                    if (cat_name_norm and (inc_cat in cat_name_norm or cat_name_norm in inc_cat)) or (inc_cat in p_name_norm):
+                    # Check direct category match first
+                    if cat_name_norm and (inc_cat == cat_name_norm or inc_cat in cat_name_norm or cat_name_norm in inc_cat):
                         cat_match = True
+                        is_direct_category = True
                         break
                     # Check synonyms
                     for db_cat, aliases in CATEGORY_ALIASES.items():
                         db_cat_norm = remove_accents(db_cat)
                         alias_norms = [remove_accents(a) for a in aliases]
                         if inc_cat == db_cat_norm or inc_cat in alias_norms:
-                            if cat_name_norm == db_cat_norm or any(a in p_name_norm for a in alias_norms if len(a) >= 4):
+                            if cat_name_norm == db_cat_norm:
+                                cat_match = True
+                                is_direct_category = True
+                                break
+                            elif any(a in p_name_norm for a in alias_norms if len(a) >= 4):
                                 cat_match = True
                                 break
                     if cat_match:
                         break
+                    if inc_cat in p_name_norm:
+                        cat_match = True
+                        break
                 if cat_match:
-                    score += 1.5
+                    score += 2.0 if is_direct_category else 1.5
                     match_reasons.append(f"Thuộc danh mục quan tâm: {cat_name or place.name}")
 
             # (5) Interest matching
@@ -497,7 +511,7 @@ class PlaceSearchService:
                     score += 1.0
                     match_reasons.append(f"Phù hợp với sở thích '{interest}'")
 
-            # (6) Data Completeness
+            # (6) Data Completeness & Curated Quality
             completeness = evaluate_data_completeness(place)
             if completeness == "FULL":
                 score += 0.5
@@ -505,6 +519,10 @@ class PlaceSearchService:
                 score += 0.3
             else:
                 score += 0.1
+
+            # Curated / verified places with rich knowledge base get a relevance bonus
+            if getattr(place, "knowledge_items", None):
+                score += 0.5
 
             # (7) Proximity / Distance
             ref_lat = reference_lat

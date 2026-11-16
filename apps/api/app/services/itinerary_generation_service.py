@@ -271,7 +271,7 @@ class ItineraryGenerationService:
             session=session,
             context=context,
             skip=0,
-            limit=35,
+            limit=60,
             reference_lat=current_location.latitude if current_location else None,
             reference_lon=current_location.longitude if current_location else None,
         )
