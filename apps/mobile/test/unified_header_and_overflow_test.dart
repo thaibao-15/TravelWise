@@ -104,7 +104,8 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         expect(MainShell.currentTab, equals(0));
 
@@ -116,7 +117,8 @@ void main() {
         expect(avatarFinder, findsOneWidget);
 
         await tester.tap(avatarFinder);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         // Should have switched to tab 4 (Profile)
         expect(MainShell.currentTab, equals(4));

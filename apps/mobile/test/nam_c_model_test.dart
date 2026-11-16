@@ -4,7 +4,10 @@ import 'package:mobile/features/assistant/presentation/models/glb_model.dart';
 
 void main() {
   test('GlbModel parses Nam_C.glb properly', () {
-    final file = File(r'd:\TravelWise 1\TravelWise\apps\mobile\assets\models\Nam_C.glb');
+    File file = File('assets/models/Nam_C.glb');
+    if (!file.existsSync()) {
+      file = File('apps/mobile/assets/models/Nam_C.glb');
+    }
     expect(file.existsSync(), isTrue);
     final bytes = file.readAsBytesSync();
     final model = GlbModel.fromBytes(bytes, name: 'Nam_C');

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/audio/lip_sync_frame.dart';
+import '../../../../shared/widgets/main_shell.dart';
 import '../../services/avatar_animation_service.dart';
 import '../models/glb_model.dart';
 import '../providers/avatar_state_provider.dart';
@@ -46,7 +47,7 @@ class Ai3dAvatar extends ConsumerStatefulWidget {
 }
 
 class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _tickerController;
   final AvatarAnimationService _animationService = AvatarAnimationService();
 
@@ -63,18 +64,51 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tickerController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3600),
-    )..repeat();
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _syncTickerState();
+      }
+    });
 
     _loadAvatarModel();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tickerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncTickerState();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      if (_tickerController.isAnimating) {
+        _tickerController.stop();
+      }
+    }
+  }
+
+  void _syncTickerState() {
+    if (!mounted) return;
+    final currentTab = ref.read(mainTabProvider);
+    // Tab 2 is TravelAssistantScreen
+    final isTabActive = currentTab == 2;
+    if (isTabActive && !_tickerController.isAnimating) {
+      _tickerController.repeat();
+    } else if (!isTabActive && _tickerController.isAnimating) {
+      _tickerController.stop();
+    }
   }
 
   void _decodeAndCacheTextures(GlbModel model, List<String> cacheKeys) {
@@ -229,6 +263,19 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
 
   @override
   Widget build(BuildContext context) {
+    // Automatically stop/resume 3D rendering ticker based on active tab
+    ref.listen<int>(mainTabProvider, (_, nextTab) {
+      if (nextTab == 2) {
+        if (!_tickerController.isAnimating) {
+          _tickerController.repeat();
+        }
+      } else {
+        if (_tickerController.isAnimating) {
+          _tickerController.stop();
+        }
+      }
+    });
+
     // Listen for model switching from provider
     ref.listen<String>(
       avatar3dStateProvider.select((s) => s.selectedModelPath),
@@ -317,17 +364,19 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                             ? (isNam ? 1.50 : 1.32)
                             : 1.14;
 
-                        return CustomPaint(
-                          size: Size(constraints.maxWidth, constraints.maxHeight),
-                          painter: Glb3dPainter(
-                            model: _loadedModel!,
-                            textures: _loadedTextures,
-                            frame: frame,
-                            orbitYaw: avatarState.userOrbitYaw,
-                            orbitPitch: avatarState.userOrbitPitch,
-                            zoom: avatarState.userZoom,
-                            cameraDistance: camDist,
-                            targetY: tgtY,
+                        return RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size(constraints.maxWidth, constraints.maxHeight),
+                            painter: Glb3dPainter(
+                              model: _loadedModel!,
+                              textures: _loadedTextures,
+                              frame: frame,
+                              orbitYaw: avatarState.userOrbitYaw,
+                              orbitPitch: avatarState.userOrbitPitch,
+                              zoom: avatarState.userZoom,
+                              cameraDistance: camDist,
+                              targetY: tgtY,
+                            ),
                           ),
                         );
                       },

@@ -64,4 +64,5 @@ flutter:
 
   assets:
     - assets/images/
-    - assets/models/
+    - assets/models/AvatarSample_A.glb
+    - assets/models/Nam_C.glb

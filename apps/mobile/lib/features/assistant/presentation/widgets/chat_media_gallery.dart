@@ -122,7 +122,7 @@ class ChatMediaGallery extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         shrinkWrap: true,
         itemCount: images.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final item = images[index];
           return ClipRRect(
@@ -157,7 +157,7 @@ class ChatMediaGallery extends StatelessWidget {
                           ),
                         );
                       },
-                      errorBuilder: (_, __, ___) => _buildSmallErrorCard(),
+                      errorBuilder: (_, _, _) => _buildSmallErrorCard(),
                     ),
                     // Image index badge
                     Positioned(
