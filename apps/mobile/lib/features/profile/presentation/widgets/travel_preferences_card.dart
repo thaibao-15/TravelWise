@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/colors.dart';
 import '../../../../core/constants/text_styles.dart';
+import '../../data/models/user_profile_model.dart';
 import '../../domain/entities/profile_entity.dart';
 
 /// Section F: Travel Preferences Card displaying style, budget, pace, and categories.
 class TravelPreferencesCard extends StatelessWidget {
   final TravelPreferences preferences;
+  final UserProfileModel? userProfile;
   final VoidCallback onEditTap;
 
   const TravelPreferencesCard({
     super.key,
     required this.preferences,
+    this.userProfile,
     required this.onEditTap,
   });
 
@@ -94,6 +97,24 @@ class TravelPreferencesCard extends StatelessWidget {
             emoji: preferences.paceEmoji,
             value: preferences.pace,
           ),
+          if (userProfile?.preferredTransport != null &&
+              userProfile!.preferredTransport!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildPreferenceRow(
+              label: 'Phương tiện',
+              emoji: '🚗',
+              value: userProfile!.preferredTransport!,
+            ),
+          ],
+          if (userProfile?.accommodationType != null &&
+              userProfile!.accommodationType!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildPreferenceRow(
+              label: 'Chỗ ở ưa thích',
+              emoji: '🏨',
+              value: userProfile!.accommodationType!,
+            ),
+          ],
           const SizedBox(height: 14),
 
           // Favorite Categories Strip

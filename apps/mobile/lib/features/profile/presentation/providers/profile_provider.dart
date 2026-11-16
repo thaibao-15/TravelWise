@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../auth/auth_di.dart';
 import '../../../auth/domain/entities/user.dart';
 import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../auth/presentation/providers/auth_state.dart';
 import '../../data/datasources/profile_remote_datasource.dart';
+import '../../data/models/user_profile_model.dart';
 import '../../data/repositories/profile_repository_impl.dart';
 import '../../domain/entities/profile_entity.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -27,6 +29,8 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
     storageService: storageService,
   );
 });
+
+final isAvatarUploadingProvider = StateProvider<bool>((ref) => false);
 
 // ─── Profile State ──────────────────────────────────────────────────
 
@@ -161,11 +165,93 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
       state = ProfileSuccess(currentState.profile.copyWith(user: updatedUser));
       return true;
     }, (updatedUser) {
-      // Update auth state so app-wide user remains in sync
       _ref.read(authProvider.notifier).updateUser(updatedUser);
-
-      // Update profile state
       state = ProfileSuccess(currentState.profile.copyWith(user: updatedUser));
+      return true;
+    });
+  }
+
+  /// Uploads avatar image file directly to backend and updates profile
+  Future<bool> uploadAvatar(XFile file) async {
+    final currentState = state;
+    if (currentState is! ProfileSuccess) return false;
+
+    _ref.read(isAvatarUploadingProvider.notifier).state = true;
+    bool isSuccess = false;
+    try {
+      final userId = currentState.profile.user.id;
+      final result = await _repository.uploadAvatar(userId: userId, file: file);
+
+      isSuccess = result.fold((failure) {
+        return false;
+      }, (updatedUser) {
+        _ref.read(authProvider.notifier).updateUser(updatedUser);
+        state = ProfileSuccess(currentState.profile.copyWith(user: updatedUser));
+        return true;
+      });
+    } finally {
+      _ref.read(isAvatarUploadingProvider.notifier).state = false;
+    }
+    return isSuccess;
+  }
+
+  /// Updates personal details (name, phone, birthday, gender, nationality, language)
+  Future<bool> updatePersonalInfo({
+    String? fullName,
+    String? phone,
+    DateTime? dateOfBirth,
+    String? gender,
+    String? nationality,
+    String? preferredLanguage,
+  }) async {
+    final currentState = state;
+    if (currentState is! ProfileSuccess) return false;
+
+    bool userUpdated = true;
+    if (fullName != null && fullName != currentState.profile.user.fullName) {
+      userUpdated = await updateProfile(fullName: fullName);
+    }
+
+    final existingProfile = currentState.profile.userProfile ?? const UserProfileModel();
+    final updatedProfileModel = existingProfile.copyWith(
+      phone: phone,
+      dateOfBirth: dateOfBirth,
+      gender: gender,
+      nationality: nationality,
+      preferredLanguage: preferredLanguage,
+    );
+
+    final res = await _repository.updateTravelProfile(updatedProfileModel);
+    res.fold((_) {}, (savedModel) {
+      final currentSuccessState = state;
+      if (currentSuccessState is ProfileSuccess) {
+        state = ProfileSuccess(
+          currentSuccessState.profile.copyWith(
+            userProfile: savedModel,
+            preferences: savedModel.toTravelPreferences(),
+          ),
+        );
+      }
+    });
+
+    return userUpdated;
+  }
+
+  /// Saves complete travel profile to backend
+  Future<bool> updateFullTravelProfile(UserProfileModel profileModel) async {
+    final currentState = state;
+    if (currentState is! ProfileSuccess) return false;
+
+    final result = await _repository.updateTravelProfile(profileModel);
+    return result.fold((failure) {
+      return false;
+    }, (savedModel) {
+      state = ProfileSuccess(
+        currentState.profile.copyWith(
+          userProfile: savedModel,
+          preferences: savedModel.toTravelPreferences(),
+        ),
+      );
       return true;
     });
   }
@@ -184,6 +270,15 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
         currentState.profile.copyWith(preferences: updated),
       );
     });
+  }
+
+  Future<bool> deleteAccount() async {
+    final currentState = state;
+    if (currentState is! ProfileSuccess) return false;
+
+    final userId = currentState.profile.user.id;
+    final result = await _repository.deleteAccount(userId);
+    return result.fold((failure) => false, (_) => true);
   }
 
   Future<void> refreshLocationPermission() async {

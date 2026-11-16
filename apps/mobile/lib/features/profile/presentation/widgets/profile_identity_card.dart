@@ -8,6 +8,7 @@ import '../../../auth/domain/entities/user.dart';
 class ProfileIdentityCard extends StatelessWidget {
   final User user;
   final String membershipTier;
+  final bool isAvatarUploading;
   final VoidCallback onEditTap;
   final VoidCallback onShareTap;
   final VoidCallback onCameraTap;
@@ -16,6 +17,7 @@ class ProfileIdentityCard extends StatelessWidget {
     super.key,
     required this.user,
     required this.membershipTier,
+    this.isAvatarUploading = false,
     required this.onEditTap,
     required this.onShareTap,
     required this.onCameraTap,
@@ -179,30 +181,52 @@ class ProfileIdentityCard extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Circular Avatar
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.surfaceContainer,
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.08),
-                blurRadius: 12,
-                offset: Offset(0, 2),
+        // Circular Avatar with Tap & Loading overlay
+        GestureDetector(
+          onTap: isAvatarUploading ? null : onCameraTap,
+          child: Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surfaceContainer,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(0, 0, 0, 0.08),
+                  blurRadius: 12,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                      ? Image.network(
+                          user.avatarUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, error, stackTrace) =>
+                              _buildAvatarPlaceholder(),
+                        )
+                      : _buildAvatarPlaceholder(),
+                  if (isAvatarUploading)
+                    Container(
+                      color: Colors.black45,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            ],
-          ),
-          child: ClipOval(
-            child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                ? Image.network(
-                    user.avatarUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, error, stackTrace) =>
-                        _buildAvatarPlaceholder(),
-                  )
-                : _buildAvatarPlaceholder(),
+            ),
           ),
         ),
 
@@ -216,7 +240,7 @@ class ProfileIdentityCard extends StatelessWidget {
             elevation: 3,
             child: InkWell(
               customBorder: const CircleBorder(),
-              onTap: onCameraTap,
+              onTap: isAvatarUploading ? null : onCameraTap,
               child: const SizedBox(
                 width: 28,
                 height: 28,

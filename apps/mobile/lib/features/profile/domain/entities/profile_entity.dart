@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import '../../../auth/domain/entities/user.dart';
+import '../../data/models/user_profile_model.dart';
 
 /// Aggregated travel statistics entity for Section C.
 class TravelStats extends Equatable {
@@ -99,6 +100,7 @@ class TravelBadge extends Equatable {
 /// Root domain entity for TravelSense Profile.
 class ProfileEntity extends Equatable {
   final User user;
+  final UserProfileModel? userProfile;
   final String membershipTier;
   final TravelStats stats;
   final TravelPreferences preferences;
@@ -108,6 +110,7 @@ class ProfileEntity extends Equatable {
 
   const ProfileEntity({
     required this.user,
+    this.userProfile,
     required this.membershipTier,
     required this.stats,
     required this.preferences,
@@ -118,6 +121,7 @@ class ProfileEntity extends Equatable {
 
   ProfileEntity copyWith({
     User? user,
+    UserProfileModel? userProfile,
     String? membershipTier,
     TravelStats? stats,
     TravelPreferences? preferences,
@@ -127,6 +131,7 @@ class ProfileEntity extends Equatable {
   }) {
     return ProfileEntity(
       user: user ?? this.user,
+      userProfile: userProfile ?? this.userProfile,
       membershipTier: membershipTier ?? this.membershipTier,
       stats: stats ?? this.stats,
       preferences: preferences ?? this.preferences,
@@ -140,6 +145,7 @@ class ProfileEntity extends Equatable {
   @override
   List<Object?> get props => [
     user,
+    userProfile,
     membershipTier,
     stats,
     preferences,
