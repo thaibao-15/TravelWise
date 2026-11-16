@@ -175,7 +175,7 @@ class TripRepository {
     String destinationCountry = 'Việt Nam',
     String? startDate,
     String? endDate,
-    int durationDays = 3,
+    int durationDays = 1,
   }) async {
     try {
       _log('createTrip_request', {
@@ -460,10 +460,12 @@ class TripRepository {
     required String tripId,
     required String instruction,
     int? targetDay,
+    int? conversationId,
   }) async {
     _log('editItinerary_request', {
       'tripId': tripId,
       'instruction': instruction,
+      'conversationId': conversationId,
     });
     try {
       final response = await _dio.post(
@@ -473,6 +475,7 @@ class TripRepository {
           'instruction': instruction,
           'allow_overwrite': true,
           'target_day': ?targetDay,
+          'conversation_id': ?conversationId,
         },
         // AI editing is long-running; extend timeout to avoid browser CORS errors.
         options: Options(

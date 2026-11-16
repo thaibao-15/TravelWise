@@ -17,7 +17,10 @@ void main() {
     late Uint8List glbBytes;
 
     setUpAll(() {
-      final file = File(r'd:\TravelWise 1\TravelWise\apps\mobile\assets\models\AvatarSample_A.glb');
+      File file = File('assets/models/AvatarSample_A.glb');
+      if (!file.existsSync()) {
+        file = File('apps/mobile/assets/models/AvatarSample_A.glb');
+      }
       expect(file.existsSync(), isTrue, reason: 'AvatarSample_A.glb must exist in assets/models');
       glbBytes = file.readAsBytesSync();
     });

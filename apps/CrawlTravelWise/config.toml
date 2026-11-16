@@ -1,0 +1,55 @@
+[target]
+# Ngôn ngữ và khu vực
+hl = "vi"
+gl = "VN"
+
+# Tọa độ trung tâm và bounding box Đà Nẵng
+center_lat = 16.0544
+center_lng = 108.2022
+zoom_level = 14
+
+# Danh sách từ khóa tìm kiếm theo quận / phường / loại hình tại Đà Nẵng
+keywords = [
+    "quán cà phê Hải Châu Đà Nẵng",
+    "đặc sản Sơn Trà Đà Nẵng",
+    "nhà hàng hải sản Ngũ Hành Sơn Đà Nẵng",
+    "quán ăn sáng Thanh Khê Đà Nẵng",
+    "khách sạn Cẩm Lệ Đà Nẵng",
+    "quán cafe An Thượng Ngũ Hành Sơn Đà Nẵng"
+]
+
+[scraper]
+# Chế độ trình duyệt
+headless = false
+browser_type = "chromium"
+
+# Giới hạn số lượng kết quả cho mỗi từ khóa
+max_results = 30
+
+# Timeout (milliseconds)
+navigation_timeout = 45000
+action_timeout = 10000
+
+# Delay ngẫu nhiên giữa các hành vi để chống chặn (giây)
+min_delay = 1.5
+max_delay = 3.5
+
+# Số worker/tab chạy song song khi crawl chi tiết
+concurrency = 2
+
+# User agent tùy biến (để trống để playwright tự sinh hoặc dùng chuẩn)
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+
+[storage]
+# Thư mục lưu dữ liệu đầu ra
+output_dir = "output"
+
+# Định dạng xuất: "json" hoặc "jsonl"
+format = "jsonl"
+
+# Cơ chế ghi: "append" (nối tiếp và khử trùng) hoặc "overwrite" (ghi đè mới)
+write_mode = "append"
+
+# Tên file xuất mặc định (nếu để trống sẽ tự động đặt theo ngày: danang_places_YYYYMMDD.jsonl)
+output_filename = "danang_places.jsonl"
+

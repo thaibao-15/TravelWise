@@ -242,7 +242,7 @@ class MainShellState extends ConsumerState<MainShell> {
               onNotification: _handleScrollNotification,
               child: IndexedStack(
                 index: _currentIndex,
-                children: _pages,
+                children: _pages.map((page) => RepaintBoundary(child: page)).toList(),
               ),
             ),
       bottomNavigationBar: AnimatedSlide(

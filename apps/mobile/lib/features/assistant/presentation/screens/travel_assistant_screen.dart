@@ -1017,49 +1017,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
           const SizedBox(height: 6),
 
-          // Hiển thị trực tiếp chữ khi người dùng nói hoặc dòng trạng thái
-          if ((state.voiceState == VoiceState.listening || state.isRecording) &&
-              state.currentTranscript.trim().isNotEmpty) ...[
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF93C5FD), width: 1.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.record_voice_over_rounded,
-                    size: 16,
-                    color: Color(0xFF0284C7),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      state.currentTranscript,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E40AF),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else if (isThinking) ...[
+          // Dòng trạng thái giọng nói (không hiển thị văn bản nhận diện/phản hồi trực tiếp)
+          if (isThinking) ...[
             Row(
               mainAxisSize: MainAxisSize.min,
               children: const [

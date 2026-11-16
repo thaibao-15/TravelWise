@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dartz/dartz.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile/core/error/failures.dart';
 import 'package:mobile/features/auth/domain/entities/user.dart';
+import 'package:mobile/features/profile/data/models/user_profile_model.dart';
 import 'package:mobile/features/profile/domain/entities/profile_entity.dart';
 import 'package:mobile/features/profile/domain/repositories/profile_repository.dart';
 import 'package:mobile/features/profile/presentation/providers/profile_provider.dart';
@@ -30,10 +32,30 @@ class FakeProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<Either<Failure, User>> uploadAvatar({
+    required int userId,
+    required XFile file,
+  }) async {
+    return Right(fakeProfile.user);
+  }
+
+  @override
   Future<Either<Failure, TravelPreferences>> updatePreferences(
     TravelPreferences preferences,
   ) async {
     return Right(preferences);
+  }
+
+  @override
+  Future<Either<Failure, UserProfileModel>> updateTravelProfile(
+    UserProfileModel profile,
+  ) async {
+    return Right(profile);
+  }
+
+  @override
+  Future<Either<Failure, void>> deleteAccount(int userId) async {
+    return const Right(null);
   }
 }
 

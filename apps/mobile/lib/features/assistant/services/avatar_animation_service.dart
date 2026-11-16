@@ -63,6 +63,43 @@ class AvatarFrameState {
     this.rightForeArmYaw = 0.0,
   });
 
+  /// Fast zero-allocation lookup for morph weights
+  double getMorphWeight(String targetName) {
+    switch (targetName) {
+      case 'viseme_aa':
+      case 'A':
+      case 'mouthOpen':
+      case 'Fcl_MTH_A':
+        return visemeAa;
+      case 'viseme_oh':
+      case 'O':
+      case 'Fcl_MTH_O':
+        return visemeOh;
+      case 'viseme_ee':
+      case 'E':
+      case 'Fcl_MTH_E':
+        return visemeEe;
+      case 'viseme_ih':
+      case 'I':
+      case 'Fcl_MTH_I':
+        return (visemeEe * 0.45).clamp(0.0, 1.0);
+      case 'viseme_ou':
+      case 'U':
+      case 'Fcl_MTH_U':
+        return (visemeOh * 0.45).clamp(0.0, 1.0);
+      case 'blink':
+      case 'Blink':
+      case 'Fcl_EYE_Close':
+        return blinkWeight;
+      case 'smile':
+      case 'Joy':
+      case 'Fcl_MTH_Fun':
+        return smileWeight;
+      default:
+        return 0.0;
+    }
+  }
+
   Map<String, double> get morphWeights => {
         'viseme_aa': visemeAa,
         'viseme_oh': visemeOh,

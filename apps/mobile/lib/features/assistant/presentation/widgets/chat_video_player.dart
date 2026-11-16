@@ -319,7 +319,7 @@ class ChatVideoPreviewCard extends StatelessWidget {
                               ),
                             );
                           },
-                          errorBuilder: (_, __, ___) => _buildFallbackThumbnail(),
+                          errorBuilder: (_, _, _) => _buildFallbackThumbnail(),
                         )
                       else
                         _buildFallbackThumbnail(),

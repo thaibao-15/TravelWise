@@ -69,7 +69,8 @@ Nhiệm vụ của bạn là đọc toàn bộ lịch sử cuộc trò chuyện 
    - Tổng hợp thông tin từ tất cả các lượt trước và lượt hiện tại.
    - Giữ lại thông tin đã xác định từ các lượt trước (ví dụ lượt 1 nói đi Đà Nẵng, lượt 2 nói đi 3 ngày, lượt 3 nói ngân sách 4 triệu -> context phải có cả 3).
 2. CẬP NHẬT KHI NGƯỜI DÙNG THAY ĐỔI YÊU CẦU:
-   - Nếu người dùng thay đổi yêu cầu (ví dụ: đổi ngân sách từ 4 triệu lên 5 triệu), hãy cập nhật giá trị mới nhất (5 triệu) và không giữ giá trị cũ.
+   - Nếu người dùng thay đổi yêu cầu (ví dụ: đổi ngân sách từ 4 triệu lên 5 triệu, rút gọn hoặc thay đổi số ngày từ 2 ngày xuống 1 ngày), BẮT BUỘC cập nhật giá trị mới nhất (1 ngày) và TUYỆT ĐỐI KHÔNG giữ giá trị cũ (2 ngày).
+   - Khi các lượt sau người dùng không nhắc lại số ngày (ví dụ chỉ đổi giờ, dời lịch), BẮT BUỘC giữ nguyên số ngày gần nhất đã sửa (1 ngày), không được quay lại số ngày cũ ban đầu (2 ngày).
    - Nếu người dùng yêu cầu bỏ một địa điểm khỏi danh sách (ví dụ: "bỏ Bà Nà Hills đi"), hãy loại bỏ khỏi `must_visit` và đưa vào `excluded`.
 3. PHÂN BIỆT DỮ LIỆU ĐÃ XÁC NHẬN VÀ SUY ĐOÁN:
    - KHÔNG tự gán giá trị mặc định cho người dùng.
@@ -292,10 +293,10 @@ class TripPlanningContextExtractionService:
             check_ownership=check_ownership,
         )
 
-        # 2. Check draft Trip for this conversation
+        # 2. Check latest Trip for this conversation (any status: DRAFT, GENERATED, CONFIRMED)
         statement = (
             select(Trip)
-            .where(Trip.conversation_id == conversation_id, Trip.status == "DRAFT")
+            .where(Trip.conversation_id == conversation_id)
             .order_by(Trip.updated_at.desc() if Trip.updated_at is not None else Trip.created_at.desc())
         )
         trip = session.exec(statement).first()
@@ -780,8 +781,12 @@ class TripPlanningContextExtractionService:
         - `trip_preferences` (preferences, budget, travelers, and raw snapshot)
         - `ai_context` (conversation summary/context)
         """
-        # 1. Query existing draft trip for this conversation
-        statement = select(Trip).where(Trip.conversation_id == conversation_id, Trip.status == "DRAFT")
+        # 1. Query existing trip for this conversation (prioritizing the latest trip)
+        statement = (
+            select(Trip)
+            .where(Trip.conversation_id == conversation_id)
+            .order_by(Trip.updated_at.desc() if Trip.updated_at is not None else Trip.created_at.desc())
+        )
         trip = session.exec(statement).first()
 
         now = _utcnow()
@@ -806,12 +811,16 @@ class TripPlanningContextExtractionService:
                 pass
 
         if trip:
-            # Update existing draft trip
+            # Update existing trip without overwriting confirmed/generated status
             trip.name = trip_name
-            trip.destination_city = context.trip.destination.city
-            trip.destination_country = context.trip.destination.country
-            trip.start_date = start_date_obj
-            trip.end_date = end_date_obj
+            if context.trip.destination.city:
+                trip.destination_city = context.trip.destination.city
+            if context.trip.destination.country:
+                trip.destination_country = context.trip.destination.country
+            if start_date_obj:
+                trip.start_date = start_date_obj
+            if end_date_obj:
+                trip.end_date = end_date_obj
             trip.updated_at = now
             session.add(trip)
         else:

@@ -6,15 +6,93 @@ import 'package:vector_math/vector_math_64.dart' as vm;
 import '../models/glb_model.dart';
 import '../../services/avatar_animation_service.dart';
 
+/// Reusable zero-GC scratch buffer pool for 3D glTF rasterization.
+class _GlbBufferPool {
+  Float32List triDepths = Float32List(16384);
+  Float32List triScreenXY = Float32List(16384 * 6);
+  Float32List triUvXY = Float32List(16384 * 6);
+  Int32List triColors = Int32List(16384 * 3);
+  Int32List triTexImg = Int32List(16384);
+  Int32List drawOrder = Int32List(16384);
+
+  // Per-vertex scratch buffers
+  Float32List screenX = Float32List(4096);
+  Float32List screenY = Float32List(4096);
+  Float32List camDepth = Float32List(4096);
+  Uint8List validVert = Uint8List(4096);
+  Int32List vertColors = Int32List(4096);
+  Float32List morphedPos = Float32List(4096 * 3);
+
+  // Batch scratch buffers
+  Float32List batchPos = Float32List(16384 * 6);
+  Float32List batchUv = Float32List(16384 * 6);
+  Int32List batchCol = Int32List(16384 * 3);
+
+  // Skin joint matrices
+  final List<Float32List> skinJointMatrices = [];
+
+  // World transforms
+  final List<vm.Matrix4> worldTransforms = [];
+
+  void ensureTriCapacity(int required) {
+    if (triDepths.length < required) {
+      int next = triDepths.length * 2;
+      while (next < required) {
+        next *= 2;
+      }
+      triDepths = Float32List(next);
+      triScreenXY = Float32List(next * 6);
+      triUvXY = Float32List(next * 6);
+      triColors = Int32List(next * 3);
+      triTexImg = Int32List(next);
+      drawOrder = Int32List(next);
+      batchPos = Float32List(next * 6);
+      batchUv = Float32List(next * 6);
+      batchCol = Int32List(next * 3);
+    }
+  }
+
+  void ensureVertCapacity(int required) {
+    if (screenX.length < required) {
+      int next = screenX.length * 2;
+      while (next < required) {
+        next *= 2;
+      }
+      screenX = Float32List(next);
+      screenY = Float32List(next);
+      camDepth = Float32List(next);
+      validVert = Uint8List(next);
+      vertColors = Int32List(next);
+      morphedPos = Float32List(next * 3);
+    }
+  }
+
+  void ensureSkinCapacity(int skinIndex, int jointCount) {
+    while (skinJointMatrices.length <= skinIndex) {
+      skinJointMatrices.add(Float32List(0));
+    }
+    final req = jointCount * 16;
+    if (skinJointMatrices[skinIndex].length < req) {
+      skinJointMatrices[skinIndex] = Float32List(req);
+    }
+  }
+
+  void ensureNodeCapacity(int count) {
+    while (worldTransforms.length < count) {
+      worldTransforms.add(vm.Matrix4.identity());
+    }
+  }
+}
+
 /// High-definition hardware-accelerated 3D glTF / VRM rasterizer using
 /// batched `ui.Vertices.raw` + `ui.ImageShader` trilinear mipmapping.
 ///
-/// Features:
-/// - Full 2K UV Texture Mapping (`TEXCOORD_0` + `ImageShader` with `FilterQuality.medium` mipmaps)
-/// - 4-bone Linear Blend Skinning (`JOINTS_0` + `WEIGHTS_0` + `inverseBindMatrices`) for seamless joints
-/// - 60fps real-time Morph Target (blend shapes) facial & lip-sync deformation
-/// - Zero-GC flat-typed-array triangle sorting & dynamic material batching
-/// - Crisp Anime MToon cel-shading + subtle Fresnel rim lighting
+/// Performance optimizations:
+/// - Zero-GC global scratch buffers across frames (0 heap churn)
+/// - Expando-cached `ui.ImageShader` paints (0 C++ shader reconstructions)
+/// - Non-allocating in-place QuickSort on primitive typed arrays
+/// - Direct fast-path morph target lookup without Map allocations
+/// - Ultra-fast Fresnel multiplication replacing expensive transcendental `pow`
 class Glb3dPainter extends CustomPainter {
   static final Float64List _identityShaderMatrix = Float64List.fromList(<double>[
     1.0, 0.0, 0.0, 0.0,
@@ -22,6 +100,33 @@ class Glb3dPainter extends CustomPainter {
     0.0, 0.0, 1.0, 0.0,
     0.0, 0.0, 0.0, 1.0,
   ]);
+
+  static final _GlbBufferPool _pool = _GlbBufferPool();
+  static final Expando<Paint> _shaderPaintCache = Expando<Paint>();
+
+  static final Paint _untexturedPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = true
+    ..color = const Color(0xFFFFFFFF);
+
+  static Paint _getShaderPaint(ui.Image img) {
+    var p = _shaderPaintCache[img];
+    if (p == null) {
+      p = Paint()
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true
+        ..filterQuality = FilterQuality.medium
+        ..shader = ui.ImageShader(
+          img,
+          TileMode.repeated,
+          TileMode.repeated,
+          _identityShaderMatrix,
+          filterQuality: FilterQuality.medium,
+        );
+      _shaderPaintCache[img] = p;
+    }
+    return p;
+  }
 
   final GlbModel model;
   final List<ui.Image?>? textures;
@@ -59,11 +164,8 @@ class Glb3dPainter extends CustomPainter {
       ..rotate(vm.Vector3(1, 0, 0), orbitPitch);
 
     // 2. Hierarchical bone world transforms (composed cleanly on top of rest rotations)
-    final List<vm.Matrix4> worldTransforms = List<vm.Matrix4>.generate(
-      model.nodes.length,
-      (_) => vm.Matrix4.identity(),
-      growable: false,
-    );
+    _pool.ensureNodeCapacity(model.nodes.length);
+    final List<vm.Matrix4> worldTransforms = _pool.worldTransforms;
 
     final bool isSkinnedAvatar = model.skins.isNotEmpty;
 
@@ -163,14 +265,15 @@ class Glb3dPainter extends CustomPainter {
       }
     }
 
-    // 3. Precompute Linear Blend Skinning joint matrices (column-major 16 floats per joint)
-    final List<Float32List> skinJointMatrices = [];
+    // 3. Precompute Linear Blend Skinning joint matrices using pooled flat arrays
     if (model.skins.isNotEmpty) {
       final vm.Matrix4 ibmMat = vm.Matrix4.identity();
       final vm.Matrix4 combined = vm.Matrix4.identity();
-      for (final skin in model.skins) {
+      for (int sIdx = 0; sIdx < model.skins.length; sIdx++) {
+        final skin = model.skins[sIdx];
         final jCount = skin.joints.length;
-        final flatMats = Float32List(jCount * 16);
+        _pool.ensureSkinCapacity(sIdx, jCount);
+        final flatMats = _pool.skinJointMatrices[sIdx];
         final ibms = skin.inverseBindMatrices;
         for (int j = 0; j < jCount; j++) {
           final jointNodeIdx = skin.joints[j];
@@ -186,36 +289,8 @@ class Glb3dPainter extends CustomPainter {
             flatMats[ibmBase + k] = cStorage[k];
           }
         }
-        skinJointMatrices.add(flatMats);
       }
     }
-
-    // 4. Prebuild Paint + ImageShader per decoded GPU texture (trilinear mipmapped!)
-    final int imgCount = textures?.length ?? 0;
-    final List<Paint?> shaderPaints = List<Paint?>.filled(imgCount, null);
-    if (textures != null) {
-      for (int i = 0; i < imgCount; i++) {
-        final img = textures![i];
-        if (img != null) {
-          shaderPaints[i] = Paint()
-            ..style = PaintingStyle.fill
-            ..isAntiAlias = true
-            ..filterQuality = FilterQuality.medium
-            ..shader = ui.ImageShader(
-              img,
-              TileMode.repeated,
-              TileMode.repeated,
-              _identityShaderMatrix,
-              filterQuality: FilterQuality.medium,
-            );
-        }
-      }
-    }
-
-    final Paint untexturedPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true
-      ..color = const Color(0xFFFFFFFF);
 
     // Studio Anime MToon Lighting vectors
     final vm.Vector3 keyLight = vm.Vector3(0.26, 0.38, 0.88)..normalize();
@@ -224,12 +299,11 @@ class Glb3dPainter extends CustomPainter {
     final double fillX = fillLight.x, fillY = fillLight.y, fillZ = fillLight.z;
 
     // Damp smile slightly when vowels open wide so blended VRM morphs stay crisp
-    final Map<String, double> rawMorphs = frame.morphWeights;
     final double vowelSum =
         (frame.visemeAa + frame.visemeOh + frame.visemeEe).clamp(0.0, 1.0);
     final double dampedSmile = frame.smileWeight * (1.0 - vowelSum * 0.72);
 
-    // Count upper bound of triangles for flat zero-GC buffers
+    // Count upper bound of triangles for pooled buffers
     int maxTotalTris = 0;
     for (final node in model.nodes) {
       final mIdx = node.meshIndex;
@@ -241,14 +315,15 @@ class Glb3dPainter extends CustomPainter {
     }
     if (maxTotalTris == 0) return;
 
-    final Float32List triDepths = Float32List(maxTotalTris);
-    final Float32List triScreenXY = Float32List(maxTotalTris * 6);
-    final Float32List triUvXY = Float32List(maxTotalTris * 6);
-    final Int32List triColors = Int32List(maxTotalTris * 3);
-    final Int32List triTexImg = Int32List(maxTotalTris);
+    _pool.ensureTriCapacity(maxTotalTris);
+    final Float32List triDepths = _pool.triDepths;
+    final Float32List triScreenXY = _pool.triScreenXY;
+    final Float32List triUvXY = _pool.triUvXY;
+    final Int32List triColors = _pool.triColors;
+    final Int32List triTexImg = _pool.triTexImg;
     int emittedTris = 0;
 
-    // 5. Transform, shade, cull, and emit visible triangles
+    // 4. Transform, shade, cull, and emit visible triangles
     for (int nIdx = 0; nIdx < model.nodes.length; nIdx++) {
       final node = model.nodes[nIdx];
       final meshIdx = node.meshIndex;
@@ -259,8 +334,8 @@ class Glb3dPainter extends CustomPainter {
       final mesh = model.meshes[meshIdx];
       final int? skinIdx = node.skinIndex;
       final Float32List? jointMats =
-          (skinIdx != null && skinIdx >= 0 && skinIdx < skinJointMatrices.length)
-              ? skinJointMatrices[skinIdx]
+          (skinIdx != null && skinIdx >= 0 && skinIdx < _pool.skinJointMatrices.length)
+              ? _pool.skinJointMatrices[skinIdx]
               : null;
 
       final vm.Matrix4 worldMat = worldTransforms[nIdx];
@@ -293,7 +368,7 @@ class Glb3dPainter extends CustomPainter {
             final imIdx = model.textureToImage[tIdx];
             if (imIdx >= 0 &&
                 imIdx < textures!.length &&
-                shaderPaints[imIdx] != null) {
+                textures![imIdx] != null) {
               resolvedImgIdx = imIdx;
               activeImage = textures![imIdx];
             }
@@ -313,28 +388,40 @@ class Glb3dPainter extends CustomPainter {
         final double depthBias =
             mat?.depthBias ?? (isFaceLayer ? 0.0012 : 0.0);
 
-        // Apply active morph targets (blend shapes)
+        _pool.ensureVertCapacity(vertCount);
+        final Float32List screenX = _pool.screenX;
+        final Float32List screenY = _pool.screenY;
+        final Float32List camDepth = _pool.camDepth;
+        final Uint8List validVert = _pool.validVert;
+        final Int32List vertColors = _pool.vertColors;
+
+        // Apply active morph targets (blend shapes) using zero-GC scratch buffer
         final Float32List basePos = prim.positions;
         Float32List posSrc = basePos;
         if (prim.morphPositionDeltas.isNotEmpty &&
             prim.morphTargetNames.isNotEmpty) {
-          Float32List? morphed;
+          bool hasMorph = false;
+          final int posLen = basePos.length;
+          final Float32List morphed = _pool.morphedPos;
+
           for (int mI = 0; mI < prim.morphPositionDeltas.length; mI++) {
             final String tName =
                 mI < prim.morphTargetNames.length ? prim.morphTargetNames[mI] : '';
             final double weight = (tName == 'smile' || tName == 'Joy' || tName == 'Fcl_MTH_Fun')
                 ? dampedSmile
-                : (rawMorphs[tName] ?? 0.0);
+                : frame.getMorphWeight(tName);
             if (weight.abs() > 0.001) {
-              morphed ??= Float32List.fromList(basePos);
+              if (!hasMorph) {
+                morphed.setRange(0, posLen, basePos);
+                hasMorph = true;
+              }
               final Float32List deltas = prim.morphPositionDeltas[mI];
-              final int len = morphed.length;
-              for (int i = 0; i < len; i++) {
+              for (int i = 0; i < posLen; i++) {
                 morphed[i] += deltas[i] * weight;
               }
             }
           }
-          if (morphed != null) posSrc = morphed;
+          if (hasMorph) posSrc = morphed;
         }
 
         final Float32List baseNorm = prim.normals;
@@ -342,12 +429,6 @@ class Glb3dPainter extends CustomPainter {
         final Float32List? baseUv = prim.uvs;
         final Uint16List? joints = prim.joints;
         final Float32List? weights = prim.weights;
-
-        final Float32List screenX = Float32List(vertCount);
-        final Float32List screenY = Float32List(vertCount);
-        final Float32List camDepth = Float32List(vertCount);
-        final Uint8List validVert = Uint8List(vertCount);
-        final Int32List vertColors = Int32List(vertCount);
 
         final bool useSkin =
             jointMats != null && joints != null && weights != null;
@@ -424,6 +505,8 @@ class Glb3dPainter extends CustomPainter {
             screenX[i] = cx + vx * invZ;
             screenY[i] = cy - (vy - targetY) * invZ;
             validVert[i] = 1;
+          } else {
+            validVert[i] = 0;
           }
 
           final double nLen = math.sqrt(vnx * vnx + vny * vny + vnz * vnz);
@@ -453,7 +536,6 @@ class Glb3dPainter extends CustomPainter {
           double finalR, finalG, finalB;
 
           if (hasGpuTex) {
-            // Crisp MToon Studio Shading: modulates 2K texture without washing out highlights or crushing blacks
             if (isPureUnlitEye) {
               finalR = 1.0;
               finalG = 1.0;
@@ -472,9 +554,8 @@ class Glb3dPainter extends CustomPainter {
                   nDotKey * 0.72 + nDotFill * 0.28 + sky * 0.15;
               final double toonT = ((rawShade - 0.22) / 0.48).clamp(0.0, 1.0);
               final double smoothT = toonT * toonT * (3.0 - 2.0 * toonT);
-              final double rim =
-                  math.pow((1.0 - vnz.abs()).clamp(0.0, 1.0), 3.0).toDouble() *
-                      0.08;
+              final double rimVal = (1.0 - vnz.abs()).clamp(0.0, 1.0);
+              final double rim = rimVal * rimVal * rimVal * 0.08;
               finalR = (0.80 + 0.20 * smoothT + rim * 0.6).clamp(0.0, 1.0);
               finalG = (0.81 + 0.19 * smoothT + rim * 0.8).clamp(0.0, 1.0);
               finalB = (0.85 + 0.15 * smoothT + rim * 1.0).clamp(0.0, 1.0);
@@ -500,9 +581,8 @@ class Glb3dPainter extends CustomPainter {
               final double lum = cr * 0.299 + cg * 0.587 + cb * 0.114;
               final double darkLift = math.max(0.0, 1.0 - lum * 2.2) * 0.30;
               final double totalLight = ambient + diffuse + darkLift;
-              final double rim =
-                  math.pow((1.0 - vnz.abs()).clamp(0.0, 1.0), 2.8).toDouble() *
-                      0.18;
+              final double rimVal = (1.0 - vnz.abs()).clamp(0.0, 1.0);
+              final double rim = rimVal * rimVal * rimVal * 0.18;
               finalR = (cr * totalLight + rim * 0.25).clamp(0.0, 1.0);
               finalG = (cg * totalLight + rim * 0.40).clamp(0.0, 1.0);
               finalB = (cb * totalLight + rim * 0.55).clamp(0.0, 1.0);
@@ -531,13 +611,13 @@ class Glb3dPainter extends CustomPainter {
           final double x1 = screenX[i1], y1 = screenY[i1];
           final double x2 = screenX[i2], y2 = screenY[i2];
 
-          // 2D Viewport frustum culling (skips off-screen polygons when zoomed in)
+          // 2D Viewport frustum culling
           if (x0 < 0.0 && x1 < 0.0 && x2 < 0.0) continue;
           if (x0 > screenW && x1 > screenW && x2 > screenW) continue;
           if (y0 < 0.0 && y1 < 0.0 && y2 < 0.0) continue;
           if (y0 > screenH && y1 > screenH && y2 > screenH) continue;
 
-          // Backface culling (CCW in 3D -> negative cross product in Y-down screen space)
+          // Backface culling
           final double cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
           if (!doubleSided && cross >= 0.0) continue;
           if (cross.abs() < 1e-4) continue;
@@ -580,13 +660,19 @@ class Glb3dPainter extends CustomPainter {
 
     if (emittedTris == 0) return;
 
-    // 6. Depth sort farthest-to-nearest using lightweight index permutation
-    final List<int> drawOrder =
-        List<int>.generate(emittedTris, (i) => i, growable: false);
-    drawOrder.sort((a, b) => triDepths[b].compareTo(triDepths[a]));
+    // 5. In-place QuickSort on primitive typed arrays (0 allocations, zero boxed objects)
+    final Int32List drawOrder = _pool.drawOrder;
+    for (int i = 0; i < emittedTris; i++) {
+      drawOrder[i] = i;
+    }
+    _quickSortTriangles(drawOrder, triDepths, 0, emittedTris - 1);
 
-    // 7. Dynamic GPU Batching: merge contiguous triangles sharing the same texture
+    // 6. Dynamic GPU Batching with non-allocating sublist views
     int cursor = 0;
+    final Float32List batchPos = _pool.batchPos;
+    final Float32List batchUv = _pool.batchUv;
+    final Int32List batchCol = _pool.batchCol;
+
     while (cursor < emittedTris) {
       final int firstTri = drawOrder[cursor];
       final int batchImgIdx = triTexImg[firstTri];
@@ -597,10 +683,6 @@ class Glb3dPainter extends CustomPainter {
       }
 
       final int batchTris = batchEnd - cursor;
-      final Float32List batchPos = Float32List(batchTris * 6);
-      final Int32List batchCol = Int32List(batchTris * 3);
-      final Float32List? batchUv =
-          batchImgIdx >= 0 ? Float32List(batchTris * 6) : null;
 
       for (int b = 0; b < batchTris; b++) {
         final int tIdx = drawOrder[cursor + b];
@@ -613,7 +695,7 @@ class Glb3dPainter extends CustomPainter {
         batchPos[dst6 + 4] = triScreenXY[src6 + 4];
         batchPos[dst6 + 5] = triScreenXY[src6 + 5];
 
-        if (batchUv != null) {
+        if (batchImgIdx >= 0) {
           batchUv[dst6] = triUvXY[src6];
           batchUv[dst6 + 1] = triUvXY[src6 + 1];
           batchUv[dst6 + 2] = triUvXY[src6 + 2];
@@ -631,22 +713,27 @@ class Glb3dPainter extends CustomPainter {
 
       final ui.Vertices vertices = ui.Vertices.raw(
         ui.VertexMode.triangles,
-        batchPos,
-        textureCoordinates: batchUv,
-        colors: batchCol,
+        Float32List.sublistView(batchPos, 0, batchTris * 6),
+        textureCoordinates: batchImgIdx >= 0
+            ? Float32List.sublistView(batchUv, 0, batchTris * 6)
+            : null,
+        colors: Int32List.sublistView(batchCol, 0, batchTris * 3),
       );
 
-      if (batchImgIdx >= 0 && shaderPaints[batchImgIdx] != null) {
+      if (batchImgIdx >= 0 &&
+          textures != null &&
+          batchImgIdx < textures!.length &&
+          textures![batchImgIdx] != null) {
         canvas.drawVertices(
           vertices,
           BlendMode.modulate,
-          shaderPaints[batchImgIdx]!,
+          _getShaderPaint(textures![batchImgIdx]!),
         );
       } else {
         canvas.drawVertices(
           vertices,
           BlendMode.srcOver,
-          untexturedPaint,
+          _untexturedPaint,
         );
       }
 
@@ -654,8 +741,64 @@ class Glb3dPainter extends CustomPainter {
     }
   }
 
+  /// High-performance hybrid QuickSort + InsertionSort on flat typed arrays
+  static void _quickSortTriangles(
+    Int32List order,
+    Float32List depths,
+    int low,
+    int high,
+  ) {
+    while (low < high) {
+      if (high - low < 16) {
+        for (int i = low + 1; i <= high; i++) {
+          final int val = order[i];
+          final double depth = depths[val];
+          int j = i - 1;
+          while (j >= low && depths[order[j]] < depth) {
+            order[j + 1] = order[j];
+            j--;
+          }
+          order[j + 1] = val;
+        }
+        break;
+      }
+
+      final int mid = (low + high) >> 1;
+      final int pivotIdx = order[mid];
+      final double pivot = depths[pivotIdx];
+
+      order[mid] = order[high];
+      order[high] = pivotIdx;
+
+      int i = low;
+      for (int j = low; j < high; j++) {
+        if (depths[order[j]] >= pivot) {
+          final int tmp = order[i];
+          order[i] = order[j];
+          order[j] = tmp;
+          i++;
+        }
+      }
+      order[high] = order[i];
+      order[i] = pivotIdx;
+
+      if (i - low < high - i) {
+        _quickSortTriangles(order, depths, low, i - 1);
+        low = i + 1;
+      } else {
+        _quickSortTriangles(order, depths, i + 1, high);
+        high = i - 1;
+      }
+    }
+  }
+
   @override
   bool shouldRepaint(covariant Glb3dPainter oldDelegate) {
-    return true;
+    return oldDelegate.frame != frame ||
+        oldDelegate.orbitYaw != orbitYaw ||
+        oldDelegate.orbitPitch != orbitPitch ||
+        oldDelegate.zoom != zoom ||
+        oldDelegate.model != model ||
+        oldDelegate.textures != textures;
   }
 }

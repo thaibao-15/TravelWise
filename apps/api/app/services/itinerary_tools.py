@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class update_activity_time(BaseModel):
-    """Điều chỉnh thời gian bắt đầu hoặc kết thúc của một hoạt động cụ thể (ví dụ: dậy trễ, dời giờ, bắt đầu muộn hơn)."""
+    """Điều chỉnh thời gian bắt đầu hoặc kết thúc của hoạt động trong ngày (ví dụ: 'bắt đầu lúc 6:00 sáng', 'dậy lúc 6h', 'dời sang 10:00', 'khởi hành lúc 6:00'). TUYỆT ĐỐI KHÔNG dùng generate_new_itinerary cho yêu cầu đổi giờ/bắt đầu lúc mấy giờ."""
     day_number: int = Field(description="Số thứ tự ngày trong lịch trình (1, 2, 3...)")
     place_name: Optional[str] = Field(None, description="Tên địa điểm hoặc hoạt động cần đổi giờ (nếu áp dụng cho địa điểm cụ thể)")
     new_start_time: str = Field(description="Giờ bắt đầu mới theo định dạng HH:MM, ví dụ '10:00'")
@@ -118,7 +118,7 @@ class generate_new_itinerary(BaseModel):
     )
     special_requests: Optional[str] = Field(
         None,
-        description="Yêu cầu đặc biệt (ví dụ: 'bắt đầu lúc 6:00 sáng', 'đi cùng người lớn tuổi')"
+        description="Yêu cầu đặc biệt (ví dụ: 'du lịch tiết kiệm', 'đi cùng người lớn tuổi và trẻ nhỏ', 'không leo núi')"
     )
 
 
@@ -711,6 +711,22 @@ class ItineraryToolExecutor:
         """Tạo mới toàn bộ lịch trình chuyến đi và lưu các hoạt động chi tiết vào Database."""
         try:
             from app.services.itinerary_generation_service import ItineraryGenerationService
+            from app.schemas.trip_planning import TripPlanningContext
+
+            pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip_id)).first()
+            gen_ctx: Optional[TripPlanningContext] = None
+            if pref and pref.raw_context_snapshot:
+                try:
+                    data = json.loads(pref.raw_context_snapshot)
+                    gen_ctx = TripPlanningContext.model_validate(data)
+                except Exception:
+                    pass
+            if not gen_ctx:
+                gen_ctx = TripPlanningContext()
+
+            gen_ctx.trip.trip_id = trip_id
+            gen_ctx.trip.destination.city = destination_city
+            gen_ctx.trip.dates.duration_days = duration_days
 
             prompt_parts = [f"Tạo lịch trình {duration_days} ngày tại {destination_city}."]
             if travel_style:
@@ -724,9 +740,11 @@ class ItineraryToolExecutor:
 
             gen_res = ItineraryGenerationService.generate_itinerary(
                 session=session,
+                context=gen_ctx,
                 trip_id=trip_id,
+                save_to_db=True,
                 user_prompt=user_prompt,
-                allow_overwrite=allow_overwrite,
+                allow_overwrite_confirmed=allow_overwrite,
                 current_user=current_user,
             )
 

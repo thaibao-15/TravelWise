@@ -68,12 +68,23 @@ class AppNetworkImage extends StatelessWidget {
     if (resolved.isEmpty) {
       imageContent = _buildErrorPlaceholder();
     } else {
+      final pixelRatio = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+      final int? targetCacheWidth = (width != null && width! > 0)
+          ? (width! * pixelRatio).clamp(64, 1200).round()
+          : null;
+      final int? targetCacheHeight = (height != null && height! > 0)
+          ? (height! * pixelRatio).clamp(64, 1200).round()
+          : null;
+
       imageContent = Image.network(
         resolved,
         width: width,
         height: height,
         fit: fit,
         alignment: alignment,
+        cacheWidth: targetCacheWidth,
+        cacheHeight: targetCacheHeight,
+        filterQuality: FilterQuality.medium,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           if (placeholder != null) return placeholder!;
@@ -88,13 +99,15 @@ class AppNetworkImage extends StatelessWidget {
     }
 
     if (borderRadius != null) {
-      return ClipRRect(
-        borderRadius: borderRadius!,
-        child: imageContent,
+      return RepaintBoundary(
+        child: ClipRRect(
+          borderRadius: borderRadius!,
+          child: imageContent,
+        ),
       );
     }
 
-    return imageContent;
+    return RepaintBoundary(child: imageContent);
   }
 
   Widget _buildLoadingPlaceholder(ImageChunkEvent progress) {

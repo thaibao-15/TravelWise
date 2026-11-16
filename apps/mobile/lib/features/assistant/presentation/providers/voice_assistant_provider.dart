@@ -1132,9 +1132,14 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
     final isReady = payload['is_ready_to_generate'] == true;
     final status = payload['planning_status']?.toString();
-    final planningState = status == 'collecting_requirements'
-        ? TripPlanningState.collectingRequirements
-        : (isReady ? TripPlanningState.readyToGenerate : state.planningState);
+    TripPlanningState planningState = state.planningState;
+    if (state.tripPreview == null) {
+      if (status == 'collecting_requirements') {
+        planningState = TripPlanningState.collectingRequirements;
+      } else if (isReady || status == 'ready_to_generate') {
+        planningState = TripPlanningState.readyToGenerate;
+      }
+    }
 
     final convId =
         _parseConversationId(payload['conversation_id']) ?? state.conversationId;
@@ -2259,14 +2264,20 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       }
     }
 
-    // Nếu câu lệnh không nhắc lại tên thành phố (VD: "Tạo lịch trình 3 ngày đi"),
-    // lấy ngay thành phố từ planningContext đang có của cuộc trò chuyện
-    if (matchedCity == null && state.planningContext != null) {
-      final tripMap = state.planningContext!['trip'] as Map<String, dynamic>?;
-      final destMap = tripMap?['destination'] as Map<String, dynamic>?;
-      final cityInCtx = destMap?['city']?.toString();
-      if (cityInCtx != null && cityInCtx.trim().isNotEmpty) {
-        matchedCity = cityInCtx.trim();
+    // Nếu câu lệnh không nhắc lại tên thành phố (VD: "Tạo lịch trình 1 ngày đi"),
+    // lấy ngay thành phố từ planningContext hoặc tripPreview đang có
+    if (matchedCity == null) {
+      if (state.planningContext != null) {
+        final tripMap = state.planningContext!['trip'] as Map<String, dynamic>?;
+        final destMap = tripMap?['destination'] as Map<String, dynamic>?;
+        final cityInCtx = destMap?['city']?.toString();
+        if (cityInCtx != null && cityInCtx.trim().isNotEmpty) {
+          matchedCity = cityInCtx.trim();
+        }
+      }
+      if (matchedCity == null && state.tripPreview != null) {
+        final dest = state.tripPreview!.destination.trim();
+        if (dest.isNotEmpty) matchedCity = dest;
       }
     }
 
@@ -2275,9 +2286,9 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     int durationDays = 3;
 
     final dayMatch =
-        RegExp(r'(\d+)\s*ngày', caseSensitive: false).firstMatch(lower) ??
+        RegExp(r'(?:trong\s*)?(\d+)\s*ngày', caseSensitive: false).firstMatch(lower) ??
         RegExp(
-          r'(\d+)\s*ngay',
+          r'(?:trong\s*)?(\d+)\s*ngay',
           caseSensitive: false,
         ).firstMatch(_removeVietnameseAccents(lower));
 
@@ -3404,7 +3415,30 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
       return;
     }
 
-    final effectiveCtx = context ?? state.planningContext;
+    Map<String, dynamic>? effectiveCtx = context ?? state.planningContext;
+
+    if (userPrompt != null && userPrompt.isNotEmpty) {
+      final dayMatch = RegExp(r'(?:trong\s*)?(\d+)\s*(?:ngày|ngay)', caseSensitive: false)
+              .firstMatch(userPrompt) ??
+          RegExp(r'(?:trong\s*)?(\d+)\s*ngay', caseSensitive: false)
+              .firstMatch(_removeVietnameseAccents(userPrompt));
+      if (dayMatch != null) {
+        final parsed = int.tryParse(dayMatch.group(1) ?? '');
+        if (parsed != null && parsed >= 1 && parsed <= 14) {
+          final updated = Map<String, dynamic>.from(effectiveCtx ?? {});
+          final tripMap = updated['trip'] is Map<String, dynamic>
+              ? Map<String, dynamic>.from(updated['trip'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          final datesMap = tripMap['dates'] is Map<String, dynamic>
+              ? Map<String, dynamic>.from(tripMap['dates'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          datesMap['duration_days'] = parsed;
+          tripMap['dates'] = datesMap;
+          updated['trip'] = tripMap;
+          effectiveCtx = updated;
+        }
+      }
+    }
 
     log('generating_itinerary', {'conversationId': cid});
 
@@ -3743,6 +3777,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         tripId: tripId,
         instruction: instruction,
         targetDay: targetDay,
+        conversationId: state.conversationId,
       );
 
       if (serverRes != null) {
