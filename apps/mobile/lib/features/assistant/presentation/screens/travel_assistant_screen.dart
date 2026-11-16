@@ -12,7 +12,7 @@ import '../../../trips/models/trip_model.dart';
 import '../models/chat_media.dart';
 import '../../services/media_upload_service.dart';
 import '../providers/voice_assistant_provider.dart';
-import '../widgets/ai_3d_avatar.dart';
+import '../widgets/ai_avatar_viewport.dart';
 import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
@@ -571,16 +571,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
-    // Lấy câu nói gần nhất của AI trong hội thoại (ưu tiên bỏ qua các thông báo đính kèm lịch trình)
+    // Lấy câu nói gần nhất của AI trong hội thoại (luôn là tin nhắn mới nhất mà AI vừa nói ra)
     String latestAiSpeech = '';
     if (state.messages.isNotEmpty) {
       final aiMsgs = state.messages.where((m) => !m.isUser).toList();
-      // Ưu tiên tin nhắn hội thoại thường không đính kèm đối tượng tripItinerary
-      final regularAiMsgs =
-          aiMsgs.where((m) => m.tripItinerary == null).toList();
-      if (regularAiMsgs.isNotEmpty) {
-        latestAiSpeech = regularAiMsgs.last.text;
-      } else if (aiMsgs.isNotEmpty) {
+      if (aiMsgs.isNotEmpty) {
         latestAiSpeech = aiMsgs.last.text;
       }
     }
@@ -593,14 +588,219 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       }
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4.0),
-      child: Ai3dAvatar(
-        voiceState: state.voiceState,
-        speechText: latestAiSpeech,
-        lipSyncListenable: notifier.lipSyncListenable,
-        onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
-      ),
+    final ttsSpeedNum = double.tryParse(state.ttsSpeed) ?? 1.5;
+
+    return Column(
+      children: [
+        // Khung hiển thị nhân vật AI Linh (Hỗ trợ chuyển đổi mượt mà giữa Ảnh tĩnh AI và Nhân vật 3D)
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: AiAvatarViewport(
+              voiceState: state.voiceState,
+              speechText: latestAiSpeech,
+              lipSyncListenable: notifier.lipSyncListenable,
+              ttsSpeed: ttsSpeedNum,
+              onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Bong bóng lời thoại nổi (Nằm ngay bên dưới avatar, hoàn toàn không đè lên thân nhân vật)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Builder(
+                builder: (context) {
+                  final isUserSpeaking =
+                      (state.voiceState == VoiceState.listening ||
+                          state.isRecording) &&
+                      state.currentTranscript.trim().isNotEmpty;
+                  final isThinking =
+                      state.voiceState == VoiceState.thinking ||
+                      state.voiceState == VoiceState.processing;
+                  final isSpeaking = state.voiceState == VoiceState.speaking;
+
+                  String displayText;
+                  if (isUserSpeaking) {
+                    displayText = state.currentTranscript;
+                  } else if (isThinking) {
+                    displayText =
+                        'Linh AI đang suy nghĩ và tổng hợp thông tin tốt nhất cho bạn...';
+                  } else {
+                    displayText = latestAiSpeech;
+                  }
+
+                  final borderColor = isUserSpeaking
+                      ? const Color(0xFF93C5FD)
+                      : (isThinking
+                            ? const Color(0xFF5EEAD4)
+                            : (isSpeaking
+                                  ? const Color(0xFF0284C7)
+                                  : Colors.white));
+
+                  final bgColor = isUserSpeaking
+                      ? const Color(0xFFEFF6FF)
+                      : (isThinking
+                            ? const Color(0xFFF0FDFA)
+                            : Colors.white.withValues(alpha: 0.98));
+
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: borderColor, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              (isSpeaking || isUserSpeaking
+                                      ? const Color(0xFF0284C7)
+                                      : const Color(0xFF0F172A))
+                                  .withValues(
+                                    alpha: isSpeaking || isUserSpeaking
+                                        ? 0.16
+                                        : 0.08,
+                                  ),
+                          blurRadius: isSpeaking || isUserSpeaking ? 22 : 18,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Icon trạng thái giọng nói
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color:
+                                (isUserSpeaking || isSpeaking
+                                        ? const Color(0xFF0284C7)
+                                        : (isThinking
+                                              ? const Color(0xFF0D9488)
+                                              : const Color(0xFF64748B)))
+                                    .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            isUserSpeaking
+                                ? Icons.mic
+                                : (isThinking
+                                      ? Icons.auto_awesome
+                                      : (isSpeaking
+                                            ? Icons.volume_up_rounded
+                                            : Icons.graphic_eq_rounded)),
+                            color: isThinking
+                                ? const Color(0xFF0D9488)
+                                : (isSpeaking || isUserSpeaking
+                                      ? const Color(0xFF0284C7)
+                                      : const Color(0xFF64748B)),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Văn bản thoại hiển thị theo thời gian thực
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  if (isSpeaking) ...[
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      margin: const EdgeInsets.only(right: 5),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ],
+                                  Expanded(
+                                    child: Text(
+                                      isUserSpeaking
+                                          ? 'Bạn đang nói...'
+                                          : (isThinking
+                                                ? 'Linh AI đang xử lý...'
+                                                : (isSpeaking
+                                                      ? 'Linh AI đang đọc giọng nói...'
+                                                      : 'Linh AI • Trợ lý du lịch')),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: isThinking
+                                            ? const Color(0xFF0D9488)
+                                            : (isUserSpeaking || isSpeaking
+                                                  ? const Color(0xFF0284C7)
+                                                  : const Color(0xFF64748B)),
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isSpeaking) ...[
+                                    const SizedBox(width: 6),
+                                    Tooltip(
+                                      message: 'Chạm mic để ngắt lời',
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFFEF4444,
+                                          ).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Chạm mic',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFFDC2626),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                displayText,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isUserSpeaking
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                  color: isUserSpeaking
+                                      ? const Color(0xFF1E3A8A)
+                                      : const Color(0xFF1E293B),
+                                  height: 1.4,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+      ],
     );
   }
 

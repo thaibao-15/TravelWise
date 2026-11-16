@@ -31,6 +31,7 @@ class Ai3dAvatar extends ConsumerStatefulWidget {
   final VoidCallback? onResetOrbit;
   final VoidCallback? onOpenSettings;
   final String? customModelPath;
+  final bool showControls;
 
   const Ai3dAvatar({
     super.key,
@@ -40,6 +41,7 @@ class Ai3dAvatar extends ConsumerStatefulWidget {
     this.onResetOrbit,
     this.onOpenSettings,
     this.customModelPath,
+    this.showControls = true,
   });
 
   @override
@@ -385,85 +387,87 @@ class _Ai3dAvatarState extends ConsumerState<Ai3dAvatar>
                 ),
 
               // 3. Status Badge Overlay (Top-Left)
-              Positioned(
-                top: 14,
-                left: 14,
-                child: _buildAvatarStatusPill(widget.voiceState),
-              ),
+              if (widget.showControls)
+                Positioned(
+                  top: 14,
+                  left: 14,
+                  child: _buildAvatarStatusPill(widget.voiceState),
+                ),
 
               // 4. Action Buttons (Top-Right: Settings / Change Character & Reset View)
-              Positioned(
-                top: 14,
-                right: 14,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.onOpenSettings != null)
-                      InkWell(
-                        onTap: widget.onOpenSettings,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.tune_rounded, color: Colors.white, size: 13),
-                              SizedBox(width: 4),
-                              Text(
-                                'Đổi 3D & Giọng',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+              if (widget.showControls)
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.onOpenSettings != null)
+                        InkWell(
+                          onTap: widget.onOpenSettings,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.tune_rounded, color: Colors.white, size: 13),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Đổi 3D & Giọng',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    if (avatarState.userOrbitYaw.abs() > 0.05 ||
-                        avatarState.userOrbitPitch.abs() > 0.05 ||
-                        (avatarState.userZoom - 1.0).abs() > 0.05) ...[
-                      const SizedBox(width: 6),
-                      InkWell(
-                        onTap: () {
-                          ref.read(avatar3dStateProvider.notifier).resetOrbit();
-                          widget.onResetOrbit?.call();
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.center_focus_strong, color: Colors.white, size: 13),
-                              SizedBox(width: 4),
-                              Text(
-                                'Góc nhìn',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+                      if (avatarState.userOrbitYaw.abs() > 0.05 ||
+                          avatarState.userOrbitPitch.abs() > 0.05 ||
+                          (avatarState.userZoom - 1.0).abs() > 0.05) ...[
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: () {
+                            ref.read(avatar3dStateProvider.notifier).resetOrbit();
+                            widget.onResetOrbit?.call();
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.center_focus_strong, color: Colors.white, size: 13),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Góc nhìn',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
 
               // 5. Subtle Soft Floor Touch (Giữ trọn vẹn chi tiết trang phục, váy và bàn tay)
               Positioned.fill(

@@ -1,5 +1,15 @@
 import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+/// Supported visual display modes for the AI Tour Guide Avatar
+enum AvatarDisplayMode {
+  /// 2D Realistic Talking Photo (`assets/images/hdv.png`) with 60fps GPU mesh deformation & lip-sync
+  photo2d,
+
+  /// 3D glTF / VRM animated humanoid character (`Nam_C.glb`, `AvatarSample_A.glb`)
+  model3d,
+}
 
 /// Available 3D Avatar models in assets
 class Avatar3dOption {
@@ -40,8 +50,11 @@ const List<Avatar3dOption> kAvailableAvatars = [
   ),
 ];
 
-/// Presentation state for the 3D AI Tour Guide Avatar
+/// Presentation state for the AI Tour Guide Avatar (supports both 2D Photo & 3D Model)
 class Avatar3dState {
+  /// Active visual display mode (2D Talking Photo or 3D Model)
+  final AvatarDisplayMode displayMode;
+
   /// Asset path of the currently selected 3D model
   final String selectedModelPath;
 
@@ -62,6 +75,7 @@ class Avatar3dState {
   final bool hasSkeleton;
 
   const Avatar3dState({
+    this.displayMode = AvatarDisplayMode.photo2d,
     this.selectedModelPath = 'assets/models/Nam_C.glb',
     this.modelName = 'Nam (Anime 3D)',
     this.isLoading = false,
@@ -73,7 +87,11 @@ class Avatar3dState {
     this.hasSkeleton = true,
   });
 
+  bool get is2dMode => displayMode == AvatarDisplayMode.photo2d;
+  bool get is3dMode => displayMode == AvatarDisplayMode.model3d;
+
   Avatar3dState copyWith({
+    AvatarDisplayMode? displayMode,
     String? selectedModelPath,
     String? modelName,
     bool? isLoading,
@@ -85,6 +103,7 @@ class Avatar3dState {
     bool? hasSkeleton,
   }) {
     return Avatar3dState(
+      displayMode: displayMode ?? this.displayMode,
       selectedModelPath: selectedModelPath ?? this.selectedModelPath,
       modelName: modelName ?? this.modelName,
       isLoading: isLoading ?? this.isLoading,
@@ -99,7 +118,41 @@ class Avatar3dState {
 }
 
 class Avatar3dNotifier extends StateNotifier<Avatar3dState> {
-  Avatar3dNotifier() : super(const Avatar3dState());
+  static const String _storageKeyMode = 'avatar_display_mode';
+  final FlutterSecureStorage _storage;
+
+  Avatar3dNotifier({FlutterSecureStorage? storage})
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+            ),
+        super(const Avatar3dState()) {
+    _loadSavedMode();
+  }
+
+  Future<void> _loadSavedMode() async {
+    try {
+      final saved = await _storage.read(key: _storageKeyMode);
+      if (saved == 'model3d') {
+        state = state.copyWith(displayMode: AvatarDisplayMode.model3d);
+      } else if (saved == 'photo2d') {
+        state = state.copyWith(displayMode: AvatarDisplayMode.photo2d);
+      }
+    } catch (_) {}
+  }
+
+  /// Switch between 2D Talking Photo and 3D Model with persistence
+  Future<void> setDisplayMode(AvatarDisplayMode mode) async {
+    if (state.displayMode == mode) return;
+    state = state.copyWith(displayMode: mode);
+    try {
+      await _storage.write(
+        key: _storageKeyMode,
+        value: mode == AvatarDisplayMode.photo2d ? 'photo2d' : 'model3d',
+      );
+    } catch (_) {}
+  }
 
   /// Switch the active 3D model asset path
   void selectAvatarModel(String assetPath, {String? modelName}) {

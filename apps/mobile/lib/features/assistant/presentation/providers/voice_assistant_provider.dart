@@ -3548,8 +3548,20 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         tripItinerary: trip,
       );
 
+      // Loại bỏ tin nhắn tạm mâu thuẫn trước đó (nếu RAG trả về "chưa có thông tin" do chưa tìm thấy tài liệu tĩnh)
+      List<ChatMessage> updatedMessages = List.from(state.messages);
+      if (updatedMessages.isNotEmpty) {
+        final lastMsg = updatedMessages.last;
+        if (!lastMsg.isUser &&
+            (lastMsg.text.contains('chưa có thông tin') ||
+                lastMsg.text.contains('không có thông tin') ||
+                lastMsg.text.contains('không tìm thấy'))) {
+          updatedMessages.removeLast();
+        }
+      }
+
       state = state.copyWith(
-        messages: [...state.messages, aiMsg],
+        messages: [...updatedMessages, aiMsg],
         voiceState: VoiceState.idle,
       );
 
@@ -3557,7 +3569,12 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         _userKeepMicOn = true;
       }
 
-      _resumeListeningIfPersistent();
+      if (state.isTtsEnabled) {
+        _ttsCancelled = false;
+        await _playTts(previewMsg);
+      } else {
+        _resumeListeningIfPersistent();
+      }
     } catch (e) {
       log('generate_itinerary_error', {'error': e.toString()});
 

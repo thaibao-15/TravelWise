@@ -301,9 +301,9 @@ class _AvatarVoiceSettingsSheetState
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.view_in_ar_rounded, size: 16),
+                      Icon(Icons.face_retouching_natural_rounded, size: 16),
                       SizedBox(width: 6),
-                      Text('Nhân vật 3D'),
+                      Text('Nhân vật AI'),
                     ],
                   ),
                 ),
@@ -398,148 +398,378 @@ class _AvatarVoiceSettingsSheetState
     Avatar3dState avatarState,
     Avatar3dNotifier avatarNotifier,
   ) {
+    final is2d = avatarState.is2dMode;
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
       children: [
         Text(
-          'Chọn hình mẫu nhân vật hướng dẫn viên 3D:',
+          'Chế độ hiển thị nhân vật:',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: Colors.grey[700],
           ),
         ),
-        const SizedBox(height: 12),
-        ...kAvailableAvatars.map((avatar) {
-          final isSelected = avatarState.selectedModelPath == avatar.assetPath;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: InkWell(
-              onTap: () {
-                avatarNotifier.selectAvatarModel(
-                  avatar.assetPath,
-                  modelName: avatar.name,
-                );
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary.withValues(alpha: 0.05) : Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? AppColors.primary : Colors.grey[250] ?? const Color(0xFFE2E8F0),
-                    width: isSelected ? 2 : 1,
+        const SizedBox(height: 10),
+
+        // Chuyển đổi 2 Chế độ: Ảnh AI (2D) & Nhân vật 3D
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => avatarNotifier.setDisplayMode(AvatarDisplayMode.photo2d),
+                borderRadius: BorderRadius.circular(14),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: is2d ? AppColors.primary.withValues(alpha: 0.08) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: is2d ? AppColors.primary : Colors.grey[300]!,
+                      width: is2d ? 2 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: is2d ? 0.05 : 0.02),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isSelected ? 0.06 : 0.02),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // Avatar Icon Box
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isSelected
-                              ? [AppColors.primary, AppColors.secondary]
-                              : [Colors.grey[200]!, Colors.grey[300]!],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.image_rounded,
+                        color: is2d ? AppColors.primary : Colors.grey[600],
+                        size: 26,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ảnh AI (2D)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: is2d ? AppColors.primary : AppColors.textPrimary,
                         ),
-                        borderRadius: BorderRadius.circular(14),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        avatar.iconEmoji,
-                        style: const TextStyle(fontSize: 24),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Nhép môi 60fps thực tế',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: is2d ? AppColors.primary.withValues(alpha: 0.8) : Colors.grey[600],
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: InkWell(
+                onTap: () => avatarNotifier.setDisplayMode(AvatarDisplayMode.model3d),
+                borderRadius: BorderRadius.circular(14),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: !is2d ? AppColors.primary.withValues(alpha: 0.08) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: !is2d ? AppColors.primary : Colors.grey[300]!,
+                      width: !is2d ? 2 : 1,
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: !is2d ? 0.05 : 0.02),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.view_in_ar_rounded,
+                        color: !is2d ? AppColors.primary : Colors.grey[600],
+                        size: 26,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Nhân vật 3D',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: !is2d ? AppColors.primary : AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Anime xoay 360°',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: !is2d ? AppColors.primary.withValues(alpha: 0.8) : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 18),
+
+        if (is2d) ...[
+          Text(
+            'Hình mẫu Ảnh AI đang kích hoạt:',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.primary, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    'assets/images/hdv.png',
+                    width: 58,
+                    height: 58,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                avatar.name,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected ? AppColors.primary : AppColors.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppColors.primary.withValues(alpha: 0.12)
-                                      : Colors.grey[150] ?? const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  avatar.tag,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: isSelected ? AppColors.primary : Colors.grey[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            avatar.subtitle,
+                          const Text(
+                            'Linh AI (HDV Thực tế)',
                             style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Đang dùng',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF059669),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    Icon(
-                      isSelected ? Icons.check_circle_rounded : Icons.radio_button_off,
-                      color: isSelected ? AppColors.primary : Colors.grey[400],
-                      size: 22,
-                    ),
-                  ],
+                      const SizedBox(height: 3),
+                      Text(
+                        'Chuyển động nhép miệng 60fps tiếng Việt, chớp mắt và cử chỉ đầu tự nhiên từ ảnh gốc.',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey[650]),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColors.primary,
+                  size: 22,
+                ),
+              ],
             ),
-          );
-        }),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Tất cả nhân vật 3D đều được render trực tiếp offline với 60fps kèm cử động nhép môi đồng bộ theo âm thanh.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF0284C7)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Công nghệ GPU Mesh Deformation 60fps đồng bộ thời gian thực theo âm thanh Voice AI Blaze, không làm biến dạng khuôn mặt và tiết kiệm pin.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          Text(
+            'Chọn hình mẫu nhân vật hướng dẫn viên 3D:',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...kAvailableAvatars.map((avatar) {
+            final isSelected = avatarState.selectedModelPath == avatar.assetPath;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                onTap: () {
+                  avatarNotifier.selectAvatarModel(
+                    avatar.assetPath,
+                    modelName: avatar.name,
+                  );
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary.withValues(alpha: 0.05) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : Colors.grey[250] ?? const Color(0xFFE2E8F0),
+                      width: isSelected ? 2 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isSelected ? 0.06 : 0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Avatar Icon Box
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isSelected
+                                ? [AppColors.primary, AppColors.secondary]
+                                : [Colors.grey[200]!, Colors.grey[300]!],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          avatar.iconEmoji,
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  avatar.name,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppColors.primary.withValues(alpha: 0.12)
+                                        : Colors.grey[150] ?? const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    avatar.tag,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: isSelected ? AppColors.primary : Colors.grey[700],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              avatar.subtitle,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_off,
+                        color: isSelected ? AppColors.primary : Colors.grey[400],
+                        size: 22,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
+            );
+          }),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tất cả nhân vật 3D đều được render trực tiếp offline với 60fps kèm cử động nhép môi đồng bộ theo âm thanh.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

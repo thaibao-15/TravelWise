@@ -50,13 +50,13 @@ class VoiceAudioService {
   void _ensureAudioHelper() {
     try {
       final existing = js_util.getProperty(html.window, 'TravelWiseAudio');
-      if (existing != null && js_util.getProperty(existing, '_v') == 4) return;
+      if (existing != null && js_util.getProperty(existing, '_v') == 5) return;
       _lipSyncBound = false;
       final script = html.ScriptElement()
         ..type = 'text/javascript'
         ..text = r'''
 window.TravelWiseAudio = {
-  _v: 4,
+  _v: 5,
   _currentAudio: null,
   _currentUrl: null,
   _audioCache: {},
@@ -110,6 +110,9 @@ window.TravelWiseAudio = {
       if (!AudioCtx) return null;
       this._audioCtx = new AudioCtx();
     }
+    if (this._audioCtx.state === 'suspended') {
+      this._audioCtx.resume().catch(function() {});
+    }
     if (!this._analyser) {
       this._analyser = this._audioCtx.createAnalyser();
       this._analyser.fftSize = 256;
@@ -122,35 +125,45 @@ window.TravelWiseAudio = {
 
   _connectAudioForLipSync: function(audioEl) {
     try {
-      if (!this._audioCtx || this._audioCtx.state !== 'running') return false;
+      if (!this._audioCtx) {
+        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return false;
+        this._audioCtx = new AudioCtx();
+      }
+      if (this._audioCtx.state === 'suspended') {
+        this._audioCtx.resume().catch(function() {});
+      }
       var analyser = this._ensureAnalyser();
       if (!analyser) return false;
+      if (audioEl.__twConnected) return true;
       var src = this._audioCtx.createMediaElementSource(audioEl);
       src.connect(analyser);
       analyser.connect(this._audioCtx.destination);
+      audioEl.__twConnected = true;
       return true;
     } catch (_) {
       return false;
     }
   },
 
-  _sampleTextViseme: function(text, elapsedSec) {
+  _sampleTextViseme: function(text, elapsedSec, speed) {
     var clean = (text || '').trim();
     if (!clean) {
       var w = 0.5 + 0.5 * Math.sin(elapsedSec * 22.0);
       return { open: 0.14 + w * 0.68, wide: 0.25 * Math.sin(elapsedSec * 9.0), energy: w * 0.8 };
     }
+    var spd = parseFloat(speed) || 1.5;
     var tokens = clean.match(/[a-zA-ZÀ-ỹ0-9]+|[,.;:!?–—]/g) || [clean];
     var cursor = 0;
     var beats = [];
     for (var i = 0; i < tokens.length; i++) {
       var tok = tokens[i];
       if (tok.length === 1 && ',.;:!?–—'.indexOf(tok) !== -1) {
-        var pd = (tok === ',' || tok === ';' || tok === ':') ? 0.16 : 0.28;
+        var pd = ((tok === ',' || tok === ';' || tok === ':') ? 0.14 : 0.24) / spd;
         beats.push({ s: cursor, d: pd, o: 0.18, w: 0.0, pause: true, labial: false });
         cursor += pd;
       } else {
-        var dur = 0.155 + Math.min(6, tok.length) * 0.012;
+        var dur = (0.135 + Math.min(5, tok.length) * 0.010) / spd;
         var o = 0.62, wd = 0.10;
         if (/[aáàảãạăắằẳẵặâấầẩẫậơớờởỡợ]/i.test(tok)) { o = 0.88; wd = 0.25; }
         else if (/[oôuư]/i.test(tok)) { o = 0.74; wd = -0.70; }
@@ -160,22 +173,28 @@ window.TravelWiseAudio = {
         cursor += dur;
       }
     }
-    var t = cursor > 0 ? (elapsedSec % cursor) : 0;
+    if (cursor <= 0) return { open: 0.20, wide: 0.0, energy: 0.0 };
+    // Dừng chuyển động khi đã đọc hết câu thoại (không loop vô tận)
+    if (elapsedSec >= cursor) return { open: 0.20, wide: 0.0, energy: 0.0 };
     var active = beats[beats.length - 1];
     for (var j = 0; j < beats.length; j++) {
-      if (t >= beats[j].s && t < beats[j].s + beats[j].d) { active = beats[j]; break; }
+      if (elapsedSec >= beats[j].s && elapsedSec < beats[j].s + beats[j].d) {
+        active = beats[j];
+        break;
+      }
     }
     if (!active || active.pause) return { open: 0.20, wide: 0.0, energy: 0.05 };
-    var ph = Math.max(0, Math.min(1, (t - active.s) / active.d));
+    var ph = Math.max(0, Math.min(1, (elapsedSec - active.s) / active.d));
     var curve = Math.sin(ph * Math.PI);
     var floor = active.labial ? 0.02 : 0.14;
     return { open: floor + (active.o - floor) * curve, wide: active.w * curve, energy: curve * 0.85 };
   },
 
-  _startLipSyncLoop: function(text, hasAnalyser) {
+  _startLipSyncLoop: function(text, hasAnalyser, speed) {
     var self = this;
     self._stopLipSyncLoop(false);
     self._activeText = text || '';
+    self._activeSpeed = parseFloat(speed) || 1.5;
     self._speechStartPerf = performance.now();
     self._lastSignalPerf = hasAnalyser ? performance.now() : 0;
 
@@ -185,7 +204,11 @@ window.TravelWiseAudio = {
         return;
       }
       var now = performance.now();
-      var elapsedSec = (now - self._speechStartPerf) / 1000.0;
+      // Ưu tiên thời gian thực của thẻ Audio (currentTime) để đồng bộ tuyệt đối với loa
+      var audioTime = (self._currentAudio && !self._currentAudio.paused && !self._currentAudio.ended)
+        ? self._currentAudio.currentTime
+        : (now - self._speechStartPerf) / 1000.0;
+
       var open = 0.28, wide = 0.0, energy = 0.0;
       var usedPcm = false;
 
@@ -226,7 +249,7 @@ window.TravelWiseAudio = {
       }
 
       if (!usedPcm) {
-        var fb = self._sampleTextViseme(self._activeText, elapsedSec);
+        var fb = self._sampleTextViseme(self._activeText, audioTime, self._activeSpeed);
         open = fb.open;
         wide = fb.wide;
         energy = fb.energy;
@@ -381,7 +404,7 @@ window.TravelWiseAudio = {
             self._hasStartedQueue = true;
             if (self._onQueuePlay) self._onQueuePlay();
           }
-          self._startLipSyncLoop(item.text, false);
+          self._startLipSyncLoop(item.text, false, item.speed);
           u.onend = function() {
             clearTimeout(speechWatchdog);
             advance();
@@ -408,7 +431,7 @@ window.TravelWiseAudio = {
       var hasAnalyser = self._connectAudioForLipSync(audio);
       audio.onplay = function() {
         if (self._isStopped || self._playSessionId !== sessionId) return;
-        self._startLipSyncLoop(item.text, hasAnalyser);
+        self._startLipSyncLoop(item.text, hasAnalyser, item.speed);
         if (!self._hasStartedQueue) {
           self._hasStartedQueue = true;
           if (self._onQueuePlay) self._onQueuePlay();
