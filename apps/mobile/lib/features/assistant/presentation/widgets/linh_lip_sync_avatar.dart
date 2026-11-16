@@ -13,7 +13,7 @@ import '../../../../core/constants/colors.dart';
 import '../providers/voice_assistant_provider.dart';
 
 /// Photorealistic 60fps audio-driven 2D lip-sync & micro-expression rig
-/// for the Linh AI portrait (`assets/images/linh_ai.jpg`, 896x1200).
+/// for the TravelWise AI Tour Guide portrait (`assets/images/hdv.png`, 1024x1536).
 ///
 /// Combines:
 /// 1. Real-time audio formant/amplitude values from [lipSyncListenable]
@@ -29,13 +29,17 @@ class LinhLipSyncAvatar extends StatefulWidget {
   final String speechText;
   final ValueListenable<LipSyncFrame>? lipSyncListenable;
   final Alignment alignment;
+  final String imagePath;
+  final double ttsSpeed;
 
   const LinhLipSyncAvatar({
     super.key,
     required this.voiceState,
     required this.speechText,
     this.lipSyncListenable,
-    this.alignment = const Alignment(0, -0.2),
+    this.alignment = const Alignment(0, -0.65),
+    this.imagePath = 'assets/images/hdv.png',
+    this.ttsSpeed = 1.5,
   });
 
   @override
@@ -45,6 +49,7 @@ class LinhLipSyncAvatar extends StatefulWidget {
 class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
     with SingleTickerProviderStateMixin {
   static ui.Image? _cachedPortrait;
+  static String? _cachedPath;
   static Future<ui.Image?>? _loadingFuture;
 
   ui.Image? _portrait;
@@ -64,8 +69,9 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   @override
   void initState() {
     super.initState();
-    _portrait = _cachedPortrait;
-    if (_portrait == null) {
+    if (_cachedPath == widget.imagePath && _cachedPortrait != null) {
+      _portrait = _cachedPortrait;
+    } else {
       _loadPortrait();
     }
     _syncPhoneticBeats();
@@ -73,7 +79,7 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   }
 
   Future<void> _loadPortrait() async {
-    _loadingFuture ??= _decodeAssetPortrait();
+    _loadingFuture ??= _decodeAssetPortrait(widget.imagePath);
     final loaded = await _loadingFuture;
     if (mounted && loaded != null) {
       setState(() {
@@ -82,23 +88,37 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
     }
   }
 
-  static Future<ui.Image?> _decodeAssetPortrait() async {
+  static Future<ui.Image?> _decodeAssetPortrait([String assetPath = 'assets/images/hdv.png']) async {
     try {
-      final data = await rootBundle.load('assets/images/linh_ai.jpg');
+      final data = await rootBundle.load(assetPath);
       final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
       final frame = await codec.getNextFrame();
       _cachedPortrait = frame.image;
+      _cachedPath = assetPath;
       return frame.image;
     } catch (_) {
-      _loadingFuture = null;
-      return null;
+      try {
+        final data = await rootBundle.load('assets/images/hdv.png');
+        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        _cachedPortrait = frame.image;
+        _cachedPath = 'assets/images/hdv.png';
+        return frame.image;
+      } catch (_) {
+        _loadingFuture = null;
+        return null;
+      }
     }
   }
 
   @override
   void didUpdateWidget(covariant LinhLipSyncAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.speechText != _cachedSpeechText) {
+    if (widget.imagePath != oldWidget.imagePath) {
+      _loadingFuture = null;
+      _loadPortrait();
+    }
+    if (widget.speechText != _cachedSpeechText || widget.ttsSpeed != oldWidget.ttsSpeed) {
       _syncPhoneticBeats();
     }
     if (widget.voiceState == VoiceState.speaking &&
@@ -109,7 +129,7 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
 
   void _syncPhoneticBeats() {
     _cachedSpeechText = widget.speechText;
-    _phoneticBeats = _VietnamesePhoneticTimeline.build(widget.speechText);
+    _phoneticBeats = _VietnamesePhoneticTimeline.build(widget.speechText, widget.ttsSpeed);
     _speakingElapsedSec = 0.0;
   }
 
@@ -203,7 +223,7 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
     final img = _portrait;
     if (img == null) {
       return Image.asset(
-        'assets/images/linh_ai.jpg',
+        widget.imagePath,
         fit: BoxFit.cover,
         cacheWidth: 640,
         alignment: widget.alignment,
@@ -303,27 +323,27 @@ class LinhPortraitRigPainter extends CustomPainter {
   }) : _rig = rig,
        super(repaint: rig);
 
-  // Calibrated pixel landmarks on `assets/images/linh_ai.jpg` (896 x 1200)
-  static const double _imgW = 896.0;
-  static const double _imgH = 1200.0;
+  // Calibrated pixel landmarks on `assets/images/hdv.png` (1024 x 1536)
+  static const double _imgW = 1024.0;
+  static const double _imgH = 1536.0;
 
   static const List<double> _cols = <double>[
     0.0,
-    260.0,
-    360.0,
-    410.0,
-    435.0,
-    452.0, // col 5: left mouth corner
-    466.0, // col 6
-    481.0, // col 7
-    496.0, // col 8: mouth & chin center
-    511.0, // col 9
-    526.0, // col 10
-    540.0, // col 11: right mouth corner
-    568.0,
+    300.0,
+    400.0,
+    440.0,
+    458.0,
+    472.0, // col 5: left mouth corner (472)
+    484.0, // col 6
+    495.0, // col 7
+    506.0, // col 8: mouth & chin center (506)
+    518.0, // col 9
+    530.0, // col 10
+    540.0, // col 11: right mouth corner (540)
+    558.0,
     600.0,
-    660.0,
-    896.0,
+    700.0,
+    1024.0,
   ];
 
   static const int _numCols = 16;
@@ -338,97 +358,65 @@ class LinhPortraitRigPainter extends CustomPainter {
       case 0:
         return 0.0;
       case 1:
-        return 280.0;
+        return 120.0;
       case 2:
-        return 453.5; // Sub-brow anchor (locks eyebrows 100% motionless!)
+        return 168.0; // Sub-brow anchor (locks eyebrows 100% motionless)
       case 3:
-        // Upper eyelash margin (follows slight natural 2° head tilt)
-        return 464.5 + ((x - 456.0) / 90.0).clamp(0.0, 1.0) * 4.2;
+        // Upper eyelash margin (follows slight natural tilt: left eye 472 at 184, right eye 540 at 180)
+        return 182.0 + ((x - 472.0) / 68.0).clamp(0.0, 1.0) * -4.0;
       case 4:
         // Lower eyelid margin
-        return 479.0 + ((x - 456.0) / 90.0).clamp(0.0, 1.0) * 4.0;
+        return 194.0 + ((x - 472.0) / 68.0).clamp(0.0, 1.0) * -3.5;
       case 5:
-        return 510.0; // Mid-nose anchor
+        return 220.0; // Mid-nose
       case 6:
-        return 533.0; // Sub-nasal anchor
+        return 246.0; // Sub-nasal anchor
       case 7:
         // Top of upper lip (cupid's bow)
         if (c >= 5 && c <= 11) {
-          const bow = <double>[548.0, 545.5, 544.5, 545.0, 545.0, 546.5, 551.0];
+          const bow = <double>[274.0, 267.0, 262.0, 258.0, 257.0, 260.0, 266.0];
           return bow[c - 5];
         }
-        return x < 496.0 ? 548.0 : 551.0;
+        return x < 506.0 ? 274.0 : 266.0;
       case 8:
-        // Inner edge of upper lip / top of upper teeth
+        // Inner edge of upper lip / top of teeth
         if (c >= 5 && c <= 11) {
-          const innerUp = <double>[
-            550.0,
-            550.2,
-            551.0,
-            551.8,
-            552.0,
-            552.8,
-            554.0,
-          ];
+          const innerUp = <double>[274.0, 269.0, 266.0, 264.0, 263.0, 264.0, 266.0];
           return innerUp[c - 5];
         }
-        return x < 496.0 ? 550.0 : 554.0;
+        return x < 506.0 ? 274.0 : 266.0;
       case 9: // Upper mouth seam (bottom edge of upper teeth)
         if (c >= 5 && c <= 11) {
-          const seamUp = <double>[
-            550.0, // col 5 (452): left corner (shared exact coord with row 10)
-            558.0, // col 6 (466)
-            563.0, // col 7 (481)
-            564.8, // col 8 (496): bottom edge of central incisors
-            563.5, // col 9 (511)
-            559.0, // col 10 (526)
-            554.0, // col 11 (540): right corner (shared exact coord with row 10)
-          ];
+          const seamUp = <double>[274.0, 273.0, 272.5, 272.0, 270.0, 268.0, 266.0];
           return seamUp[c - 5];
         }
-        return x < 496.0 ? 550.0 : 554.0;
+        return x < 506.0 ? 274.0 : 266.0;
       case 10: // Lower mouth seam (top vermilion border of lower lip, below teeth)
         if (c >= 5 && c <= 11) {
-          const seamLow = <double>[
-            550.0, // col 5 (452): left corner (pinned to row 9!)
-            559.4, // col 6 (466)
-            564.8, // col 7 (481)
-            566.8, // col 8 (496): pure pink lower lip, zero white tooth pixel!
-            565.3, // col 9 (511)
-            560.6, // col 10 (526)
-            554.0, // col 11 (540): right corner (pinned to row 9!)
-          ];
+          const seamLow = <double>[274.0, 273.5, 273.0, 272.8, 270.5, 268.5, 266.0];
           return seamLow[c - 5];
         }
-        return x < 496.0 ? 550.0 : 554.0;
+        return x < 506.0 ? 274.0 : 266.0;
       case 11:
         // Bottom edge of lower lip
         if (c >= 5 && c <= 11) {
-          const lowBot = <double>[
-            554.0,
-            567.5,
-            574.5,
-            577.5,
-            575.5,
-            569.5,
-            558.0,
-          ];
+          const lowBot = <double>[274.0, 283.0, 288.0, 290.0, 288.0, 282.0, 266.0];
           return lowBot[c - 5];
         }
-        return 568.0;
+        return 282.0;
       case 12:
-        return 595.0; // Mentolabial sulcus / upper chin
+        return 320.0; // Mentolabial sulcus / upper chin
       case 13:
-        return 620.0; // Chin tip contour
+        return 350.0; // Chin tip contour
       case 14:
-        return 665.0; // Upper neck shadow
+        return 395.0; // Neck
       case 15:
-        return 760.0; // Scarf / collarbone
+        return 480.0; // Collar / shoulders
       case 16:
-        return 980.0; // Blazer / chest
+        return 720.0; // Blazer / chest
       case 17:
       default:
-        return 1200.0;
+        return 1536.0;
     }
   }
 
@@ -537,57 +525,56 @@ class LinhPortraitRigPainter extends CustomPainter {
             py += headNodY * headWeight;
           } else if (r == 15 || r == 16) {
             final chestWeight = r == 15 ? 1.0 : 0.55;
-            py += -1.8 * breath * chestWeight;
+            py += -2.2 * breath * chestWeight;
           }
 
-          // 2. Natural eyelid blink (left eye center ~458, right eye center ~545)
+          // 2. Natural eyelid blink (left eye center ~472, right eye center ~540)
           if (blink > 0.001 && (r == 3 || r == 4)) {
-            final leftEyeW = math.exp(-math.pow((u - 458.0) / 21.0, 2));
-            final rightEyeW = math.exp(-math.pow((u - 545.0) / 22.0, 2));
+            final leftEyeW = math.exp(-math.pow((u - 472.0) / 18.0, 2));
+            final rightEyeW = math.exp(-math.pow((u - 540.0) / 18.0, 2));
             final eyeW = math.max(leftEyeW, rightEyeW);
             if (r == 3) {
-              py +=
-                  13.0 * blink * eyeW; // Upper lash sweeps cleanly to lower lid
+              py += 11.0 * blink * eyeW; // Upper lash sweeps cleanly to lower lid
             } else {
-              py -= 2.2 * blink * eyeW; // Lower lid rises slightly to meet it
+              py -= 2.0 * blink * eyeW; // Lower lid rises slightly to meet it
             }
           }
 
           // 3. Horizontal mouth corner widening ('I/E/A') vs rounding ('O/U')
           if (r >= 7 && r <= 12 && c >= 4 && c <= 12) {
-            final distFromMouthCenter = u - 496.0;
+            final distFromMouthCenter = u - 506.0;
             final horizFalloff = math.exp(
-              -math.pow(distFromMouthCenter.abs() / 54.0, 2),
+              -math.pow(distFromMouthCenter.abs() / 46.0, 2),
             );
             // Keep r==9 and r==10 horizontal weights identical so corners never split!
             final rowW = (r >= 8 && r <= 11) ? 1.0 : 0.45;
-            final spreadPx = wide * 3.8 - jawExpand * 1.1;
+            final spreadPx = wide * 3.5 - jawExpand * 1.0;
             px +=
                 distFromMouthCenter.sign *
-                (distFromMouthCenter.abs() / 44.0).clamp(0.0, 1.15) *
+                (distFromMouthCenter.abs() / 36.0).clamp(0.0, 1.15) *
                 spreadPx *
                 horizFalloff *
                 rowW;
           }
 
-          // 4. Anatomical mouth profile across columns 5..11 (452..540)
+          // 4. Anatomical mouth profile across columns 5..11 (472..540)
           double mouthArc = 0.0;
           if (c > 5 && c < 11) {
-            final t = (u - 452.0) / (540.0 - 452.0); // 0..1 across mouth
+            final t = (u - 472.0) / (540.0 - 472.0); // 0..1 across mouth
             mouthArc = math.sin(t * math.pi); // 0 at corners, 1.0 at center!
           }
-          // Broader jaw/chin bell curve across columns 3..13 (410..600)
-          final jawBell = math.exp(-math.pow((u - 496.0) / 56.0, 2));
+          // Broader jaw/chin bell curve across columns 3..13 (440..580)
+          final jawBell = math.exp(-math.pow((u - 506.0) / 48.0, 2));
 
           if (r == 7) {
             // Upper lip cupid's bow: subtle lift on loud vowels, slight drop on M/B/P
-            py += (-1.4 * jawExpand + 4.0 * lipClose) * mouthArc;
+            py += (-1.2 * jawExpand + 3.0 * lipClose) * mouthArc;
           } else if (r == 8) {
             // Inner upper lip: drops down over top of teeth during M/B/P closure
-            py += (-1.1 * jawExpand + 5.8 * lipClose) * mouthArc;
+            py += (-1.0 * jawExpand + 4.5 * lipClose) * mouthArc;
           } else if (r == 9) {
             // Upper teeth bottom (`r9U`): stays anchored to upper skull!
-            py += (-0.6 * jawExpand + 1.5 * lipClose) * mouthArc;
+            py += (-0.5 * jawExpand + 1.2 * lipClose) * mouthArc;
           } else if (r == 10) {
             // Anchor rest position to `_rowRestY(9, c)` so seam is 100% closed at idle,
             // while UV samples pure lower-lip vermilion (`_rowRestY(10, c)`).
@@ -596,22 +583,22 @@ class LinhPortraitRigPainter extends CustomPainter {
                 ((r >= 2 && r <= 14 && c >= 2 && c <= 13)
                     ? headNodY * ((c >= 4 && c <= 12) ? 1.0 : 0.45)
                     : 0.0);
-            py = baseSeamY + (16.5 * jawExpand - 10.6 * lipClose) * mouthArc;
+            py = baseSeamY + (15.5 * jawExpand - 9.0 * lipClose) * mouthArc;
           } else if (r == 11) {
             // Lower lip bottom: moves with lower lip, plumping slightly when rounded
-            final plump = wide < 0 ? (-wide * 1.8 * jawExpand) : 0.0;
+            final plump = wide < 0 ? (-wide * 1.6 * jawExpand) : 0.0;
             py +=
-                (15.2 * jawExpand + plump - 8.2 * lipClose) * mouthArc +
+                (14.0 * jawExpand + plump - 7.5 * lipClose) * mouthArc +
                 2.0 * jawExpand * jawBell * (1.0 - mouthArc);
           } else if (r == 12) {
             // Upper chin / mentolabial fold
-            py += (11.2 * jawExpand - 5.0 * lipClose) * jawBell;
+            py += (9.5 * jawExpand - 4.0 * lipClose) * jawBell;
           } else if (r == 13) {
             // Chin tip contour — realistic mandible drop!
-            py += (8.6 * jawExpand - 3.5 * lipClose) * jawBell;
+            py += (7.5 * jawExpand - 3.0 * lipClose) * jawBell;
           } else if (r == 14) {
             // Soft under-chin / neck skin damping
-            py += (2.4 * jawExpand - 0.8 * lipClose) * jawBell;
+            py += (2.0 * jawExpand - 0.7 * lipClose) * jawBell;
           }
         }
 
@@ -831,17 +818,18 @@ class _VietnamesePhoneticTimeline {
   );
   static final RegExp _labialEdge = RegExp(r'(^[mbpMBP]|[mpMP]$)');
 
-  static List<_PhoneticBeat> build(String text) {
+  static List<_PhoneticBeat> build(String text, [double speed = 1.5]) {
     final clean = text.trim();
     if (clean.isEmpty) return const [];
 
     final beats = <_PhoneticBeat>[];
     double cursor = 0.0;
+    final spd = speed.clamp(0.75, 2.5);
 
     for (final m in _tokenRegex.allMatches(clean)) {
       final tok = m.group(0)!;
       if (tok.length == 1 && ',.;:!?–—'.contains(tok)) {
-        final pauseDur = (tok == ',' || tok == ';' || tok == ':') ? 0.16 : 0.28;
+        final pauseDur = ((tok == ',' || tok == ';' || tok == ':') ? 0.14 : 0.24) / spd;
         beats.add(
           _PhoneticBeat(
             startSec: cursor,
@@ -855,8 +843,8 @@ class _VietnamesePhoneticTimeline {
         continue;
       }
 
-      // ~4.6 Vietnamese syllables/sec matching Blaze TTS speed=1.5
-      final dur = (0.155 + (tok.length.clamp(1, 6) * 0.012));
+      // Syllable duration adjusted for TTS speed
+      final dur = (0.135 + (tok.length.clamp(1, 6) * 0.010)) / spd;
       double open = 0.62;
       double wide = 0.1;
 
@@ -899,7 +887,17 @@ class _VietnamesePhoneticTimeline {
     }
 
     final totalDur = beats.last.startSec + beats.last.durationSec;
-    final t = totalDur > 0 ? (elapsedSec % totalDur) : 0.0;
+    // When audio speech duration has elapsed, close mouth immediately (no looping)
+    if (elapsedSec >= totalDur) {
+      return const LipSyncFrame(
+        mouthOpen: LipSyncFrame.restOpen,
+        mouthWide: 0.0,
+        energy: 0.0,
+        active: false,
+      );
+    }
+
+    final t = elapsedSec;
 
     // Binary search active beat
     int lo = 0;

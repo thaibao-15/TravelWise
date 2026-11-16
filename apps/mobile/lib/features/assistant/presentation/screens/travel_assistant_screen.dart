@@ -12,7 +12,7 @@ import '../../../trips/models/trip_model.dart';
 import '../models/chat_media.dart';
 import '../../services/media_upload_service.dart';
 import '../providers/voice_assistant_provider.dart';
-import '../widgets/ai_3d_avatar.dart';
+import '../widgets/ai_avatar_viewport.dart';
 import '../widgets/location_suggestions.dart';
 import '../widgets/trip_preview_card.dart';
 import '../widgets/voice_profile_bar.dart';
@@ -571,16 +571,11 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     VoiceAssistantState state,
     VoiceAssistantNotifier notifier,
   ) {
-    // Lấy câu nói gần nhất của AI trong hội thoại (ưu tiên bỏ qua các thông báo đính kèm lịch trình)
+    // Lấy câu nói gần nhất của AI trong hội thoại (luôn là tin nhắn mới nhất mà AI vừa nói ra)
     String latestAiSpeech = '';
     if (state.messages.isNotEmpty) {
       final aiMsgs = state.messages.where((m) => !m.isUser).toList();
-      // Ưu tiên tin nhắn hội thoại thường không đính kèm đối tượng tripItinerary
-      final regularAiMsgs =
-          aiMsgs.where((m) => m.tripItinerary == null).toList();
-      if (regularAiMsgs.isNotEmpty) {
-        latestAiSpeech = regularAiMsgs.last.text;
-      } else if (aiMsgs.isNotEmpty) {
+      if (aiMsgs.isNotEmpty) {
         latestAiSpeech = aiMsgs.last.text;
       }
     }
@@ -593,16 +588,19 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
       }
     }
 
+    final ttsSpeedNum = double.tryParse(state.ttsSpeed) ?? 1.5;
+
     return Column(
       children: [
-        // Khung nhân vật 3D AI Linh (Trung tâm màn hình Voice AI - hiển thị cân đối, không bị che khuất)
+        // Khung hiển thị nhân vật AI Linh (Hỗ trợ chuyển đổi mượt mà giữa Ảnh tĩnh AI và Nhân vật 3D)
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: Ai3dAvatar(
+            child: AiAvatarViewport(
               voiceState: state.voiceState,
               speechText: latestAiSpeech,
               lipSyncListenable: notifier.lipSyncListenable,
+              ttsSpeed: ttsSpeedNum,
               onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
             ),
           ),

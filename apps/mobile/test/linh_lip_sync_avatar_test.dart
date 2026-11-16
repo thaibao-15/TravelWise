@@ -60,7 +60,8 @@ void main() {
       'renders closed, neutral, and wide-open visemes on portrait mesh',
       () async {
         TestWidgetsFlutterBinding.ensureInitialized();
-        final bytes = await File('assets/images/linh_ai.jpg').readAsBytes();
+        final file = File('assets/images/hdv.png');
+        final bytes = await file.readAsBytes();
         final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
         final img = frame.image;

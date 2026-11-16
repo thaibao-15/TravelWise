@@ -8,6 +8,30 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Avatar & Voice Settings Tests', () {
+    test('Avatar3dNotifier supports switching between 2D Photo and 3D Model modes', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final initial = container.read(avatar3dStateProvider);
+      expect(initial.displayMode, equals(AvatarDisplayMode.photo2d));
+      expect(initial.is2dMode, isTrue);
+      expect(initial.is3dMode, isFalse);
+
+      // Switch to 3D mode
+      await container.read(avatar3dStateProvider.notifier).setDisplayMode(AvatarDisplayMode.model3d);
+      final mode3dState = container.read(avatar3dStateProvider);
+      expect(mode3dState.displayMode, equals(AvatarDisplayMode.model3d));
+      expect(mode3dState.is2dMode, isFalse);
+      expect(mode3dState.is3dMode, isTrue);
+
+      // Switch back to 2D photo mode
+      await container.read(avatar3dStateProvider.notifier).setDisplayMode(AvatarDisplayMode.photo2d);
+      final mode2dState = container.read(avatar3dStateProvider);
+      expect(mode2dState.displayMode, equals(AvatarDisplayMode.photo2d));
+      expect(mode2dState.is2dMode, isTrue);
+      expect(mode2dState.is3dMode, isFalse);
+    });
+
     test('Avatar3dNotifier selects and updates 3D model properly', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
