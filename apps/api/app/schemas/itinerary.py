@@ -214,7 +214,7 @@ class TripCreateRequest(BaseModel):
     destination_country: Optional[str] = "Việt Nam"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    duration_days: Optional[int] = 3
+    duration_days: Optional[int] = None
     conversation_id: Optional[int] = None
     context: Optional[Any] = None
 

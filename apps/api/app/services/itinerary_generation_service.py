@@ -229,7 +229,18 @@ class ItineraryGenerationService:
         7. Persist to SQL Server (if save_to_db=True).
         8. Return final response.
         """
-        # 1. Check minimum requirements
+        # 1. Check user prompt for explicit duration (e.g. "trong 1 ngày", "tạo 1 ngày", "2 ngày")
+        if user_prompt:
+            day_match = re.search(r"(?:trong\s*)?(\d+)\s*(?:ngày|ngay)", user_prompt, re.IGNORECASE)
+            if day_match:
+                try:
+                    num_days = max(1, min(14, int(day_match.group(1))))
+                    context.trip.dates.duration_days = num_days
+                    context.trip.dates.end_date = None
+                except ValueError:
+                    pass
+
+        # 2. Check minimum requirements
         is_ready, missing_fields, missing_msgs = cls.check_minimum_requirements(context)
         if not is_ready:
             return ItineraryGenerationResponse(

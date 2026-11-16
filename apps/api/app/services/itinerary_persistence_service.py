@@ -332,7 +332,47 @@ class ItineraryPersistenceService:
 
             trip.status = "GENERATED"
             trip.updated_at = _utcnow()
+            if trip.start_date and itinerary.days:
+                trip.end_date = trip.start_date + timedelta(days=len(itinerary.days) - 1)
             session.add(trip)
+
+            # Đồng bộ số ngày và context trong TripPreference & AIContext với lịch trình vừa lưu
+            try:
+                from app.models.trip_preference import TripPreference
+                pref = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
+                if not pref:
+                    pref = TripPreference(trip_id=trip.id)
+                pref.duration_days = len(itinerary.days)
+
+                if context:
+                    context.trip.trip_id = trip.id
+                    context.trip.dates.duration_days = len(itinerary.days)
+                    if trip.conversation_id and not context.trip.conversation_id:
+                        context.trip.conversation_id = trip.conversation_id
+                    pref.raw_context_snapshot = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+                elif pref.raw_context_snapshot:
+                    try:
+                        c_data = json.loads(pref.raw_context_snapshot)
+                        if isinstance(c_data, dict):
+                            if "trip" in c_data and isinstance(c_data["trip"], dict):
+                                if "dates" in c_data["trip"] and isinstance(c_data["trip"]["dates"], dict):
+                                    c_data["trip"]["dates"]["duration_days"] = len(itinerary.days)
+                            pref.raw_context_snapshot = json.dumps(c_data, ensure_ascii=False)
+                    except Exception:
+                        pass
+                session.add(pref)
+
+                if trip.conversation_id:
+                    from app.models.ai_context import AIContext
+                    ai_ctx = session.exec(select(AIContext).where(AIContext.conversation_id == trip.conversation_id)).first()
+                    if ai_ctx:
+                        if context:
+                            ai_ctx.summary = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+                        elif pref and pref.raw_context_snapshot:
+                            ai_ctx.summary = pref.raw_context_snapshot
+                        session.add(ai_ctx)
+            except Exception as sync_err:
+                logger.warning("Could not sync TripPreference/AIContext in save_itinerary: %s", sync_err)
 
             session.commit()
             logger.info("Successfully persisted itinerary for trip_id=%s with %s days.", trip.id, len(itinerary.days))

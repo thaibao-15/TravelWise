@@ -239,7 +239,7 @@ def create_trip(
         except Exception as e:
             logger.warning("Could not persist initial context snapshot: %s", e)
 
-    days_count = data.duration_days or 3
+    days_count = data.duration_days or 1
     if s_date and e_date:
         days_count = max(1, (e_date - s_date).days + 1)
 
@@ -469,6 +469,19 @@ def generate_itinerary_direct(
             current_user=current_user,
             check_ownership=True if current_user else False,
         )
+
+    # Nếu người dùng truyền user_prompt chứa số ngày cụ thể (VD: "trong 1 ngày", "2 ngày"),
+    # BẮT BUỘC cập nhật context theo số ngày này để không bị mặc định 3 ngày
+    prompt_text = request_data.user_prompt or ""
+    day_m = re.search(r'(?:trong\s*)?(\d+)\s*(?:ngày|ngay)', prompt_text, re.IGNORECASE)
+    if day_m:
+        try:
+            p_days = max(1, min(14, int(day_m.group(1))))
+            if context:
+                context.trip.dates.duration_days = p_days
+                context.trip.dates.end_date = None
+        except ValueError:
+            pass
 
     if not context:
         prompt_text = request_data.user_prompt or ""
@@ -791,6 +804,17 @@ def generate_itinerary_for_trip(
     allow_overwrite = request_data.allow_overwrite_confirmed if request_data is not None else False
     user_prompt = request_data.user_prompt if request_data is not None else None
 
+    # Nếu người dùng có yêu cầu số ngày cụ thể trong user_prompt, ưu tiên cập nhật context theo số ngày này
+    if user_prompt:
+        day_m = re.search(r'(?:trong\s*)?(\d+)\s*(?:ngày|ngay)', user_prompt, re.IGNORECASE)
+        if day_m:
+            try:
+                num_days = max(1, min(14, int(day_m.group(1))))
+                context.trip.dates.duration_days = num_days
+                context.trip.dates.end_date = None
+            except ValueError:
+                pass
+
     try:
         return ItineraryGenerationService.generate_itinerary(
             session=session,
@@ -1021,6 +1045,11 @@ def edit_itinerary_for_trip(
                 context.trip.dates.end_date = None
         except ValueError:
             pass
+    elif current_details and current_details.days:
+        # Nếu người dùng KHÔNG yêu cầu đổi số ngày cụ thể (ví dụ chỉ đổi giờ, thêm bớt điểm),
+        # BẮT BUỘC giữ nguyên số ngày của lịch trình hiện tại trên cơ sở dữ liệu,
+        # không để dữ liệu cũ từ snapshot ghi đè số ngày.
+        context.trip.dates.duration_days = len(current_details.days)
 
     if not context.trip.dates.duration_days or context.trip.dates.duration_days <= 0:
         if current_details and current_details.days:
@@ -1164,7 +1193,7 @@ def edit_itinerary_for_trip(
                 "     + must_visit_places: Đưa các địa điểm mới mà du khách vừa nhắc tới vào danh sách (Ví dụ: ['Chùa Linh Ứng']).\n"
                 "     + special_requests: Lưu lại các ghi chú đặc biệt nếu có.\n\n"
                 "### CÁC TOOL CHỈNH SỬA VI MÔ TRONG NGÀY:\n"
-                "- Khi du khách muốn dậy trễ, bắt đầu muộn, dời giờ, đổi giờ: BẮT BUỘC gọi tool update_activity_time.\n"
+                "- Khi du khách muốn dậy trễ, dậy sớm, bắt đầu lúc mấy giờ, dời giờ, đổi giờ (ví dụ: 'bắt đầu lúc 6 giờ', 'bắt đầu từ lúc 6h', 'dời sang 10:00', 'khởi hành lúc 6:00 sáng'): BẮT BUỘC gọi tool update_activity_time. TUYỆT ĐỐI KHÔNG ĐƯỢC gọi generate_new_itinerary!\n"
                 "- Khi du khách muốn bỏ, xóa, không đi một điểm nào đó: BẮT BUỘC gọi tool remove_activity.\n"
                 "- Khi du khách muốn thêm, bổ sung quán ăn, cà phê, điểm tham quan vào ngày hiện có: BẮT BUỘC gọi tool add_activity.\n"
                 "- Khi du khách muốn đổi, thay thế một địa điểm này bằng điểm khác: BẮT BUỘC gọi tool replace_activity.\n"
@@ -1270,11 +1299,13 @@ def edit_itinerary_for_trip(
                             allow_overwrite=request_data.allow_overwrite,
                         )
                     elif fn_name == "generate_new_itinerary":
+                        current_days_len = len(current_details.days) if current_details and current_details.days else 1
+                        fallback_days = fn_args.get("duration_days") or context.trip.dates.duration_days or current_days_len
                         success, msg = ItineraryToolExecutor.execute_generate_itinerary(
                             session=session,
                             trip_id=trip.id,
                             destination_city=fn_args.get("destination_city", trip.destination_city or "Đà Nẵng"),
-                            duration_days=fn_args.get("duration_days", 1),
+                            duration_days=fallback_days,
                             travel_style=fn_args.get("travel_style"),
                             must_visit_places=fn_args.get("must_visit_places"),
                             special_requests=fn_args.get("special_requests"),
@@ -1286,13 +1317,15 @@ def edit_itinerary_for_trip(
                         applied_tool_msgs.append(msg)
 
                 if applied_tool_msgs:
-                    if was_confirmed:
-                        trip_ref = session.get(Trip, trip.id)
-                        if trip_ref and trip_ref.status != "CONFIRMED":
+                    trip_ref = session.get(Trip, trip.id)
+                    if trip_ref:
+                        if was_confirmed and trip_ref.status != "CONFIRMED":
                             trip_ref.status = "CONFIRMED"
-                            trip_ref.updated_at = _utcnow()
-                            session.add(trip_ref)
-                            session.commit()
+                        if request_data.conversation_id and not trip_ref.conversation_id:
+                            trip_ref.conversation_id = request_data.conversation_id
+                        trip_ref.updated_at = _utcnow()
+                        session.add(trip_ref)
+                        session.commit()
 
                     updated_details = ItineraryPersistenceService.get_itinerary_by_trip_id(
                         session=session,
@@ -1300,6 +1333,33 @@ def edit_itinerary_for_trip(
                         current_user=current_user,
                         check_ownership=True if current_user else False,
                     )
+
+                    # Đồng bộ lại context trong TripPreference và AIContext để mọi câu hỏi tiếp theo đều nắm được lịch trình đã sửa
+                    try:
+                        pref_rec = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
+                        if not pref_rec:
+                            pref_rec = TripPreference(trip_id=trip.id)
+                        if updated_details and updated_details.days:
+                            pref_rec.duration_days = len(updated_details.days)
+                            context.trip.trip_id = trip.id
+                            context.trip.conversation_id = trip.conversation_id or request_data.conversation_id
+                            context.trip.dates.duration_days = len(updated_details.days)
+                            if updated_details.destination_city:
+                                context.trip.destination.city = updated_details.destination_city
+                            pref_rec.raw_context_snapshot = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+                            session.add(pref_rec)
+                            session.commit()
+
+                        active_conv_id = trip.conversation_id or request_data.conversation_id
+                        if active_conv_id:
+                            from app.models.ai_context import AIContext
+                            ai_ctx_rec = session.exec(select(AIContext).where(AIContext.conversation_id == active_conv_id)).first()
+                            if ai_ctx_rec:
+                                ai_ctx_rec.summary = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+                                session.add(ai_ctx_rec)
+                                session.commit()
+                    except Exception as sync_err:
+                        logger.warning("Could not sync context after tool execution: %s", sync_err)
 
                     # Nếu chỉ là tool đọc / review lịch trình, trả trực tiếp nội dung review tự nhiên
                     is_pure_review = any("xin tóm tắt" in m or "Dưới đây là chi tiết lịch trình" in m for m in applied_tool_msgs)
@@ -1314,7 +1374,7 @@ def edit_itinerary_for_trip(
                     return ItineraryEditResponse(
                         status=EditStatusEnum.EDITED.value,
                         trip_id=trip.id,
-                        conversation_id=trip.conversation_id,
+                        conversation_id=trip.conversation_id or request_data.conversation_id,
                         message=ai_explanation,
                         applied_changes=applied_tool_msgs,
                         itinerary=updated_details,
@@ -1382,6 +1442,33 @@ def edit_itinerary_for_trip(
         current_user=current_user,
         check_ownership=True if current_user else False,
     )
+
+    # Đồng bộ TripPreference và AIContext sau khi tạo lại toàn bộ
+    try:
+        pref_rec = session.exec(select(TripPreference).where(TripPreference.trip_id == trip.id)).first()
+        if not pref_rec:
+            pref_rec = TripPreference(trip_id=trip.id)
+        if details and details.days:
+            pref_rec.duration_days = len(details.days)
+            context.trip.trip_id = trip.id
+            context.trip.conversation_id = trip.conversation_id or request_data.conversation_id
+            context.trip.dates.duration_days = len(details.days)
+            if details.destination_city:
+                context.trip.destination.city = details.destination_city
+            pref_rec.raw_context_snapshot = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+            session.add(pref_rec)
+            session.commit()
+
+        active_conv_id = trip.conversation_id or request_data.conversation_id
+        if active_conv_id:
+            from app.models.ai_context import AIContext
+            ai_ctx_rec = session.exec(select(AIContext).where(AIContext.conversation_id == active_conv_id)).first()
+            if ai_ctx_rec:
+                ai_ctx_rec.summary = json.dumps(context.model_dump(mode="json"), ensure_ascii=False)
+                session.add(ai_ctx_rec)
+                session.commit()
+    except Exception as sync_err:
+        logger.warning("Could not sync context after full generation: %s", sync_err)
 
     edit_summary = getattr(gen_res, "summary", None) or "Đã tối ưu và cập nhật lại lịch trình cho chuyến đi của bạn!"
     return ItineraryEditResponse(
