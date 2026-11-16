@@ -39,9 +39,9 @@ services:
       dockerfile: Dockerfile
     container_name: travelwise-voice-agent
     env_file:
-      - ./apps/voice-agent/.env
+      - ./apps/api/.env
     environment:
-      - API_BASE_URL=http://api:8000
+      - BACKEND_API_URL=http://api:8000
     depends_on:
       - api
     restart: unless-stopped

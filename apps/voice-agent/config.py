@@ -38,7 +38,9 @@ class AgentConfig:
     BLAZE_TTS_NORMALIZATION: str = os.getenv("BLAZE_TTS_NORMALIZATION", "basic").strip()
 
     # Backend FastAPI API & Security Configuration
-    BACKEND_API_URL: str = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").strip()
+    BACKEND_API_URL: str = (
+        os.getenv("BACKEND_API_URL") or os.getenv("API_BASE_URL") or "http://127.0.0.1:8000"
+    ).strip()
     JWT_SECRET: str = os.getenv("JWT_SECRET", "your-secret-key").strip()
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256").strip()
 
