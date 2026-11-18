@@ -1,5 +1,45 @@
 # TravelWise Mobile — Ứng Dụng Du Lịch Thông Minh (Flutter)
 
+---
+
+## ⚡ Hướng Dẫn Chạy Nhanh (Quick Start)
+
+Dành cho người mới bắt đầu muốn khởi chạy ứng dụng nhanh nhất trong 3 bước:
+
+### 1. Chuẩn bị Backend API
+Ứng dụng cần backend để đăng nhập, chat AI và lấy dữ liệu. Hãy khởi chạy API trước:
+```bash
+# Terminal 1: Khởi chạy Backend API (từ thư mục gốc)
+cd apps/api
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+> Kiểm tra backend đã chạy thành công tại: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+
+### 2. Cài đặt thư viện Mobile
+```bash
+# Terminal 2: Cài đặt packages (từ thư mục apps/mobile)
+cd apps/mobile
+flutter pub get
+```
+
+### 3. Chạy ứng dụng
+
+- **Chạy trên LDPlayer (hoặc Thiết bị Android thật) qua IP máy tính:**
+  1. Mở **LDPlayer** (đảm bảo đã bật *Gỡ lỗi ADB* trong Cài đặt -> Khác).
+  2. Lấy IP mạng LAN của máy tính bằng lệnh `ipconfig` (ví dụ `192.168.1.28`).
+  3. Khởi chạy app và kèm theo IP máy tính:
+     ```bash
+     flutter run --dart-define=TRAVELWISE_API_URL=http://<IP_MÁY_TÍNH>:8000
+     ```
+     *(Ví dụ thực tế: `flutter run --dart-define=TRAVELWISE_API_URL=http://192.168.1.28:8000`)*
+
+- **Chạy trên Web (Chrome - Trải nghiệm nhanh trên trình duyệt):**
+  ```bash
+  flutter run -d chrome
+  ```
+
+---
+
 **TravelWise Mobile** là ứng dụng khách đa nền tảng (Cross-Platform Client) thuộc hệ sinh thái **TravelWise**, được phát triển bằng **Flutter** và **Dart**. Ứng dụng cung cấp giao diện người dùng cho việc xác thực tài khoản, khám phá điểm đến, tương tác với trợ lý du lịch AI (Chat & Voice Assistant tích hợp RAG), định vị GPS trên bản đồ số và theo dõi lịch trình chuyến đi.
 
 Trong kiến trúc monorepo của TravelWise (`apps/api`, `apps/web`, `apps/mobile`), phân hệ `apps/mobile` đóng vai trò là lớp hiển thị và tương tác trực tiếp với người dùng cuối trên thiết bị di động và trình duyệt Web, kết nối tới **TravelWise FastAPI Backend** qua giao thức HTTP REST và WebSocket.
