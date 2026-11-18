@@ -128,27 +128,6 @@ def get_planning_signals(
     is_ready_to_generate = None
     planning_action = None
 
-    # Tự động cập nhật số ngày vào context nếu câu người dùng chỉ định rõ (VD: "trong 1 ngày", "2 ngày")
-    day_match = re.search(r"(?:trong\s*)?(\d+)\s*(?:ngày|ngay)", user_question, re.IGNORECASE)
-    if day_match and planning_context:
-        try:
-            num_days = max(1, min(14, int(day_match.group(1))))
-            if isinstance(planning_context, dict):
-                trip_d = planning_context.setdefault("trip", {})
-                dates_d = trip_d.setdefault("dates", {})
-                dates_d["duration_days"] = num_days
-                planning_context.setdefault("planning_state", {})["is_ready_to_generate"] = bool(
-                    trip_d.get("destination", {}).get("city")
-                )
-            else:
-                planning_context.trip.dates.duration_days = num_days
-                if hasattr(planning_context, "planning_state"):
-                    planning_context.planning_state.is_ready_to_generate = bool(
-                        planning_context.trip.destination.city
-                    )
-        except Exception:
-            pass
-
     is_ready = False
     if planning_context:
         if isinstance(planning_context, dict):
@@ -255,8 +234,9 @@ def get_planning_signals(
         any(phrase in normalized_question for phrase in generation_phrases)
         or asks_for_itinerary
     ):
-        if is_ready:
-            planning_action = "TRIGGER_GENERATION"
+        planning_action = "TRIGGER_GENERATION"
+        is_ready_to_generate = True
+        planning_status = "ready_to_generate"
 
     elif is_save_request:
         planning_action = "TRIGGER_SAVE"
@@ -450,24 +430,31 @@ async def ask_knowledge(
             from app.models.trip import Trip
             from app.services.itinerary_persistence_service import ItineraryPersistenceService
 
-            # Chỉ tìm chuyến đi thuộc đúng cuộc hội thoại này (không lấy chéo chuyến đi cũ từ cuộc hội thoại khác)
+            # 1. Ưu tiên tìm chuyến đi thuộc cuộc hội thoại này mà ĐÃ CÓ các ngày lịch trình thực tế (itinerary_days)
             all_linked_trips = session.exec(
                 select(Trip)
                 .where(Trip.conversation_id == conversation.id)
                 .order_by(Trip.updated_at.desc())
             ).all()
 
-            linked_trip = None
-            trip_itin = None
-            for t in all_linked_trips:
-                itin = ItineraryPersistenceService.get_itinerary_by_trip_id(session=session, trip_id=t.id, check_ownership=False)
-                if itin and itin.days:
-                    linked_trip = t
-                    trip_itin = itin
-                    break
+            linked_trip = next((t for t in all_linked_trips if t.itinerary_days and len(t.itinerary_days) > 0), None)
 
-            if linked_trip and trip_itin:
-                if trip_itin.days:
+            # 2. Nếu cuộc hội thoại này chưa có lịch trình có hoạt động, tìm chuyến đi gần nhất của user mà ĐÃ CÓ lịch trình
+            if not linked_trip and conversation.user_id:
+                user_trips_with_days = session.exec(
+                    select(Trip)
+                    .where(Trip.user_id == conversation.user_id)
+                    .order_by(Trip.updated_at.desc())
+                ).all()
+                linked_trip = next((t for t in user_trips_with_days if t.itinerary_days and len(t.itinerary_days) > 0), None)
+
+            if linked_trip:
+                trip_itin = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                    session=session,
+                    trip_id=linked_trip.id,
+                    check_ownership=False,
+                )
+                if trip_itin and trip_itin.days:
                     day_lines = []
                     for d in trip_itin.days:
                         acts = []
@@ -487,7 +474,10 @@ async def ask_knowledge(
                 itinerary_context_summary = (
                     "=== THÔNG TIN LỊCH TRÌNH TRONG DATABASE ===\n"
                     "Cuộc hội thoại này hiện tại chưa có bất kỳ lịch trình chi tiết nào được lưu trong cơ sở dữ liệu.\n"
-                    "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo lịch trình mới theo số ngày cụ thể như 1 ngày hay 2 ngày, bạn TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý nói rằng có sẵn lịch trình 3 ngày hay số ngày khác trong hệ thống! Hãy xác nhận và gợi ý kế hoạch theo đúng số ngày mà du khách vừa yêu cầu!)\n"
+                    "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo / lên / lập lịch trình mới theo điểm đến và số ngày cụ thể (ví dụ: 'Tạo lịch trình đi Đà Nẵng 4 ngày', 'Lên lịch 2 ngày'): "
+                    "Hệ thống TravelWise sẽ tự động tạo lịch trình mới theo đúng số ngày và địa điểm du khách yêu cầu! "
+                    "Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC nói 'Mình chưa có thông tin lịch trình X ngày...', không từ chối và TUYỆT ĐỐI KHÔNG tự ý gạ đổi sang số ngày khác! "
+                    "Hãy hào hứng xác nhận bạn đang chuẩn bị lên lịch trình đúng theo số ngày và địa điểm du khách vừa yêu cầu trong 1-2 câu ngắn gọn, ấm áp!)\n"
                 )
         except Exception as itin_read_err:
             logger.warning("Could not append real itinerary context in RAG ask: %s", itin_read_err)
@@ -834,24 +824,31 @@ async def ask_rag_stream(
             from app.models.trip import Trip
             from app.services.itinerary_persistence_service import ItineraryPersistenceService
 
-            # Chỉ tìm chuyến đi thuộc đúng cuộc hội thoại này (không lấy chéo chuyến đi cũ từ cuộc hội thoại khác)
+            # 1. Ưu tiên tìm chuyến đi thuộc cuộc hội thoại này mà ĐÃ CÓ các ngày lịch trình thực tế (itinerary_days)
             all_linked_trips = session.exec(
                 select(Trip)
                 .where(Trip.conversation_id == conversation.id)
                 .order_by(Trip.updated_at.desc())
             ).all()
 
-            linked_trip = None
-            trip_itin = None
-            for t in all_linked_trips:
-                itin = ItineraryPersistenceService.get_itinerary_by_trip_id(session=session, trip_id=t.id, check_ownership=False)
-                if itin and itin.days:
-                    linked_trip = t
-                    trip_itin = itin
-                    break
+            linked_trip = next((t for t in all_linked_trips if t.itinerary_days and len(t.itinerary_days) > 0), None)
 
-            if linked_trip and trip_itin:
-                if trip_itin.days:
+            # 2. Nếu cuộc hội thoại này chưa có lịch trình có hoạt động, tìm chuyến đi gần nhất của user mà ĐÃ CÓ lịch trình
+            if not linked_trip and conversation.user_id:
+                user_trips_with_days = session.exec(
+                    select(Trip)
+                    .where(Trip.user_id == conversation.user_id)
+                    .order_by(Trip.updated_at.desc())
+                ).all()
+                linked_trip = next((t for t in user_trips_with_days if t.itinerary_days and len(t.itinerary_days) > 0), None)
+
+            if linked_trip:
+                trip_itin = ItineraryPersistenceService.get_itinerary_by_trip_id(
+                    session=session,
+                    trip_id=linked_trip.id,
+                    check_ownership=False,
+                )
+                if trip_itin and trip_itin.days:
                     day_lines = []
                     for d in trip_itin.days:
                         acts = []
@@ -875,7 +872,10 @@ async def ask_rag_stream(
                 itin_block = (
                     "=== THÔNG TIN LỊCH TRÌNH TRONG DATABASE ===\n"
                     "Cuộc hội thoại này hiện tại chưa có bất kỳ lịch trình chi tiết nào được lưu trong cơ sở dữ liệu.\n"
-                    "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo lịch trình mới theo số ngày cụ thể như 1 ngày hay 2 ngày, bạn TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý nói rằng có sẵn lịch trình 3 ngày hay số ngày khác trong hệ thống! Hãy xác nhận và gợi ý kế hoạch theo đúng số ngày mà du khách vừa yêu cầu!)\n"
+                    "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo / lên / lập lịch trình mới theo điểm đến và số ngày cụ thể (ví dụ: 'Tạo lịch trình đi Đà Nẵng 4 ngày', 'Lên lịch 2 ngày'): "
+                    "Hệ thống TravelWise sẽ tự động tạo lịch trình mới theo đúng số ngày và địa điểm du khách yêu cầu! "
+                    "Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC nói 'Mình chưa có thông tin lịch trình X ngày...', không từ chối và TUYỆT ĐỐI KHÔNG tự ý gạ đổi sang số ngày khác! "
+                    "Hãy hào hứng xác nhận bạn đang chuẩn bị lên lịch trình đúng theo số ngày và địa điểm du khách vừa yêu cầu trong 1-2 câu ngắn gọn, ấm áp!)\n"
                 )
                 if planning_summary:
                     planning_summary = f"{planning_summary}\n\n{itin_block}"

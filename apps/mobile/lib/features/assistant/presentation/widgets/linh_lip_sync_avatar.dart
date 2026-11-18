@@ -48,9 +48,8 @@ class LinhLipSyncAvatar extends StatefulWidget {
 
 class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
     with SingleTickerProviderStateMixin {
-  static ui.Image? _cachedPortrait;
-  static String? _cachedPath;
-  static Future<ui.Image?>? _loadingFuture;
+  static final Map<String, ui.Image> _portraitCache = {};
+  static final Map<String, Future<ui.Image?>> _loadingFutures = {};
 
   ui.Image? _portrait;
   late final Ticker _ticker;
@@ -69,8 +68,9 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   @override
   void initState() {
     super.initState();
-    if (_cachedPath == widget.imagePath && _cachedPortrait != null) {
-      _portrait = _cachedPortrait;
+    final cached = _portraitCache[widget.imagePath];
+    if (cached != null) {
+      _portrait = cached;
     } else {
       _loadPortrait();
     }
@@ -79,8 +79,13 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   }
 
   Future<void> _loadPortrait() async {
-    _loadingFuture ??= _decodeAssetPortrait(widget.imagePath);
-    final loaded = await _loadingFuture;
+    final cached = _portraitCache[widget.imagePath];
+    if (cached != null) {
+      if (mounted) setState(() => _portrait = cached);
+      return;
+    }
+    _loadingFutures[widget.imagePath] ??= _decodeAssetPortrait(widget.imagePath);
+    final loaded = await _loadingFutures[widget.imagePath];
     if (mounted && loaded != null) {
       setState(() {
         _portrait = loaded;
@@ -89,23 +94,24 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   }
 
   static Future<ui.Image?> _decodeAssetPortrait([String assetPath = 'assets/images/hdv.png']) async {
+    if (_portraitCache.containsKey(assetPath)) {
+      return _portraitCache[assetPath];
+    }
     try {
       final data = await rootBundle.load(assetPath);
       final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
       final frame = await codec.getNextFrame();
-      _cachedPortrait = frame.image;
-      _cachedPath = assetPath;
+      _portraitCache[assetPath] = frame.image;
       return frame.image;
     } catch (_) {
       try {
         final data = await rootBundle.load('assets/images/hdv.png');
         final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
         final frame = await codec.getNextFrame();
-        _cachedPortrait = frame.image;
-        _cachedPath = 'assets/images/hdv.png';
+        _portraitCache[assetPath] = frame.image;
         return frame.image;
       } catch (_) {
-        _loadingFuture = null;
+        _loadingFutures.remove(assetPath);
         return null;
       }
     }
@@ -115,8 +121,12 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
   void didUpdateWidget(covariant LinhLipSyncAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.imagePath != oldWidget.imagePath) {
-      _loadingFuture = null;
-      _loadPortrait();
+      final cached = _portraitCache[widget.imagePath];
+      if (cached != null) {
+        setState(() => _portrait = cached);
+      } else {
+        _loadPortrait();
+      }
     }
     if (widget.speechText != _cachedSpeechText || widget.ttsSpeed != oldWidget.ttsSpeed) {
       _syncPhoneticBeats();
@@ -164,46 +174,31 @@ class _LinhLipSyncAvatarState extends State<LinhLipSyncAvatar>
     final isSpeaking = widget.voiceState == VoiceState.speaking;
     final externalFrame = widget.lipSyncListenable?.value;
 
-    double targetOpen = LipSyncFrame.restOpen;
-    double targetWide = 0.0;
     double targetEnergy = 0.0;
 
     if (isSpeaking) {
       _speakingElapsedSec += dt;
       if (externalFrame != null && externalFrame.active) {
-        targetOpen = externalFrame.mouthOpen;
-        targetWide = externalFrame.mouthWide;
         targetEnergy = externalFrame.energy;
       } else {
         final synth = _VietnamesePhoneticTimeline.sample(
           _phoneticBeats,
           _speakingElapsedSec,
         );
-        targetOpen = synth.mouthOpen;
-        targetWide = synth.mouthWide;
         targetEnergy = synth.energy;
       }
     } else if (widget.voiceState == VoiceState.listening) {
-      // Attentive warm smile while listening to user
-      targetOpen = 0.25 + 0.02 * math.sin(_elapsedSec * 2.2);
-      targetWide = 0.12;
       targetEnergy = 0.0;
     } else {
       _speakingElapsedSec = 0.0;
-      targetOpen = LipSyncFrame.restOpen;
-      targetWide = 0.0;
       targetEnergy = 0.0;
     }
 
-    // Asymmetric smoothing: crisp syllable attack (~28ms), natural jaw release (~75ms)
-    final openRate = targetOpen > _rig.mouthOpen ? 28.0 : 14.0;
-    final openAlpha = (1.0 - math.exp(-openRate * dt)).clamp(0.0, 1.0);
-    final wideAlpha = (1.0 - math.exp(-16.0 * dt)).clamp(0.0, 1.0);
     final energyAlpha = (1.0 - math.exp(-18.0 * dt)).clamp(0.0, 1.0);
 
     _rig.update(
-      mouthOpen: _rig.mouthOpen + (targetOpen - _rig.mouthOpen) * openAlpha,
-      mouthWide: _rig.mouthWide + (targetWide - _rig.mouthWide) * wideAlpha,
+      mouthOpen: LipSyncFrame.restOpen,
+      mouthWide: 0.0,
       energy: _rig.energy + (targetEnergy - _rig.energy) * energyAlpha,
       blink: blink,
       breathPhase: _elapsedSec * 1.45,
@@ -482,14 +477,17 @@ class LinhPortraitRigPainter extends CustomPainter {
     final nodPhase = _rig?.nodPhase ?? 0.0;
     final isSpeaking = _rig?.isSpeaking ?? (debugMouthOpen != null);
 
-    // Signed jaw delta relative to neutral resting smile (`0.28`):
-    // - Positive `[0 .. +1]`: vowel opening (mandible drops, revealing oral cavity)
-    // - Negative `[-1 .. 0]`: bilabial/consonant closure (lips press over teeth)
-    final double jawExpand = open >= LipSyncFrame.restOpen
-        ? ((open - LipSyncFrame.restOpen) / (1.0 - LipSyncFrame.restOpen))
+    // Mouth movement is disabled for 2D images in runtime to eliminate facial warping.
+    // If [debugMouthOpen] is provided explicitly (e.g. In unit tests), verify math.
+    final double jawExpand = debugMouthOpen != null
+        ? (open >= LipSyncFrame.restOpen
+            ? ((open - LipSyncFrame.restOpen) / (1.0 - LipSyncFrame.restOpen))
+            : 0.0)
         : 0.0;
-    final double lipClose = open < LipSyncFrame.restOpen
-        ? ((LipSyncFrame.restOpen - open) / LipSyncFrame.restOpen)
+    final double lipClose = debugMouthOpen != null
+        ? (open < LipSyncFrame.restOpen
+            ? ((LipSyncFrame.restOpen - open) / LipSyncFrame.restOpen)
+            : 0.0)
         : 0.0;
 
     final breath = math.sin(breathPhase);
@@ -548,7 +546,7 @@ class LinhPortraitRigPainter extends CustomPainter {
             );
             // Keep r==9 and r==10 horizontal weights identical so corners never split!
             final rowW = (r >= 8 && r <= 11) ? 1.0 : 0.45;
-            final spreadPx = wide * 3.5 - jawExpand * 1.0;
+            final spreadPx = debugMouthOpen != null ? (wide * 3.5 - jawExpand * 1.0) : 0.0;
             px +=
                 distFromMouthCenter.sign *
                 (distFromMouthCenter.abs() / 36.0).clamp(0.0, 1.15) *
@@ -576,14 +574,14 @@ class LinhPortraitRigPainter extends CustomPainter {
             // Upper teeth bottom (`r9U`): stays anchored to upper skull!
             py += (-0.5 * jawExpand + 1.2 * lipClose) * mouthArc;
           } else if (r == 10) {
-            // Anchor rest position to `_rowRestY(9, c)` so seam is 100% closed at idle,
-            // while UV samples pure lower-lip vermilion (`_rowRestY(10, c)`).
-            final baseSeamY =
-                _rowRestY(9, c) +
+            final baseSeamY = (jawExpand > 0 || lipClose > 0)
+                ? _rowRestY(9, c)
+                : _rowRestY(10, c);
+            py = baseSeamY +
                 ((r >= 2 && r <= 14 && c >= 2 && c <= 13)
                     ? headNodY * ((c >= 4 && c <= 12) ? 1.0 : 0.45)
-                    : 0.0);
-            py = baseSeamY + (15.5 * jawExpand - 9.0 * lipClose) * mouthArc;
+                    : 0.0) +
+                (15.5 * jawExpand - 9.0 * lipClose) * mouthArc;
           } else if (r == 11) {
             // Lower lip bottom: moves with lower lip, plumping slightly when rounded
             final plump = wide < 0 ? (-wide * 1.6 * jawExpand) : 0.0;

@@ -456,11 +456,13 @@ async def process_user_audio_with_rag(
             return
         if (
             isinstance(payload, dict)
-            and payload.get("type") == "command"
-            and payload.get("command") == "stop_speaking"
+            and (
+                (payload.get("type") == "command" and payload.get("command") == "stop_speaking")
+                or payload.get("type") == "interrupt"
+            )
         ):
-            logger.info("🛑 Nhận lệnh dừng đọc vật lý từ %s.", participant.identity)
-            interrupt_agent_audio("Physical stop button")
+            logger.info("🛑 Nhận lệnh dừng đọc vật lý/ngắt voice từ %s.", participant.identity)
+            interrupt_agent_audio("Physical stop or interrupt")
             schedule_control_task(
                 send_room_data(room, {"type": "state", "state": "ready"})
             )

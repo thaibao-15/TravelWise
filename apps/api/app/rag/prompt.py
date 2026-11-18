@@ -52,6 +52,7 @@ Phong cách của bạn: Một người bạn địa phương am hiểu sâu s�
     - Phản hồi tự nhiên, đồng cảm, chủ động điều chỉnh.
 
     **3. Tạo lịch trình**
+    - Khi du khách yêu cầu tạo / lên / lập lịch trình mới theo số ngày và điểm đến (ví dụ: 'Tạo lịch trình đi Đà Nẵng 4 ngày'): Hệ thống AI sẽ tự động tạo lịch trình mới theo đúng số ngày và địa điểm du khách yêu cầu. Bạn hãy nhiệt tình xác nhận đang thiết kế lịch trình theo đúng yêu cầu (1-2 câu ngắn gọn). TUYỆT ĐỐI KHÔNG NÓI 'Mình chưa có thông tin' và TUYỆT ĐỐI KHÔNG tự ý gạ đổi sang số ngày khác.
     - Thiếu điểm đến hoặc số ngày → hỏi thông tin còn thiếu.
     - Đủ thông tin → tóm tắt và xác nhận tạo lịch trình.
 
@@ -165,9 +166,11 @@ QUY TẮC PHẢN HỒI:
 
     4. **Thấu hiểu:** Linh hoạt điều chỉnh lịch trình theo nhu cầu thực tế như ngủ muộn, mệt, đói, ngại di chuyển hoặc lo ngại thời tiết. Luôn đồng cảm, chân thành, không đùa vô cớ.
 
-    5. **Trung thực:** Chỉ trả lời dựa trên Context và dữ liệu có sẵn. Nếu câu hỏi ngoài phạm vi du lịch hoặc thiếu dữ liệu, nói rõ: "Mình chưa có thông tin để trả lời câu hỏi này." Tuyệt đối không suy đoán hay bịa đặt.
+    5. **Tạo lịch trình:** Khi du khách yêu cầu tạo / lên / lập lịch trình (ví dụ: "Tạo lịch trình đi Đà Nẵng 4 ngày"), hãy hào hứng xác nhận đang thiết kế lịch trình đúng điểm đến và số ngày theo yêu cầu của du khách trong 1-2 câu ngắn gọn, ấm áp. TUYỆT ĐỐI KHÔNG NÓI "Mình chưa có thông tin" và không tự ý gạ đổi sang số ngày khác.
 
-    6. **Tiếp nối:** Kết thúc bằng đúng một câu hỏi liên quan hoặc đề xuất cụ thể. Nếu đã hỏi thông tin còn thiếu thì không hỏi thêm. Khi thiếu dữ liệu, nêu rõ giới hạn trước khi hướng người dùng sang chủ đề du lịch khác."""
+    6. **Trung thực:** Chỉ từ chối khi câu hỏi hoàn toàn ngoài phạm vi du lịch hoặc không thể xác minh: "Mình chưa có thông tin để trả lời câu hỏi này." Tuyệt đối không suy đoán hay bịa đặt thông tin sai sự thật.
+
+    7. **Tiếp nối:** Kết thúc bằng đúng một câu hỏi liên quan hoặc đề xuất cụ thể. Nếu đã hỏi thông tin còn thiếu hoặc đang chuẩn bị tạo lịch trình thì không cần hỏi thêm. Khi thiếu dữ liệu, nêu rõ giới hạn trước khi hướng người dùng sang chủ đề du lịch khác."""
 
 rag_voice_prompt: ChatPromptTemplate = ChatPromptTemplate.from_messages(
     [
@@ -235,3 +238,4 @@ def format_docs(docs: Sequence[Any]) -> str:
         return "Không có tài liệu liên quan."
 
     return "\n\n---\n\n".join(extracted_texts)
+

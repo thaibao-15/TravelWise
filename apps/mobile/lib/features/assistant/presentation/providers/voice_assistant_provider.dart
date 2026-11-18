@@ -925,6 +925,26 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     }
   }
 
+  Future<void> _sendLiveKitStopSpeaking() async {
+    final room = _liveKitRoom;
+    if (room == null ||
+        room.connectionState != ConnectionState.connected ||
+        room.localParticipant == null) {
+      return;
+    }
+    try {
+      await room.localParticipant!.publishData(
+        utf8.encode(
+          jsonEncode(<String, String>{
+            'type': 'command',
+            'command': 'stop_speaking',
+          }),
+        ),
+        reliable: true,
+      );
+    } catch (_) {}
+  }
+
   void _handleLiveKitEvent(RoomEvent event) {
     if (event is RoomReconnectingEvent || event is RoomAttemptReconnectEvent) {
       state = state.copyWith(voiceState: VoiceState.connecting);
@@ -1081,6 +1101,19 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   void _upsertLiveKitAssistantMessage(String text, bool isFinal) {
     if (text.trim().isEmpty) return;
+
+    // Chặn hiển thị câu trả lời mâu thuẫn "chưa có thông tin" khi đang/đã tạo lịch trình
+    final lower = text.toLowerCase();
+    if ((state.planningState == TripPlanningState.generating ||
+            state.planningState == TripPlanningState.previewReady ||
+            state.tripPreview != null) &&
+        (lower.contains('chưa có thông tin') ||
+            lower.contains('không có thông tin') ||
+            lower.contains('không tìm thấy'))) {
+      log('livekit_dropped_contradictory_message', {'text': text});
+      return;
+    }
+
     final messages = [...state.messages];
     if (messages.isNotEmpty && !messages.last.isUser) {
       messages[messages.length - 1] = ChatMessage(
@@ -1168,6 +1201,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
           'action': action,
           'isCreateCmd': isCreateCmd,
         });
+        // Dừng LiveKit Agent nói dở câu thoại cũ (như 'chưa có thông tin') để ưu tiên luồng tạo lịch trình
+        unawaited(_sendLiveKitStopSpeaking());
         unawaited(
           generateItinerary(
             convId: convId,
@@ -1438,6 +1473,10 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _ttsCancelled = true;
     _ttsSafetyTimer?.cancel();
     _audioService.stopTts();
+
+    if (_useLiveKitVoice) {
+      unawaited(_sendLiveKitStopSpeaking());
+    }
 
     if (state.voiceState == VoiceState.speaking) {
       state = state.copyWith(voiceState: VoiceState.idle);
@@ -3442,13 +3481,18 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     log('generating_itinerary', {'conversationId': cid});
 
+    // Dừng dứt điểm âm thanh cũ từ LiveKit hoặc TTS trước khi bắt đầu tạo lịch trình
+    stopAudio();
+
     state = state.copyWith(
       planningState: TripPlanningState.generating,
       voiceState: VoiceState.processing,
       error: null,
     );
 
-    if (_isVoiceSession && state.isTtsEnabled && !state.isMuted) {
+    final isLiveKitActive = _useLiveKitVoice &&
+        _liveKitRoom?.connectionState == ConnectionState.connected;
+    if (_isVoiceSession && state.isTtsEnabled && !state.isMuted && !isLiveKitActive) {
       final tripMap = effectiveCtx?['trip'] as Map<String, dynamic>?;
       final destMap = tripMap?['destination'] as Map<String, dynamic>?;
       final city = destMap?['city']?.toString().trim();
@@ -3548,17 +3592,18 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         tripItinerary: trip,
       );
 
-      // Loại bỏ tin nhắn tạm mâu thuẫn trước đó (nếu RAG trả về "chưa có thông tin" do chưa tìm thấy tài liệu tĩnh)
-      List<ChatMessage> updatedMessages = List.from(state.messages);
-      if (updatedMessages.isNotEmpty) {
-        final lastMsg = updatedMessages.last;
-        if (!lastMsg.isUser &&
-            (lastMsg.text.contains('chưa có thông tin') ||
-                lastMsg.text.contains('không có thông tin') ||
-                lastMsg.text.contains('không tìm thấy'))) {
-          updatedMessages.removeLast();
-        }
-      }
+      // Loại bỏ triệt để mọi tin nhắn tạm mâu thuẫn trước đó (khi RAG/LiveKit vô tình trả lời "chưa có thông tin")
+      final updatedMessages = List<ChatMessage>.from(state.messages);
+      updatedMessages.removeWhere((m) =>
+          !m.isUser &&
+          (m.text.toLowerCase().contains('chưa có thông tin') ||
+              m.text.toLowerCase().contains('không có thông tin') ||
+              m.text.toLowerCase().contains('không tìm thấy') ||
+              (m.text.toLowerCase().contains('hai ngày một đêm') &&
+                  trip.daysCount != 2)));
+
+      // Dừng dứt điểm mọi âm thanh trước khi đọc kết quả hoàn thành lịch trình
+      stopAudio();
 
       state = state.copyWith(
         messages: [...updatedMessages, aiMsg],
