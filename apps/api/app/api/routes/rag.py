@@ -254,9 +254,8 @@ def get_planning_signals(
         any(phrase in normalized_question for phrase in generation_phrases)
         or asks_for_itinerary
     ):
-        planning_action = "TRIGGER_GENERATION"
-        is_ready_to_generate = True
-        planning_status = "ready_to_generate"
+        if is_ready:
+            planning_action = "TRIGGER_GENERATION"
 
     elif is_save_request:
         planning_action = "TRIGGER_SAVE"

@@ -183,6 +183,20 @@ async def stream_and_speak_rag_response(
     sentence_idx = 0
     stream_failed = False
 
+    def is_trip_planning_query(q: str) -> bool:
+        low = q.lower()
+        has_action = any(w in low for w in ["tạo", "lên", "lập", "gợi ý", "xây dựng", "thiết kế", "cho mình", "cho tôi"])
+        has_trip = any(w in low for w in ["lịch trình", "kế hoạch", "chuyến đi", "tour", "hành trình"])
+        return (has_action and has_trip) or ("lịch trình" in low) or ("kế hoạch" in low)
+
+    is_planning = is_trip_planning_query(question)
+
+    def is_contradictory_planning_sentence(s: str) -> bool:
+        if not is_planning:
+            return False
+        lower_s = s.lower()
+        return any(p in lower_s for p in ["chưa có thông tin", "không có thông tin", "không tìm thấy", "chưa tìm thấy"])
+
     def enqueue_sentence(s_text: str) -> None:
         nonlocal sentence_idx
         clean_s = s_text.strip()
@@ -214,6 +228,23 @@ async def stream_and_speak_rag_response(
 
         producer_task = asyncio.create_task(synthesize_worker(), name=f"TTS.Producer.Turn-{turn_id}.S-{curr_idx}")
         coordinator.register_task(producer_task)
+
+    async def emit_and_enqueue_sentence(s_text: str) -> None:
+        clean_s = s_text.strip()
+        if not clean_s or not coordinator.is_turn_valid(turn_id):
+            return
+        if is_contradictory_planning_sentence(clean_s):
+            logger.info("🛑 [Turn %d] Bỏ qua câu trả lời mâu thuẫn khi đang tạo lịch trình: '%s'", turn_id, clean_s)
+            return
+        full_answer_parts.append(clean_s)
+        if room:
+            await send_room_data(room, {
+                "type": "transcript",
+                "role": "assistant",
+                "text": " ".join(full_answer_parts),
+                "is_final": False,
+            })
+        enqueue_sentence(clean_s)
 
     # Background worker that plays synthesized audio frames sequentially with ZERO inter-sentence gap
     async def tts_playback_worker() -> None:
@@ -292,44 +323,20 @@ async def stream_and_speak_rag_response(
                         sentence = (parts[0] + parts[1]).strip()
                         buffer = "".join(parts[2:])
                         if sentence:
-                            full_answer_parts.append(sentence)
-                            if room:
-                                await send_room_data(room, {
-                                    "type": "transcript",
-                                    "role": "assistant",
-                                    "text": " ".join(full_answer_parts),
-                                    "is_final": False,
-                                })
-                            enqueue_sentence(sentence)
+                            await emit_and_enqueue_sentence(sentence)
                     else:
                         clause_parts = clause_delimiters.split(buffer)
                         if len(clause_parts) > 1 and len((clause_parts[0] + clause_parts[1]).split()) >= 2:
                             sentence = (clause_parts[0] + clause_parts[1]).strip()
                             buffer = "".join(clause_parts[2:])
                             if sentence:
-                                full_answer_parts.append(sentence)
-                                if room:
-                                    await send_room_data(room, {
-                                        "type": "transcript",
-                                        "role": "assistant",
-                                        "text": " ".join(full_answer_parts),
-                                        "is_final": False,
-                                    })
-                                enqueue_sentence(sentence)
+                                await emit_and_enqueue_sentence(sentence)
                         elif len(buffer.split()) >= early_first_chunk_words:
                             words = buffer.split()
                             sentence = " ".join(words[:early_first_chunk_words]).strip()
                             buffer = " ".join(words[early_first_chunk_words:])
                             if sentence:
-                                full_answer_parts.append(sentence)
-                                if room:
-                                    await send_room_data(room, {
-                                        "type": "transcript",
-                                        "role": "assistant",
-                                        "text": " ".join(full_answer_parts),
-                                        "is_final": False,
-                                    })
-                                enqueue_sentence(sentence)
+                                await emit_and_enqueue_sentence(sentence)
                 else:
                     # 2. Subsequent chunks: group by full grammatical sentences for natural flow
                     parts = sentence_delimiters.split(buffer)
@@ -337,29 +344,13 @@ async def stream_and_speak_rag_response(
                         sentence = (parts[0] + parts[1]).strip()
                         buffer = "".join(parts[2:])
                         if sentence:
-                            full_answer_parts.append(sentence)
-                            if room:
-                                await send_room_data(room, {
-                                    "type": "transcript",
-                                    "role": "assistant",
-                                    "text": " ".join(full_answer_parts),
-                                    "is_final": False,
-                                })
-                            enqueue_sentence(sentence)
+                            await emit_and_enqueue_sentence(sentence)
                     elif len(buffer.split()) >= subsequent_chunk_words:
                         words = buffer.split()
                         sentence = " ".join(words[:subsequent_chunk_words]).strip()
                         buffer = " ".join(words[subsequent_chunk_words:])
                         if sentence:
-                            full_answer_parts.append(sentence)
-                            if room:
-                                await send_room_data(room, {
-                                    "type": "transcript",
-                                    "role": "assistant",
-                                    "text": " ".join(full_answer_parts),
-                                    "is_final": False,
-                                })
-                            enqueue_sentence(sentence)
+                            await emit_and_enqueue_sentence(sentence)
 
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
@@ -392,15 +383,7 @@ async def stream_and_speak_rag_response(
         # Push any remaining sentence in buffer
         remaining = buffer.strip()
         if remaining and coordinator.is_turn_valid(turn_id):
-            full_answer_parts.append(remaining)
-            if room:
-                await send_room_data(room, {
-                    "type": "transcript",
-                    "role": "assistant",
-                    "text": " ".join(full_answer_parts),
-                    "is_final": False,
-                })
-            enqueue_sentence(remaining)
+            await emit_and_enqueue_sentence(remaining)
 
     except asyncio.CancelledError:
         logger.debug("Luồng stream RAG lượt %d bị hủy.", turn_id)
@@ -418,8 +401,7 @@ async def stream_and_speak_rag_response(
                 answer_text = rag_result.get("answer", "")
                 coordinator.update_conversation_id(rag_result.get("conversation_id"))
                 if answer_text:
-                    full_answer_parts.append(answer_text)
-                    enqueue_sentence(answer_text)
+                    await emit_and_enqueue_sentence(answer_text)
             except Exception as fb_err:
                 logger.error("❌ Lỗi cả fallback RAG: %s", fb_err)
     finally:

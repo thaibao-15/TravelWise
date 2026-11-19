@@ -443,6 +443,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   bool _liveKitClosing = false;
   Future<void>? _liveKitCloseFuture;
   bool _liveKitAgentAudioReady = false;
+  Track? _liveKitAgentAudioTrack;
   bool _liveKitNeedsFreshRoom = false;
   Completer<void>? _liveKitAgentReady;
   String _lastLiveKitUserTranscript = '';
@@ -454,8 +455,45 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   bool get isDirectTripEditMode => _isDirectTripEditMode;
 
+  void _silenceLiveKitAudioLocally() {
+    try {
+      unawaited(_liveKitAgentAudioTrack?.disable());
+      final room = _liveKitRoom;
+      if (room != null) {
+        for (final p in room.remoteParticipants.values) {
+          if (_isLiveKitAgent(p)) {
+            for (final pub in p.audioTrackPublications) {
+              unawaited(pub.track?.disable());
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log('silence_livekit_audio_error', {'error': e.toString()});
+    }
+  }
+
+  void _restoreLiveKitAudioLocally() {
+    try {
+      unawaited(_liveKitAgentAudioTrack?.enable());
+      final room = _liveKitRoom;
+      if (room != null) {
+        for (final p in room.remoteParticipants.values) {
+          if (_isLiveKitAgent(p)) {
+            for (final pub in p.audioTrackPublications) {
+              unawaited(pub.track?.enable());
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log('restore_livekit_audio_error', {'error': e.toString()});
+    }
+  }
+
   void _resumeListeningIfPersistent() {
     if (!mounted) return;
+    _restoreLiveKitAudioLocally();
     if ((_userKeepMicOn || _isVoiceSession) && !state.isMuted) {
       log('hands_free_auto_listen_triggered');
       state = state.copyWith(voiceState: VoiceState.idle, error: null);
@@ -859,6 +897,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   Future<void> _enableLiveKitMicrophone() async {
     final participant = _liveKitRoom?.localParticipant;
     if (participant == null) return;
+    _restoreLiveKitAudioLocally();
     await participant.setMicrophoneEnabled(true);
     state = state.copyWith(
       voiceState: VoiceState.listening,
@@ -989,9 +1028,19 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     if (event is TrackSubscribedEvent &&
         _isLiveKitAgent(event.participant) &&
         event.track.kind == TrackType.AUDIO) {
+      _liveKitAgentAudioTrack = event.track;
       _liveKitAgentAudioReady = true;
       log('livekit_agent_audio_subscribed');
       unawaited(_sendLiveKitVoiceSettings());
+      return;
+    }
+    if (event is TrackUnsubscribedEvent &&
+        _isLiveKitAgent(event.participant) &&
+        event.track.kind == TrackType.AUDIO) {
+      if (_liveKitAgentAudioTrack == event.track) {
+        _liveKitAgentAudioTrack = null;
+      }
+      _liveKitAgentAudioReady = false;
       return;
     }
     if (event is DataReceivedEvent) {
@@ -1028,6 +1077,25 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             _upsertLiveKitUserMessage(text);
           }
         } else if (role == 'assistant') {
+          // Ngắt triệt để TTS nội bộ (local TTS) khi LiveKit đang nói để tránh đè 2 voice
+          _audioService.stopTts();
+          _ttsCancelled = true;
+
+          final lower = text.toLowerCase();
+          final isContradictory = (state.planningState == TripPlanningState.generating ||
+                  state.planningState == TripPlanningState.previewReady ||
+                  state.tripPreview != null) &&
+              (lower.contains('chưa có thông tin') ||
+                  lower.contains('không có thông tin') ||
+                  lower.contains('không tìm thấy'));
+          if (isContradictory) {
+            log('livekit_silenced_contradictory_audio', {'text': text});
+            unawaited(_sendLiveKitStopSpeaking());
+            _silenceLiveKitAudioLocally();
+            return;
+          }
+
+          _restoreLiveKitAudioLocally();
           state = state.copyWith(
             currentTranscript: text,
             voiceState: isFinal ? VoiceState.idle : VoiceState.speaking,
@@ -1041,7 +1109,13 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         return;
       }
       if (type == 'state') {
-        final next = switch (payload['state']?.toString()) {
+        final stateStr = payload['state']?.toString();
+        if (stateStr == 'speaking') {
+          _audioService.stopTts();
+          _ttsCancelled = true;
+          _restoreLiveKitAudioLocally();
+        }
+        final next = switch (stateStr) {
           'analyzing' => state.isMuted ? VoiceState.idle : VoiceState.thinking,
           'speaking' => VoiceState.speaking,
           'ready' || 'listening' => state.isMuted ? VoiceState.idle : VoiceState.listening,
@@ -1111,6 +1185,8 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
             lower.contains('không có thông tin') ||
             lower.contains('không tìm thấy'))) {
       log('livekit_dropped_contradictory_message', {'text': text});
+      unawaited(_sendLiveKitStopSpeaking());
+      _silenceLiveKitAudioLocally();
       return;
     }
 
@@ -1203,6 +1279,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         });
         // Dừng LiveKit Agent nói dở câu thoại cũ (như 'chưa có thông tin') để ưu tiên luồng tạo lịch trình
         unawaited(_sendLiveKitStopSpeaking());
+        _silenceLiveKitAudioLocally();
         unawaited(
           generateItinerary(
             convId: convId,
@@ -1334,6 +1411,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
     _liveKitListener = null;
     _liveKitRoom = null;
     _liveKitAgentAudioReady = false;
+    _liveKitAgentAudioTrack = null;
     _liveKitAgentReady = null;
     try {
       await cancelListener?.call();
@@ -1476,6 +1554,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
     if (_useLiveKitVoice) {
       unawaited(_sendLiveKitStopSpeaking());
+      _silenceLiveKitAudioLocally();
     }
 
     if (state.voiceState == VoiceState.speaking) {
@@ -1639,6 +1718,11 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
   void prepareForTtsPlayback() {
     _ttsCancelled = false;
     _ttsSafetyTimer?.cancel();
+
+    if (_useLiveKitVoice) {
+      unawaited(_sendLiveKitStopSpeaking());
+      _silenceLiveKitAudioLocally();
+    }
 
     if (_listeningTurnActive || state.isRecording) {
       log('stt_suspended_for_tts');
