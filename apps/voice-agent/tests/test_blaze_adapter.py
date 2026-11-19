@@ -288,5 +288,46 @@ class TestBlazeTTSAdapter(unittest.IsolatedAsyncioTestCase):
             await task
 
 
+    @patch("websockets.connect")
+    async def test_tts_persistent_connection_reused_across_syntheses(self, mock_connect):
+        """Verify WebSocket connection is created once and reused across multiple synthesize calls."""
+        mock_ws = AsyncMock()
+        mock_ws.closed = False
+        mock_connect.return_value.__aenter__.return_value = mock_ws
+
+        finished_frame = json.dumps({"type": "finished-byte-stream"})
+        mock_ws.recv = AsyncMock(side_effect=[
+            b"audio_chunk_1",
+            finished_frame,
+            b"audio_chunk_2",
+            finished_frame,
+        ])
+
+        emitter1 = MagicMock()
+        stream1 = self.adapter.synthesize("Câu thứ nhất.")
+        await stream1._run(emitter1)
+
+        emitter2 = MagicMock()
+        stream2 = self.adapter.synthesize("Câu thứ hai.")
+        await stream2._run(emitter2)
+
+        # Connection should be initiated only ONCE
+        self.assertEqual(mock_connect.call_count, 1)
+
+        # Calls to send: 1 auth frame + 2 query frames = 3 total send calls
+        self.assertEqual(mock_ws.send.call_count, 3)
+        auth_payload = json.loads(mock_ws.send.call_args_list[0][0][0])
+        self.assertEqual(auth_payload["strategy"], "request")
+
+        query1 = json.loads(mock_ws.send.call_args_list[1][0][0])
+        self.assertEqual(query1["query"], "Câu thứ nhất.")
+
+        query2 = json.loads(mock_ws.send.call_args_list[2][0][0])
+        self.assertEqual(query2["query"], "Câu thứ hai.")
+
+        await self.adapter.aclose()
+        self.assertIsNone(self.adapter._ws)
+
+
 if __name__ == "__main__":
     unittest.main()

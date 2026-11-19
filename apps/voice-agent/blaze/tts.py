@@ -32,7 +32,8 @@ class BlazeTTS(tts.TTS):
     """Blaze AI Realtime TTS provider plugin for LiveKit Agents.
 
     Connects to Blaze AI's WebSocket TTS service (wss://api.blaze.vn/v1/tts/realtime)
-    with pipelined query synthesis, MP3 streaming, and native livekit AudioStreamDecoder.
+    with persistent WebSocket connection reuse, pipelined query synthesis, MP3 streaming,
+    and native livekit AudioStreamDecoder.
     """
 
     def __init__(
@@ -65,6 +66,11 @@ class BlazeTTS(tts.TTS):
         self._audio_quality = audio_quality if audio_quality is not None else config.BLAZE_TTS_AUDIO_QUALITY
         self._audio_format = audio_format.strip() if audio_format is not None else config.BLAZE_TTS_AUDIO_FORMAT.strip()
         self._normalization = normalization.strip() if normalization is not None else config.BLAZE_TTS_NORMALIZATION.strip()
+
+        # Persistent WebSocket connection state
+        self._ws: Optional[websockets.ClientConnection] = None
+        self._conn_lock: asyncio.Lock = asyncio.Lock()
+        self._synth_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def model(self) -> str:
@@ -123,6 +129,75 @@ class BlazeTTS(tts.TTS):
                 raise ValueError("Unsupported TTS speed.")
             self._speed = clean_speed
 
+    async def get_or_connect_ws(
+        self,
+        connect_timeout: float = 10.0,
+    ) -> websockets.ClientConnection:
+        """Get or establish an active, authenticated persistent WebSocket connection."""
+        if not self._api_key:
+            raise BlazeAuthError("BLAZE_API_KEY chưa được cấu hình cho Blaze AI TTS.")
+
+        async with self._conn_lock:
+            # Check if existing connection is still alive
+            if self._ws is not None and not getattr(self._ws, "closed", False):
+                return self._ws
+
+            ws_url = self._ws_url or "wss://api.blaze.vn/v1/tts/realtime"
+            logger.debug(
+                "Đang mở kết nối Persistent WebSocket tới Blaze TTS: %s (speaker=%s, model=%s)",
+                ws_url,
+                self._speaker_id,
+                self._model,
+            )
+
+            try:
+                connect_coro = websockets.connect(
+                    ws_url,
+                    open_timeout=connect_timeout,
+                    max_size=10 * 1024 * 1024,
+                    ping_interval=None,
+                )
+                # Handle both direct async call (normal runtime) and async context manager (mocked unit tests)
+                if hasattr(connect_coro, "__aenter__"):
+                    ws = await connect_coro.__aenter__()
+                else:
+                    ws = await connect_coro
+
+                # Send authentication frame immediately after connect
+                auth_msg = {
+                    "token": self._api_key,
+                    "strategy": "request",
+                }
+                await ws.send(json.dumps(auth_msg))
+                self._ws = ws
+                logger.info("✅ Kết nối Persistent WebSocket Blaze TTS thành công và đã xác thực.")
+                return self._ws
+
+            except InvalidStatusCode as exc:
+                status = getattr(exc.response, "status_code", -1)
+                if status in (401, 403):
+                    raise BlazeAuthError(f"Blaze API Key không hợp lệ hoặc bị từ chối (HTTP {status}).") from exc
+                raise BlazeConnectionError(f"Máy chủ Blaze TTS trả về mã lỗi HTTP {status}.") from exc
+            except ConnectionClosed as exc:
+                raise BlazeConnectionError(f"Mất kết nối với Blaze TTS (code: {exc.code}, reason: {exc.reason})") from exc
+            except (BlazeAuthError, BlazeConnectionError):
+                raise
+            except Exception as exc:
+                logger.error("Lỗi khi kết nối Persistent WebSocket Blaze TTS: %s", exc)
+                raise BlazeConnectionError(f"Không thể kết nối đến Blaze TTS: {exc}") from exc
+
+    async def aclose(self) -> None:
+        """Gracefully close the persistent WebSocket connection."""
+        async with self._conn_lock:
+            if self._ws is not None:
+                try:
+                    await self._ws.close()
+                except Exception as exc:
+                    logger.debug("Lỗi khi đóng WebSocket Blaze TTS: %s", exc)
+                finally:
+                    self._ws = None
+                    logger.info("Đã đóng kết nối Persistent WebSocket Blaze TTS.")
+
     def synthesize(
         self,
         text: str,
@@ -155,7 +230,7 @@ class BlazeChunkedStream(tts.ChunkedStream):
         self._tts: BlazeTTS = tts
 
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
-        """Execute WebSocket session, stream MP3 chunks, and decode into PCM frames."""
+        """Execute query synthesis on persistent WebSocket session and stream MP3 chunks."""
         clean_text = self._input_text.strip()
         if not clean_text:
             return
@@ -172,83 +247,66 @@ class BlazeChunkedStream(tts.ChunkedStream):
             stream=False,
         )
 
-        ws_url = self._tts.ws_url or "wss://api.blaze.vn/v1/tts/realtime"
         connect_timeout = self._conn_options.timeout or 10.0
 
-        try:
-            logger.debug(
-                "Connecting to Blaze TTS WebSocket: %s (speaker=%s, model=%s)",
-                ws_url,
-                self._tts.speaker_id,
-                self._tts.model,
-            )
+        query_msg = {
+            "query": clean_text,
+            "language": "vi",
+            "audio_format": self._tts.audio_format,
+            "audio_quality": self._tts.audio_quality,
+            "audio_speed": str(self._tts.speed),
+            "speaker_id": self._tts.speaker_id,
+            "normalization": self._tts.normalization,
+            "model": self._tts.model,
+        }
 
-            async with websockets.connect(
-                ws_url,
-                open_timeout=connect_timeout,
-                max_size=10 * 1024 * 1024,
-                ping_interval=None,
-            ) as ws:
-                # 1. Pipelined Authentication Frame
-                auth_msg = {
-                    "token": self._tts.api_key,
-                    "strategy": "request",
-                }
-                await ws.send(json.dumps(auth_msg))
+        # Use _synth_lock so multiple sentences pipeline safely over the persistent connection
+        async with self._tts._synth_lock:
+            for attempt in range(2):
+                ws = await self._tts.get_or_connect_ws(connect_timeout=connect_timeout)
+                try:
+                    await ws.send(json.dumps(query_msg))
 
-                # 2. Pipelined Query Frame
-                query_msg = {
-                    "query": clean_text,
-                    "language": "vi",
-                    "audio_format": self._tts.audio_format,
-                    "audio_quality": self._tts.audio_quality,
-                    "audio_speed": str(self._tts.speed),
-                    "speaker_id": self._tts.speaker_id,
-                    "normalization": self._tts.normalization,
-                    "model": self._tts.model,
-                }
-                await ws.send(json.dumps(query_msg))
-
-                # 3. Receive binary audio stream
-                bytes_received = 0
-                while True:
-                    try:
-                        raw_msg = await asyncio.wait_for(ws.recv(), timeout=connect_timeout)
-                    except asyncio.TimeoutError as exc:
-                        raise BlazeTimeoutError("Quá thời gian chờ phản hồi âm thanh từ Blaze TTS.") from exc
-
-                    if isinstance(raw_msg, bytes):
-                        bytes_received += len(raw_msg)
-                        output_emitter.push(raw_msg)
-                    elif isinstance(raw_msg, str):
+                    bytes_received = 0
+                    while True:
                         try:
-                            data = json.loads(raw_msg)
-                        except Exception:
-                            continue
+                            raw_msg = await asyncio.wait_for(ws.recv(), timeout=connect_timeout)
+                        except asyncio.TimeoutError as exc:
+                            raise BlazeTimeoutError("Quá thời gian chờ phản hồi âm thanh từ Blaze TTS.") from exc
 
-                        event = data.get("type") or data.get("status")
-                        if event == "finished-byte-stream":
-                            logger.debug("Blaze TTS stream hoàn tất. Tổng dung lượng nhận: %d bytes", bytes_received)
-                            break
-                        elif event in ("failed-request", "internal-error", "error"):
-                            err_msg = data.get("message") or "Lỗi từ dịch vụ tạo giọng đọc Blaze AI TTS."
-                            raise BlazeTTSError(err_msg)
+                        if isinstance(raw_msg, bytes):
+                            bytes_received += len(raw_msg)
+                            output_emitter.push(raw_msg)
+                        elif isinstance(raw_msg, str):
+                            try:
+                                data = json.loads(raw_msg)
+                            except Exception:
+                                continue
 
-        except InvalidStatusCode as exc:
-            status = getattr(exc.response, "status_code", -1)
-            if status in (401, 403):
-                raise BlazeAuthError(f"Blaze API Key không hợp lệ hoặc bị từ chối (HTTP {status}).") from exc
-            raise BlazeConnectionError(f"Máy chủ Blaze TTS trả về mã lỗi HTTP {status}.") from exc
-        except ConnectionClosed as exc:
-            if exc.code in (1000, 1001):
-                logger.debug("Blaze TTS WebSocket đóng bình thường: %s", exc)
-                return
-            raise BlazeConnectionError(f"Mất kết nối với Blaze TTS (code: {exc.code}, reason: {exc.reason})") from exc
-        except (BlazeAuthError, BlazeConnectionError, BlazeTimeoutError, BlazeTTSError):
-            raise
-        except asyncio.CancelledError:
-            logger.debug("Blaze TTS synthesize cancelled.")
-            raise
-        except Exception as exc:
-            logger.error("Lỗi không xác định trong Blaze TTS stream: %s", exc, exc_info=True)
-            raise BlazeTTSError(f"Lỗi phiên TTS Blaze AI: {str(exc)}") from exc
+                            event = data.get("type") or data.get("status")
+                            if event == "finished-byte-stream":
+                                logger.debug(
+                                    "Blaze TTS stream hoàn tất. Tổng dung lượng: %d bytes (text: '%s...')",
+                                    bytes_received,
+                                    clean_text[:30],
+                                )
+                                return
+                            elif event in ("failed-request", "internal-error", "error"):
+                                err_msg = data.get("message") or "Lỗi từ dịch vụ tạo giọng đọc Blaze AI TTS."
+                                raise BlazeTTSError(err_msg)
+
+                except (ConnectionClosed, websockets.WebSocketException) as ws_err:
+                    logger.warning("Mất kết nối WebSocket Blaze TTS trong khi nhận dữ liệu (attempt=%d): %s", attempt, ws_err)
+                    await self._tts.aclose()
+                    if attempt == 1:
+                        raise BlazeConnectionError(f"Mất kết nối với Blaze TTS sau khi thử lại: {ws_err}") from ws_err
+                except (BlazeAuthError, BlazeTimeoutError, BlazeTTSError):
+                    raise
+                except asyncio.CancelledError:
+                    logger.debug("Blaze TTS synthesize cancelled.")
+                    raise
+                except Exception as exc:
+                    logger.error("Lỗi không xác định trong Blaze TTS stream: %s", exc, exc_info=True)
+                    await self._tts.aclose()
+                    if attempt == 1:
+                        raise BlazeTTSError(f"Lỗi phiên TTS Blaze AI: {str(exc)}") from exc
