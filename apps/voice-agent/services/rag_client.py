@@ -37,6 +37,25 @@ class TravelWiseRAGClient:
         self.base_url = (base_url or config.BACKEND_API_URL).rstrip("/")
         self.jwt_secret = jwt_secret or config.JWT_SECRET
         self.jwt_algorithm = jwt_algorithm or config.JWT_ALGORITHM
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def get_client(self, timeout: float = 30.0) -> httpx.AsyncClient:
+        """Get or initialize persistent HTTP client with connection pooling."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout, connect=5.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=50,
+                    keepalive_expiry=120.0,
+                ),
+            )
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close persistent HTTP client session."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     def generate_auth_token(self, user_id: int) -> str:
         """Create a short-lived internal JWT token to authenticate as user_id."""
@@ -97,8 +116,8 @@ class TravelWiseRAGClient:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(endpoint, json=payload, headers=headers)
+            client = self.get_client(timeout=timeout)
+            response = await client.post(endpoint, json=payload, headers=headers)
 
             duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -178,14 +197,14 @@ class TravelWiseRAGClient:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream("POST", endpoint, json=payload, headers=headers) as response:
-                    if response.status_code != 200:
-                        err_text = await response.aread()
-                        logger.error("Lỗi từ RAG stream (HTTP %d): %s", response.status_code, err_text.decode("utf-8", "ignore"))
-                        raise RAGClientError(f"RAG stream returned HTTP {response.status_code}", status_code=response.status_code)
+            client = self.get_client(timeout=timeout)
+            async with client.stream("POST", endpoint, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    err_text = await response.aread()
+                    logger.error("Lỗi từ RAG stream (HTTP %d): %s", response.status_code, err_text.decode("utf-8", "ignore"))
+                    raise RAGClientError(f"RAG stream returned HTTP {response.status_code}", status_code=response.status_code)
 
-                    async for line in response.aiter_lines():
+                async for line in response.aiter_lines():
                         if not line or not line.startswith("data: "):
                             continue
 

@@ -172,8 +172,10 @@ async def stream_and_speak_rag_response(
             "text": "Đang suy nghĩ câu trả lời...",
         })
 
-    delimiters = re.compile(r"([.!?\n]+(?:\s+|$))")
-    early_tts_word_limit = 5
+    sentence_delimiters = re.compile(r"([.!?\n]+(?:\s+|$))")
+    clause_delimiters = re.compile(r"([,;:—–]+(?:\s+|$))")
+    early_first_chunk_words = 3
+    subsequent_chunk_words = 10
     buffer = ""
     full_answer_parts: List[str] = []
     first_chunk_recorded = False
@@ -282,39 +284,82 @@ async def stream_and_speak_rag_response(
 
                 token = ev.get("token", "")
                 buffer += token
-                parts = delimiters.split(buffer)
 
-                if len(parts) > 1:
-                    sentence = (parts[0] + parts[1]).strip()
-                    buffer = "".join(parts[2:])
-
-                    if sentence:
-                        full_answer_parts.append(sentence)
-                        if room:
-                            await send_room_data(room, {
-                                "type": "transcript",
-                                "role": "assistant",
-                                "text": " ".join(full_answer_parts),
-                                "is_final": False,
-                            })
-                        # Push to queue for playback worker
-                        enqueue_sentence(sentence)
-                elif len(buffer.split()) >= early_tts_word_limit:
-                    # Start speaking a short phrase before punctuation arrives,
-                    # while avoiding one TTS request per generated token.
-                    words = buffer.split()
-                    sentence = " ".join(words[:early_tts_word_limit]).strip()
-                    buffer = " ".join(words[early_tts_word_limit:])
-                    if sentence:
-                        full_answer_parts.append(sentence)
-                        if room:
-                            await send_room_data(room, {
-                                "type": "transcript",
-                                "role": "assistant",
-                                "text": " ".join(full_answer_parts),
-                                "is_final": False,
-                            })
-                        enqueue_sentence(sentence)
+                if sentence_idx == 0:
+                    # 1. First chunk: optimize for lowest Time-to-First-Audio (TTFA)
+                    parts = sentence_delimiters.split(buffer)
+                    if len(parts) > 1:
+                        sentence = (parts[0] + parts[1]).strip()
+                        buffer = "".join(parts[2:])
+                        if sentence:
+                            full_answer_parts.append(sentence)
+                            if room:
+                                await send_room_data(room, {
+                                    "type": "transcript",
+                                    "role": "assistant",
+                                    "text": " ".join(full_answer_parts),
+                                    "is_final": False,
+                                })
+                            enqueue_sentence(sentence)
+                    else:
+                        clause_parts = clause_delimiters.split(buffer)
+                        if len(clause_parts) > 1 and len((clause_parts[0] + clause_parts[1]).split()) >= 2:
+                            sentence = (clause_parts[0] + clause_parts[1]).strip()
+                            buffer = "".join(clause_parts[2:])
+                            if sentence:
+                                full_answer_parts.append(sentence)
+                                if room:
+                                    await send_room_data(room, {
+                                        "type": "transcript",
+                                        "role": "assistant",
+                                        "text": " ".join(full_answer_parts),
+                                        "is_final": False,
+                                    })
+                                enqueue_sentence(sentence)
+                        elif len(buffer.split()) >= early_first_chunk_words:
+                            words = buffer.split()
+                            sentence = " ".join(words[:early_first_chunk_words]).strip()
+                            buffer = " ".join(words[early_first_chunk_words:])
+                            if sentence:
+                                full_answer_parts.append(sentence)
+                                if room:
+                                    await send_room_data(room, {
+                                        "type": "transcript",
+                                        "role": "assistant",
+                                        "text": " ".join(full_answer_parts),
+                                        "is_final": False,
+                                    })
+                                enqueue_sentence(sentence)
+                else:
+                    # 2. Subsequent chunks: group by full grammatical sentences for natural flow
+                    parts = sentence_delimiters.split(buffer)
+                    if len(parts) > 1:
+                        sentence = (parts[0] + parts[1]).strip()
+                        buffer = "".join(parts[2:])
+                        if sentence:
+                            full_answer_parts.append(sentence)
+                            if room:
+                                await send_room_data(room, {
+                                    "type": "transcript",
+                                    "role": "assistant",
+                                    "text": " ".join(full_answer_parts),
+                                    "is_final": False,
+                                })
+                            enqueue_sentence(sentence)
+                    elif len(buffer.split()) >= subsequent_chunk_words:
+                        words = buffer.split()
+                        sentence = " ".join(words[:subsequent_chunk_words]).strip()
+                        buffer = " ".join(words[subsequent_chunk_words:])
+                        if sentence:
+                            full_answer_parts.append(sentence)
+                            if room:
+                                await send_room_data(room, {
+                                    "type": "transcript",
+                                    "role": "assistant",
+                                    "text": " ".join(full_answer_parts),
+                                    "is_final": False,
+                                })
+                            enqueue_sentence(sentence)
 
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
@@ -477,10 +522,63 @@ async def process_user_audio_with_rag(
     # detected speech instead of waiting for a complete word.
     vad_model = silero.VAD.load(
         min_speech_duration=0.05,
-        min_silence_duration=0.3,
+        min_silence_duration=0.28,
         activation_threshold=0.5,
     )
     vad_stream = vad_model.stream()
+
+    latest_user_text: str = ""
+    last_triggered_text: str = ""
+    turn_lock = asyncio.Lock()
+
+    def _normalize_text(t: str) -> str:
+        return re.sub(r"[?!.,;:—–\s]+", "", t.lower())
+
+    async def trigger_turn(question_text: str, source: str = "stt_final") -> None:
+        nonlocal last_triggered_text, latest_user_text
+        clean_text = question_text.strip()
+        if not clean_text:
+            return
+
+        async with turn_lock:
+            norm_clean = _normalize_text(clean_text)
+            norm_last = _normalize_text(last_triggered_text)
+            if norm_clean == norm_last and (coordinator.is_busy or not coordinator._interruption_event.is_set()):
+                logger.debug("⏭️ [Turn Trigger Skip] Bỏ qua câu trùng lặp ('%s' vs '%s', source=%s)", clean_text, last_triggered_text, source)
+                return
+
+            last_triggered_text = clean_text
+            latest_user_text = ""
+
+            logger.info("⚡ [Turn Triggered via %s] %s: '%s'", source, participant.identity, clean_text)
+
+            # Publish final user transcript to frontend room for live caption display
+            await send_room_data(room, {
+                "type": "transcript",
+                "role": "user",
+                "text": clean_text,
+                "is_final": True,
+            })
+
+            # Start new conversational turn and record STT timing
+            turn_id = coordinator.start_new_turn(question=clean_text)
+            coordinator.record_stt_done(turn_id, clean_text)
+
+            # Launch streaming RAG + sentence TTS as a cancellable task
+            turn_task = asyncio.create_task(
+                stream_and_speak_rag_response(
+                    question=clean_text,
+                    turn_id=turn_id,
+                    coordinator=coordinator,
+                    rag_client=rag_client,
+                    blaze_tts=blaze_tts,
+                    audio_source=audio_source,
+                    room=room,
+                    user_id=coordinator.user_id,
+                ),
+                name=f"Turn-{turn_id}.Response",
+            )
+            coordinator.register_task(turn_task)
 
     async def forward_audio_to_stt_and_vad() -> None:
         """Push WebRTC audio frames simultaneously into Blaze STT and Silero VAD."""
@@ -501,12 +599,11 @@ async def process_user_audio_with_rag(
         try:
             async for vad_event in vad_stream:
                 if vad_event.type == vad.VADEventType.START_OF_SPEECH:
-                    # Interrupt on the first reliable speech signal while the
-                    # agent is speaking; do not wait for a final STT transcript.
+                    # Interrupt immediately when user begins speaking while agent is busy
                     probability = getattr(vad_event, "probability", 1.0)
-                    if coordinator.is_agent_speaking and probability >= 0.5:
+                    if coordinator.is_busy and probability >= 0.5:
                         logger.info(
-                            "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang nói (prob=%.2f)!",
+                            "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang bận (prob=%.2f)!",
                             probability,
                         )
                         interrupt_agent_audio(
@@ -519,6 +616,15 @@ async def process_user_audio_with_rag(
                     # User stopped speaking. Record timestamp for latency tracking
                     coordinator.record_user_speech_end(coordinator.current_turn_id)
 
+                    # Silero VAD detected user stopped speaking: debounce 120ms to allow trailing syllable to arrive
+                    async def delayed_vad_turn():
+                        await asyncio.sleep(0.12)
+                        if latest_user_text.strip() and not coordinator.is_busy:
+                            await trigger_turn(latest_user_text, source="vad_endpoint")
+
+                    vad_task = asyncio.create_task(delayed_vad_turn())
+                    coordinator.register_task(vad_task)
+
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -526,12 +632,14 @@ async def process_user_audio_with_rag(
 
     async def consume_stt_and_query_rag() -> None:
         """Receive transcripts from Blaze STT, query streaming Gemini/RAG, and respond via Blaze TTS."""
+        nonlocal latest_user_text
         try:
             async for speech_event in stt_stream:
                 if speech_event.type == stt.SpeechEventType.INTERIM_TRANSCRIPT:
                     transcript = speech_event.alternatives[0].text
                     logger.debug("⏳ [Blaze STT Interim] %s: %s", participant.identity, transcript)
                     if transcript.strip():
+                        latest_user_text = transcript.strip()
                         await send_room_data(room, {
                             "type": "transcript",
                             "role": "user",
@@ -545,34 +653,8 @@ async def process_user_audio_with_rag(
                         continue
 
                     logger.info("🗣️ [Blaze STT Final] %s: '%s'", participant.identity, transcript)
-
-                    # Publish user transcript to frontend room for live caption display
-                    await send_room_data(room, {
-                        "type": "transcript",
-                        "role": "user",
-                        "text": transcript,
-                        "is_final": True,
-                    })
-
-                    # Start new conversational turn and record STT timing
-                    turn_id = coordinator.start_new_turn(question=transcript)
-                    coordinator.record_stt_done(turn_id, transcript)
-
-                    # Launch streaming RAG + sentence TTS as a cancellable task
-                    turn_task = asyncio.create_task(
-                        stream_and_speak_rag_response(
-                            question=transcript,
-                            turn_id=turn_id,
-                            coordinator=coordinator,
-                            rag_client=rag_client,
-                            blaze_tts=blaze_tts,
-                            audio_source=audio_source,
-                            room=room,
-                            user_id=coordinator.user_id,
-                        ),
-                        name=f"Turn-{turn_id}.Response",
-                    )
-                    coordinator.register_task(turn_task)
+                    latest_user_text = transcript
+                    await trigger_turn(transcript, source="stt_final")
 
         except asyncio.CancelledError:
             pass

@@ -1194,7 +1194,7 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
         (isCreateCmd && (quickCtx != null || context != null || state.planningContext != null)) ||
         (isReady && isCreateCmd);
 
-    if (shouldTriggerGen && convId != null) {
+    if (shouldTriggerGen) {
       if (state.planningState != TripPlanningState.generating) {
         log('livekit_trigger_generation', {
           'convId': convId,
@@ -3439,22 +3439,28 @@ class VoiceAssistantNotifier extends StateNotifier<VoiceAssistantState> {
 
   Future<void> generateItinerary({
     int? convId,
-
     Map<String, dynamic>? context,
-
     String? userPrompt,
   }) async {
     final cid = convId ?? state.conversationId;
 
-    if (cid == null && context == null) return;
+    Map<String, dynamic>? effectiveCtx = context ?? state.planningContext;
+    if (effectiveCtx == null && userPrompt != null && userPrompt.trim().isNotEmpty) {
+      effectiveCtx = _extractQuickPlanningContext(userPrompt) ?? {
+        'trip': {
+          'destination': {'city': 'Đà Nẵng', 'country': 'Việt Nam'},
+          'dates': {'duration_days': 3},
+        },
+        'planning_state': {'is_ready_to_generate': true},
+      };
+    }
+
+    if (cid == null && effectiveCtx == null) return;
 
     if (state.planningState == TripPlanningState.generating) {
       log('generate_itinerary_skipped_already_busy');
-
       return;
     }
-
-    Map<String, dynamic>? effectiveCtx = context ?? state.planningContext;
 
     if (userPrompt != null && userPrompt.isNotEmpty) {
       final dayMatch = RegExp(r'(?:trong\s*)?(\d+)\s*(?:ngày|ngay)', caseSensitive: false)

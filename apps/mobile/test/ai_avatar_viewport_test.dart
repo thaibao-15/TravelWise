@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/audio/lip_sync_frame.dart';
-import 'package:mobile/features/assistant/presentation/providers/avatar_state_provider.dart';
 import 'package:mobile/features/assistant/presentation/providers/voice_assistant_provider.dart';
 import 'package:mobile/features/assistant/presentation/widgets/ai_2d_avatar.dart';
 import 'package:mobile/features/assistant/presentation/widgets/ai_avatar_viewport.dart';
