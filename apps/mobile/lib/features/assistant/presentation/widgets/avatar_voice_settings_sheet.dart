@@ -327,11 +327,11 @@ class _AvatarVoiceSettingsSheetState
             child: TabBarView(
               controller: _tabController,
               children: [
-                // TAB 1: 3D AVATAR SELECTION
-                _buildAvatarTab(avatarState, avatarNotifier),
+                // TAB 1: 3D / 2D AVATAR SELECTION
+                _buildAvatarTab(avatarState, avatarNotifier, voiceNotifier, voiceState),
 
                 // TAB 2: VOICE & SPEED SELECTION
-                _buildVoiceTab(voiceState, voiceNotifier, voicesAsync),
+                _buildVoiceTab(voiceState, voiceNotifier, voicesAsync, avatarState),
               ],
             ),
           ),
@@ -352,6 +352,9 @@ class _AvatarVoiceSettingsSheetState
                   onPressed: () {
                     Navigator.of(context).pop();
                     final voicesList = voicesAsync.asData?.value ?? kAvailableVoices;
+                    final activeName = avatarState.is2dMode
+                        ? avatarState.photoName
+                        : avatarState.modelName;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Row(
@@ -360,7 +363,7 @@ class _AvatarVoiceSettingsSheetState
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Đã áp dụng: ${avatarState.modelName} • ${_getVoiceName(voiceState.speakerId, voicesList)} (${voiceState.ttsSpeed}x)',
+                                'Đã áp dụng: $activeName • ${_getVoiceName(voiceState.speakerId, voicesList)} (${voiceState.ttsSpeed}x)',
                                 style: const TextStyle(fontSize: 12.5),
                               ),
                             ),
@@ -397,8 +400,25 @@ class _AvatarVoiceSettingsSheetState
   Widget _buildAvatarTab(
     Avatar3dState avatarState,
     Avatar3dNotifier avatarNotifier,
+    VoiceAssistantNotifier voiceNotifier,
+    VoiceAssistantState voiceState,
   ) {
     final is2d = avatarState.is2dMode;
+
+    void syncVoiceGender(String targetGender) {
+      final allVoices = kAvailableVoices;
+      final currentVoice = allVoices.firstWhere(
+        (v) => v.id == voiceState.speakerId,
+        orElse: () => allVoices.first,
+      );
+      if (currentVoice.gender != targetGender) {
+        final fallbackVoice = allVoices.firstWhere(
+          (v) => v.gender == targetGender,
+          orElse: () => allVoices.first,
+        );
+        voiceNotifier.setSpeakerId(fallbackVoice.id);
+      }
+    }
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
@@ -418,7 +438,10 @@ class _AvatarVoiceSettingsSheetState
           children: [
             Expanded(
               child: InkWell(
-                onTap: () => avatarNotifier.setDisplayMode(AvatarDisplayMode.photo2d),
+                onTap: () {
+                  avatarNotifier.setDisplayMode(AvatarDisplayMode.photo2d);
+                  syncVoiceGender(avatarState.currentGender);
+                },
                 borderRadius: BorderRadius.circular(14),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -456,7 +479,7 @@ class _AvatarVoiceSettingsSheetState
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Nhép môi 60fps thực tế',
+                        'Chân dung AI tự nhiên',
                         style: TextStyle(
                           fontSize: 11,
                           color: is2d ? AppColors.primary.withValues(alpha: 0.8) : Colors.grey[600],
@@ -470,7 +493,10 @@ class _AvatarVoiceSettingsSheetState
             const SizedBox(width: 12),
             Expanded(
               child: InkWell(
-                onTap: () => avatarNotifier.setDisplayMode(AvatarDisplayMode.model3d),
+                onTap: () {
+                  avatarNotifier.setDisplayMode(AvatarDisplayMode.model3d);
+                  syncVoiceGender(avatarState.currentGender);
+                },
                 borderRadius: BorderRadius.circular(14),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -526,7 +552,7 @@ class _AvatarVoiceSettingsSheetState
 
         if (is2d) ...[
           Text(
-            'Hình mẫu Ảnh AI đang kích hoạt:',
+            'Chọn hình mẫu Ảnh AI (2D):',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -534,81 +560,103 @@ class _AvatarVoiceSettingsSheetState
             ),
           ),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    'assets/images/hdv.png',
-                    width: 58,
-                    height: 58,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'Linh AI (HDV Thực tế)',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Đang dùng',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF059669),
-                              ),
-                            ),
-                          ),
-                        ],
+          ...kAvailablePhotos.map((photo) {
+            final isSelected = avatarState.selectedPhotoPath == photo.assetPath;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                onTap: () {
+                  avatarNotifier.selectPhoto(
+                    photo.assetPath,
+                    photoName: photo.name,
+                  );
+                  syncVoiceGender(photo.gender);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary.withValues(alpha: 0.05) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : Colors.grey[300]!,
+                      width: isSelected ? 2 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isSelected ? 0.06 : 0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Chuyển động nhép miệng 60fps tiếng Việt, chớp mắt và cử chỉ đầu tự nhiên từ ảnh gốc.',
-                        style: TextStyle(fontSize: 11.5, color: Colors.grey[650]),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          photo.assetPath,
+                          width: 58,
+                          height: 58,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  photo.name,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                        : Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    photo.tag,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: isSelected ? const Color(0xFF059669) : Colors.grey[700],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              photo.subtitle,
+                              style: TextStyle(fontSize: 11.5, color: Colors.grey[650]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_off,
+                        color: isSelected ? AppColors.primary : Colors.grey[400],
+                        size: 22,
                       ),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.primary,
-                  size: 22,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
+              ),
+            );
+          }),
+          const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -622,7 +670,7 @@ class _AvatarVoiceSettingsSheetState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Công nghệ GPU Mesh Deformation 60fps đồng bộ thời gian thực theo âm thanh Voice AI Blaze, không làm biến dạng khuôn mặt và tiết kiệm pin.',
+                    'Ảnh tĩnh AI chất lượng cao, giữ trọn nét mặt tự nhiên không biến dạng khuôn mặt khi phát biểu và tiết kiệm tối đa pin thiết bị.',
                     style: TextStyle(fontSize: 11, color: Colors.grey[700]),
                   ),
                 ),
@@ -649,6 +697,7 @@ class _AvatarVoiceSettingsSheetState
                     avatar.assetPath,
                     modelName: avatar.name,
                   );
+                  syncVoiceGender(avatar.gender);
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: AnimatedContainer(
@@ -778,9 +827,13 @@ class _AvatarVoiceSettingsSheetState
     VoiceAssistantState voiceState,
     VoiceAssistantNotifier voiceNotifier,
     AsyncValue<List<TtsVoiceOption>> voicesAsync,
+    Avatar3dState avatarState,
   ) {
+    final avatarGender = avatarState.currentGender;
     final regions = ['Tất cả', 'Miền Bắc', 'Miền Trung', 'Miền Nam'];
-    final allVoices = voicesAsync.value ?? kAvailableVoices;
+    final allVoices = (voicesAsync.value ?? kAvailableVoices)
+        .where((v) => v.gender == avatarGender)
+        .toList();
 
     var filteredVoices = _selectedRegionFilter == 'Tất cả'
         ? allVoices
@@ -802,6 +855,32 @@ class _AvatarVoiceSettingsSheetState
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
       children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.sync_rounded, size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Đang đồng bộ giọng $avatarGender theo nhân vật ${avatarState.is2dMode ? avatarState.photoName : avatarState.modelName}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
         // 1. SPEED SELECTOR
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

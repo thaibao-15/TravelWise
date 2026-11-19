@@ -42,6 +42,9 @@ class AiAvatarViewport extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final avatarState = ref.watch(avatar3dStateProvider);
     final avatarNotifier = ref.read(avatar3dStateProvider.notifier);
+    final effectivePhoto = photoPath != 'assets/images/hdv.png'
+        ? photoPath
+        : avatarState.selectedPhotoPath;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -68,7 +71,7 @@ class AiAvatarViewport extends ConsumerWidget {
                     voiceState: voiceState,
                     speechText: speechText,
                     lipSyncListenable: lipSyncListenable,
-                    imagePath: photoPath,
+                    imagePath: effectivePhoto,
                     ttsSpeed: ttsSpeed,
                   )
                 : Ai3dAvatar(

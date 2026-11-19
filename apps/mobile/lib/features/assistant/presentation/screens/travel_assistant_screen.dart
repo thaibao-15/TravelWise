@@ -11,6 +11,7 @@ import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
 import '../models/chat_media.dart';
 import '../../services/media_upload_service.dart';
+import '../providers/avatar_state_provider.dart';
 import '../providers/voice_assistant_provider.dart';
 import '../widgets/ai_avatar_viewport.dart';
 import '../widgets/location_suggestions.dart';
@@ -590,6 +591,8 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
     final ttsSpeedNum = double.tryParse(state.ttsSpeed) ?? 1.5;
 
+    final avatarState = ref.watch(avatar3dStateProvider);
+
     return Column(
       children: [
         // Khung hiển thị nhân vật AI Linh (Hỗ trợ chuyển đổi mượt mà giữa Ảnh tĩnh AI và Nhân vật 3D)
@@ -600,6 +603,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               voiceState: state.voiceState,
               speechText: latestAiSpeech,
               lipSyncListenable: notifier.lipSyncListenable,
+              photoPath: avatarState.selectedPhotoPath,
               ttsSpeed: ttsSpeedNum,
               onOpenSettings: () => AvatarVoiceSettingsSheet.show(context),
             ),

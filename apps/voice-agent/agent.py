@@ -172,14 +172,30 @@ async def stream_and_speak_rag_response(
             "text": "Đang suy nghĩ câu trả lời...",
         })
 
-    delimiters = re.compile(r"([.!?\n]+(?:\s+|$))")
-    early_tts_word_limit = 5
+    sentence_delimiters = re.compile(r"([.!?\n]+(?:\s+|$))")
+    clause_delimiters = re.compile(r"([,;:—–]+(?:\s+|$))")
+    early_first_chunk_words = 3
+    subsequent_chunk_words = 10
     buffer = ""
     full_answer_parts: List[str] = []
     first_chunk_recorded = False
     sentence_queue: asyncio.Queue[Optional[asyncio.Queue[Optional[rtc.AudioFrame]]]] = asyncio.Queue()
     sentence_idx = 0
     stream_failed = False
+
+    def is_trip_planning_query(q: str) -> bool:
+        low = q.lower()
+        has_action = any(w in low for w in ["tạo", "lên", "lập", "gợi ý", "xây dựng", "thiết kế", "cho mình", "cho tôi"])
+        has_trip = any(w in low for w in ["lịch trình", "kế hoạch", "chuyến đi", "tour", "hành trình"])
+        return (has_action and has_trip) or ("lịch trình" in low) or ("kế hoạch" in low)
+
+    is_planning = is_trip_planning_query(question)
+
+    def is_contradictory_planning_sentence(s: str) -> bool:
+        if not is_planning:
+            return False
+        lower_s = s.lower()
+        return any(p in lower_s for p in ["chưa có thông tin", "không có thông tin", "không tìm thấy", "chưa tìm thấy"])
 
     def enqueue_sentence(s_text: str) -> None:
         nonlocal sentence_idx
@@ -212,6 +228,23 @@ async def stream_and_speak_rag_response(
 
         producer_task = asyncio.create_task(synthesize_worker(), name=f"TTS.Producer.Turn-{turn_id}.S-{curr_idx}")
         coordinator.register_task(producer_task)
+
+    async def emit_and_enqueue_sentence(s_text: str) -> None:
+        clean_s = s_text.strip()
+        if not clean_s or not coordinator.is_turn_valid(turn_id):
+            return
+        if is_contradictory_planning_sentence(clean_s):
+            logger.info("🛑 [Turn %d] Bỏ qua câu trả lời mâu thuẫn khi đang tạo lịch trình: '%s'", turn_id, clean_s)
+            return
+        full_answer_parts.append(clean_s)
+        if room:
+            await send_room_data(room, {
+                "type": "transcript",
+                "role": "assistant",
+                "text": " ".join(full_answer_parts),
+                "is_final": False,
+            })
+        enqueue_sentence(clean_s)
 
     # Background worker that plays synthesized audio frames sequentially with ZERO inter-sentence gap
     async def tts_playback_worker() -> None:
@@ -282,39 +315,42 @@ async def stream_and_speak_rag_response(
 
                 token = ev.get("token", "")
                 buffer += token
-                parts = delimiters.split(buffer)
 
-                if len(parts) > 1:
-                    sentence = (parts[0] + parts[1]).strip()
-                    buffer = "".join(parts[2:])
-
-                    if sentence:
-                        full_answer_parts.append(sentence)
-                        if room:
-                            await send_room_data(room, {
-                                "type": "transcript",
-                                "role": "assistant",
-                                "text": " ".join(full_answer_parts),
-                                "is_final": False,
-                            })
-                        # Push to queue for playback worker
-                        enqueue_sentence(sentence)
-                elif len(buffer.split()) >= early_tts_word_limit:
-                    # Start speaking a short phrase before punctuation arrives,
-                    # while avoiding one TTS request per generated token.
-                    words = buffer.split()
-                    sentence = " ".join(words[:early_tts_word_limit]).strip()
-                    buffer = " ".join(words[early_tts_word_limit:])
-                    if sentence:
-                        full_answer_parts.append(sentence)
-                        if room:
-                            await send_room_data(room, {
-                                "type": "transcript",
-                                "role": "assistant",
-                                "text": " ".join(full_answer_parts),
-                                "is_final": False,
-                            })
-                        enqueue_sentence(sentence)
+                if sentence_idx == 0:
+                    # 1. First chunk: optimize for lowest Time-to-First-Audio (TTFA)
+                    parts = sentence_delimiters.split(buffer)
+                    if len(parts) > 1:
+                        sentence = (parts[0] + parts[1]).strip()
+                        buffer = "".join(parts[2:])
+                        if sentence:
+                            await emit_and_enqueue_sentence(sentence)
+                    else:
+                        clause_parts = clause_delimiters.split(buffer)
+                        if len(clause_parts) > 1 and len((clause_parts[0] + clause_parts[1]).split()) >= 2:
+                            sentence = (clause_parts[0] + clause_parts[1]).strip()
+                            buffer = "".join(clause_parts[2:])
+                            if sentence:
+                                await emit_and_enqueue_sentence(sentence)
+                        elif len(buffer.split()) >= early_first_chunk_words:
+                            words = buffer.split()
+                            sentence = " ".join(words[:early_first_chunk_words]).strip()
+                            buffer = " ".join(words[early_first_chunk_words:])
+                            if sentence:
+                                await emit_and_enqueue_sentence(sentence)
+                else:
+                    # 2. Subsequent chunks: group by full grammatical sentences for natural flow
+                    parts = sentence_delimiters.split(buffer)
+                    if len(parts) > 1:
+                        sentence = (parts[0] + parts[1]).strip()
+                        buffer = "".join(parts[2:])
+                        if sentence:
+                            await emit_and_enqueue_sentence(sentence)
+                    elif len(buffer.split()) >= subsequent_chunk_words:
+                        words = buffer.split()
+                        sentence = " ".join(words[:subsequent_chunk_words]).strip()
+                        buffer = " ".join(words[subsequent_chunk_words:])
+                        if sentence:
+                            await emit_and_enqueue_sentence(sentence)
 
             elif ev_type == "done":
                 new_conv_id = ev.get("conversation_id")
@@ -347,15 +383,7 @@ async def stream_and_speak_rag_response(
         # Push any remaining sentence in buffer
         remaining = buffer.strip()
         if remaining and coordinator.is_turn_valid(turn_id):
-            full_answer_parts.append(remaining)
-            if room:
-                await send_room_data(room, {
-                    "type": "transcript",
-                    "role": "assistant",
-                    "text": " ".join(full_answer_parts),
-                    "is_final": False,
-                })
-            enqueue_sentence(remaining)
+            await emit_and_enqueue_sentence(remaining)
 
     except asyncio.CancelledError:
         logger.debug("Luồng stream RAG lượt %d bị hủy.", turn_id)
@@ -373,8 +401,7 @@ async def stream_and_speak_rag_response(
                 answer_text = rag_result.get("answer", "")
                 coordinator.update_conversation_id(rag_result.get("conversation_id"))
                 if answer_text:
-                    full_answer_parts.append(answer_text)
-                    enqueue_sentence(answer_text)
+                    await emit_and_enqueue_sentence(answer_text)
             except Exception as fb_err:
                 logger.error("❌ Lỗi cả fallback RAG: %s", fb_err)
     finally:
@@ -456,11 +483,13 @@ async def process_user_audio_with_rag(
             return
         if (
             isinstance(payload, dict)
-            and payload.get("type") == "command"
-            and payload.get("command") == "stop_speaking"
+            and (
+                (payload.get("type") == "command" and payload.get("command") == "stop_speaking")
+                or payload.get("type") == "interrupt"
+            )
         ):
-            logger.info("🛑 Nhận lệnh dừng đọc vật lý từ %s.", participant.identity)
-            interrupt_agent_audio("Physical stop button")
+            logger.info("🛑 Nhận lệnh dừng đọc vật lý/ngắt voice từ %s.", participant.identity)
+            interrupt_agent_audio("Physical stop or interrupt")
             schedule_control_task(
                 send_room_data(room, {"type": "state", "state": "ready"})
             )
@@ -475,10 +504,63 @@ async def process_user_audio_with_rag(
     # detected speech instead of waiting for a complete word.
     vad_model = silero.VAD.load(
         min_speech_duration=0.05,
-        min_silence_duration=0.3,
+        min_silence_duration=0.28,
         activation_threshold=0.5,
     )
     vad_stream = vad_model.stream()
+
+    latest_user_text: str = ""
+    last_triggered_text: str = ""
+    turn_lock = asyncio.Lock()
+
+    def _normalize_text(t: str) -> str:
+        return re.sub(r"[?!.,;:—–\s]+", "", t.lower())
+
+    async def trigger_turn(question_text: str, source: str = "stt_final") -> None:
+        nonlocal last_triggered_text, latest_user_text
+        clean_text = question_text.strip()
+        if not clean_text:
+            return
+
+        async with turn_lock:
+            norm_clean = _normalize_text(clean_text)
+            norm_last = _normalize_text(last_triggered_text)
+            if norm_clean == norm_last and (coordinator.is_busy or not coordinator._interruption_event.is_set()):
+                logger.debug("⏭️ [Turn Trigger Skip] Bỏ qua câu trùng lặp ('%s' vs '%s', source=%s)", clean_text, last_triggered_text, source)
+                return
+
+            last_triggered_text = clean_text
+            latest_user_text = ""
+
+            logger.info("⚡ [Turn Triggered via %s] %s: '%s'", source, participant.identity, clean_text)
+
+            # Publish final user transcript to frontend room for live caption display
+            await send_room_data(room, {
+                "type": "transcript",
+                "role": "user",
+                "text": clean_text,
+                "is_final": True,
+            })
+
+            # Start new conversational turn and record STT timing
+            turn_id = coordinator.start_new_turn(question=clean_text)
+            coordinator.record_stt_done(turn_id, clean_text)
+
+            # Launch streaming RAG + sentence TTS as a cancellable task
+            turn_task = asyncio.create_task(
+                stream_and_speak_rag_response(
+                    question=clean_text,
+                    turn_id=turn_id,
+                    coordinator=coordinator,
+                    rag_client=rag_client,
+                    blaze_tts=blaze_tts,
+                    audio_source=audio_source,
+                    room=room,
+                    user_id=coordinator.user_id,
+                ),
+                name=f"Turn-{turn_id}.Response",
+            )
+            coordinator.register_task(turn_task)
 
     async def forward_audio_to_stt_and_vad() -> None:
         """Push WebRTC audio frames simultaneously into Blaze STT and Silero VAD."""
@@ -499,12 +581,11 @@ async def process_user_audio_with_rag(
         try:
             async for vad_event in vad_stream:
                 if vad_event.type == vad.VADEventType.START_OF_SPEECH:
-                    # Interrupt on the first reliable speech signal while the
-                    # agent is speaking; do not wait for a final STT transcript.
+                    # Interrupt immediately when user begins speaking while agent is busy
                     probability = getattr(vad_event, "probability", 1.0)
-                    if coordinator.is_agent_speaking and probability >= 0.5:
+                    if coordinator.is_busy and probability >= 0.5:
                         logger.info(
-                            "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang nói (prob=%.2f)!",
+                            "🛑 [VAD Interruption Detected] Phát hiện tiếng nói người dùng khi Agent đang bận (prob=%.2f)!",
                             probability,
                         )
                         interrupt_agent_audio(
@@ -517,6 +598,15 @@ async def process_user_audio_with_rag(
                     # User stopped speaking. Record timestamp for latency tracking
                     coordinator.record_user_speech_end(coordinator.current_turn_id)
 
+                    # Silero VAD detected user stopped speaking: debounce 120ms to allow trailing syllable to arrive
+                    async def delayed_vad_turn():
+                        await asyncio.sleep(0.12)
+                        if latest_user_text.strip() and not coordinator.is_busy:
+                            await trigger_turn(latest_user_text, source="vad_endpoint")
+
+                    vad_task = asyncio.create_task(delayed_vad_turn())
+                    coordinator.register_task(vad_task)
+
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -524,12 +614,14 @@ async def process_user_audio_with_rag(
 
     async def consume_stt_and_query_rag() -> None:
         """Receive transcripts from Blaze STT, query streaming Gemini/RAG, and respond via Blaze TTS."""
+        nonlocal latest_user_text
         try:
             async for speech_event in stt_stream:
                 if speech_event.type == stt.SpeechEventType.INTERIM_TRANSCRIPT:
                     transcript = speech_event.alternatives[0].text
                     logger.debug("⏳ [Blaze STT Interim] %s: %s", participant.identity, transcript)
                     if transcript.strip():
+                        latest_user_text = transcript.strip()
                         await send_room_data(room, {
                             "type": "transcript",
                             "role": "user",
@@ -543,34 +635,8 @@ async def process_user_audio_with_rag(
                         continue
 
                     logger.info("🗣️ [Blaze STT Final] %s: '%s'", participant.identity, transcript)
-
-                    # Publish user transcript to frontend room for live caption display
-                    await send_room_data(room, {
-                        "type": "transcript",
-                        "role": "user",
-                        "text": transcript,
-                        "is_final": True,
-                    })
-
-                    # Start new conversational turn and record STT timing
-                    turn_id = coordinator.start_new_turn(question=transcript)
-                    coordinator.record_stt_done(turn_id, transcript)
-
-                    # Launch streaming RAG + sentence TTS as a cancellable task
-                    turn_task = asyncio.create_task(
-                        stream_and_speak_rag_response(
-                            question=transcript,
-                            turn_id=turn_id,
-                            coordinator=coordinator,
-                            rag_client=rag_client,
-                            blaze_tts=blaze_tts,
-                            audio_source=audio_source,
-                            room=room,
-                            user_id=coordinator.user_id,
-                        ),
-                        name=f"Turn-{turn_id}.Response",
-                    )
-                    coordinator.register_task(turn_task)
+                    latest_user_text = transcript
+                    await trigger_turn(transcript, source="stt_final")
 
         except asyncio.CancelledError:
             pass

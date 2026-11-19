@@ -64,6 +64,7 @@ class ConversationCoordinator:
 
         self.current_turn_id: int = 0
         self.is_agent_speaking: bool = False
+        self.is_agent_thinking: bool = False
 
         self._active_tasks: List[asyncio.Task] = []
         self._interruption_event = asyncio.Event()
@@ -73,10 +74,18 @@ class ConversationCoordinator:
 
         self._lock = asyncio.Lock()
 
+    @property
+    def is_busy(self) -> bool:
+        """Return True if agent is actively thinking or speaking."""
+        return self.is_agent_speaking or self.is_agent_thinking
+
     def start_new_turn(self, question: str = "") -> int:
         """Start a new turn, advancing turn_id so previous in-flight tasks are discarded."""
         self.current_turn_id += 1
         turn_id = self.current_turn_id
+
+        self.is_agent_thinking = True
+        self.is_agent_speaking = False
 
         metrics = TurnMetrics(turn_id=turn_id, question_text=question)
         self._current_metrics = metrics
@@ -115,6 +124,7 @@ class ConversationCoordinator:
         if self._current_metrics and self._current_metrics.turn_id == turn_id:
             if not self._current_metrics.tts_first_audio_time:
                 self._current_metrics.tts_first_audio_time = ts
+                self.is_agent_thinking = False
                 self.is_agent_speaking = True
                 self._log_turn_latency(self._current_metrics)
 
@@ -124,6 +134,7 @@ class ConversationCoordinator:
         if self._current_metrics and self._current_metrics.turn_id == turn_id:
             self._current_metrics.tts_complete_time = ts
             self._current_metrics.answer_text = answer
+        self.is_agent_thinking = False
         self.is_agent_speaking = False
 
     def is_turn_valid(self, turn_id: int) -> bool:
@@ -145,6 +156,7 @@ class ConversationCoordinator:
 
         # Signal cancellation event
         self._interruption_event.set()
+        self.is_agent_thinking = False
         self.is_agent_speaking = False
 
         # Advance turn_id immediately so any ongoing callbacks discard frames
