@@ -83,33 +83,23 @@ class AiAvatarViewport extends ConsumerWidget {
                   ),
           ),
 
-          // 2. Status Badge (Top-Left)
-          Positioned(
-            top: 14,
-            left: 14,
-            child: _buildAvatarStatusPill(avatarState, voiceState),
-          ),
-
-          // 3. Top-Right Action Controls (Mode Switcher & Settings)
+          // 3. Top-Right Action Controls (Settings)
           Positioned(
             top: 14,
             right: 14,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Mode Switcher Segmented Pill
-                _buildModeSwitcherPill(avatarState, avatarNotifier),
-                const SizedBox(width: 6),
-
-                // Settings & Voice Options Button
+                // Settings & Voice Options Button (Circle icon only)
                 InkWell(
                   onTap: onOpenSettings ?? () => AvatarVoiceSettingsSheet.show(context),
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(20),
+                      shape: BoxShape.circle,
                       border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
                       boxShadow: [
                         BoxShadow(
@@ -119,20 +109,8 @@ class AiAvatarViewport extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.tune_rounded, color: Colors.white, size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          'Cài đặt',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                    child: const Center(
+                      child: Icon(Icons.tune_rounded, color: Colors.white, size: 16),
                     ),
                   ),
                 ),
@@ -267,8 +245,8 @@ class AiAvatarViewport extends ConsumerWidget {
     Color dotColor;
     String statusText;
 
-    final String displayName =
-        avatarState.is2dMode ? 'Linh AI (Ảnh 2D)' : avatarState.modelName;
+    // Chỉ hiển thị tên trợ lý và trạng thái đơn giản, bỏ hoàn toàn hậu tố kỹ thuật (Ảnh 2D / 3D)
+    final String displayName = 'Linh AI';
 
     switch (state) {
       case VoiceState.speaking:

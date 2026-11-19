@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_notifier.dart';
 import '../../../auth/presentation/providers/auth_state.dart';
 import '../../../../shared/widgets/main_shell.dart';
 import '../../../trips/models/trip_model.dart';
+import '../../../trips/widgets/create_trip_sheet.dart';
 import '../models/chat_media.dart';
 import '../../services/media_upload_service.dart';
 import '../providers/avatar_state_provider.dart';
@@ -2308,23 +2309,13 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.restaurant, color: Color(0xFFF59E0B)),
-              title: const Text('Tìm các quán hải sản tươi ngon giá hợp lý'),
+              leading: const Icon(Icons.auto_awesome, color: Color(0xFF2563EB)),
+              title: const Text('Tùy chỉnh lịch trình chi tiết (từ Trang chủ)'),
+              subtitle: const Text('Chọn địa điểm, số ngày, sở thích & ngân sách'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
               onTap: () {
                 Navigator.pop(ctx);
-                notifier.sendMessage(
-                  'Gợi ý cho mình các quán hải sản ngon rẻ ở Đà Nẵng',
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.hotel, color: Color(0xFF10B981)),
-              title: const Text('Gợi ý khách sạn view biển gần cầu Rồng'),
-              onTap: () {
-                Navigator.pop(ctx);
-                notifier.sendMessage(
-                  'Gợi ý khách sạn view đẹp gần cầu Rồng Đà Nẵng',
-                );
+                CreateTripSheet.show(context);
               },
             ),
           ],
