@@ -128,6 +128,26 @@ def get_planning_signals(
     is_ready_to_generate = None
     planning_action = None
 
+    # Tự động cập nhật số ngày vào context nếu câu người dùng chỉ định rõ (VD: "trong 1 ngày", "2 ngày")
+    day_match = re.search(r"(?:trong\s*)?(\d+)\s*(?:ngày|ngay)", user_question, re.IGNORECASE)
+    if day_match and planning_context:
+        try:
+            num_days = max(1, min(14, int(day_match.group(1))))
+            if isinstance(planning_context, dict):
+                trip_d = planning_context.setdefault("trip", {})
+                dates_d = trip_d.setdefault("dates", {})
+                dates_d["duration_days"] = num_days
+                # Chỉ cập nhật is_ready_to_generate nếu có thông tin destination trong trip
+                if trip_d.get("destination", {}).get("city"):
+                    planning_context.setdefault("planning_state", {})["is_ready_to_generate"] = True
+            else:
+                planning_context.trip.dates.duration_days = num_days
+                if hasattr(planning_context, "planning_state"):
+                    if getattr(getattr(planning_context, "trip", None), "destination", None) and getattr(planning_context.trip.destination, "city", None):
+                        planning_context.planning_state.is_ready_to_generate = True
+        except Exception:
+            pass
+
     is_ready = False
     if planning_context:
         if isinstance(planning_context, dict):
