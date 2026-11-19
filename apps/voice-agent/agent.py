@@ -882,4 +882,6 @@ async def entrypoint(ctx: JobContext) -> None:
         for t in user_audio_tasks:
             t.cancel()
         await asyncio.gather(*user_audio_tasks, return_exceptions=True)
+        await blaze_tts.aclose()
+        await rag_client.aclose()
         logger.info("🏁 Phiên làm việc phòng '%s' kết thúc.", ctx.room.name)

@@ -31,8 +31,10 @@ class TravelAssistantScreen extends ConsumerStatefulWidget {
 }
 
 class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _rippleController;
+  late AnimationController _thinkingPulseController;
+  late Animation<double> _thinkingPulseAnimation;
   bool _isItineraryMinimized = false;
   String? _bannerNotificationText;
   IconData _bannerNotificationIcon = Icons.check_circle_rounded;
@@ -46,6 +48,16 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
     _rippleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
+    );
+
+    // Controller nhịp thở AI (Glowing Orb & Sparkle)
+    _thinkingPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _thinkingPulseAnimation = CurvedAnimation(
+      parent: _thinkingPulseController,
+      curve: Curves.easeInOut,
     );
 
     // Chỉ chào khi người dùng thực sự kích hoạt tab Assistant
@@ -73,6 +85,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   @override
   void dispose() {
     _bannerDismissTimer?.cancel();
+    _thinkingPulseController.dispose();
     _rippleController.dispose();
     super.dispose();
   }
@@ -824,6 +837,18 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
         state.voiceState == VoiceState.thinking ||
         state.voiceState == VoiceState.processing;
 
+    // Quản lý animation controller nhịp thở AI để tối ưu GPU/Pin
+    if (isThinking) {
+      if (!_thinkingPulseController.isAnimating) {
+        _thinkingPulseController.repeat(reverse: true);
+      }
+    } else {
+      if (_thinkingPulseController.isAnimating) {
+        _thinkingPulseController.stop();
+        _thinkingPulseController.reset();
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
       child: Column(
@@ -905,103 +930,118 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
                           },
                         ),
 
-                      // Vòng viền Gradient xanh / đỏ phát sáng
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: 76,
-                        height: 76,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isSpeaking
-                              ? const Color(0xFFFEE2E2)
-                              : (isThinking
-                                    ? const Color(0xFFF1F5F9)
-                                    : (isListening
-                                          ? const Color(0xFFE0F2FE)
-                                          : const Color(0xFFCCFBF1))),
-                          boxShadow: [
-                            BoxShadow(
-                              color:
-                                  (isSpeaking
-                                          ? const Color(0xFFEF4444)
-                                          : (isThinking
-                                                ? const Color(0xFF94A3B8)
-                                                : const Color(0xFF0284C7)))
-                                      .withValues(
-                                        alpha: isListening || isSpeaking
-                                            ? 0.35
-                                            : 0.2,
-                                      ),
-                              blurRadius: isListening || isSpeaking ? 20 : 12,
-                              offset: const Offset(0, 4),
+                      // Vòng viền Gradient xanh / đỏ phát sáng & Hào quang thở AI khi suy nghĩ
+                      AnimatedBuilder(
+                        animation: _thinkingPulseAnimation,
+                        builder: (context, child) {
+                          final pulseVal = isThinking ? _thinkingPulseAnimation.value : 0.0;
+                          return Container(
+                            width: 76 + (isThinking ? pulseVal * 6 : 0),
+                            height: 76 + (isThinking ? pulseVal * 6 : 0),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isSpeaking
+                                  ? const Color(0xFFFEE2E2)
+                                  : (isThinking
+                                        ? const Color(0xFFF3E8FF).withValues(alpha: 0.6 + pulseVal * 0.3)
+                                        : (isListening
+                                              ? const Color(0xFFE0F2FE)
+                                              : const Color(0xFFCCFBF1))),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isSpeaking
+                                      ? const Color(0xFFEF4444)
+                                      : (isThinking
+                                            ? const Color(0xFF8B5CF6).withValues(
+                                                alpha: 0.25 + pulseVal * 0.35,
+                                              )
+                                            : const Color(0xFF0284C7)),
+                                  blurRadius: isThinking
+                                      ? 16 + pulseVal * 12
+                                      : (isListening || isSpeaking ? 20 : 12),
+                                  spreadRadius: isThinking ? pulseVal * 4 : 0,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
 
-                      // Nút chính giữa (Đỏ khi đang nói/dừng, Xanh khi nghe, Xám khi suy nghĩ)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: isSpeaking
-                                ? const [Color(0xFFEF4444), Color(0xFFDC2626)]
-                                : (isThinking
-                                      ? const [
-                                          Color(0xFF94A3B8),
-                                          Color(0xFF64748B),
-                                        ]
-                                      : (isListening
+                      // Nút chính giữa (Đỏ khi nói, Xanh khi nghe, Glowing Orb tím-cyan thở khi suy nghĩ)
+                      AnimatedBuilder(
+                        animation: _thinkingPulseAnimation,
+                        builder: (context, child) {
+                          final pulseVal = isThinking ? _thinkingPulseAnimation.value : 0.0;
+                          return Transform.scale(
+                            scale: isThinking ? 0.98 + (pulseVal * 0.08) : 1.0,
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: isSpeaking
+                                      ? const [Color(0xFFEF4444), Color(0xFFDC2626)]
+                                      : (isThinking
                                             ? const [
-                                                Color(0xFF0284C7),
-                                                Color(0xFF0369A1),
+                                                Color(0xFF06B6D4), // Cyan
+                                                Color(0xFF8B5CF6), // Purple
+                                                Color(0xFF3B82F6), // Blue
                                               ]
-                                            : const [
-                                                Color(0xFF0D9488),
-                                                Color(0xFF0284C7),
-                                              ])),
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color:
-                                  (isSpeaking
-                                          ? const Color(0xFFEF4444)
-                                          : (isListening
-                                                ? const Color(0xFF0284C7)
-                                                : const Color(0xFF0D9488)))
-                                      .withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: isThinking
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    valueColor: AlwaysStoppedAnimation(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : Icon(
-                                  isSpeaking
-                                      ? Icons.stop_rounded
-                                      : (isListening
-                                            ? Icons.graphic_eq_rounded
-                                            : Icons.mic_rounded),
-                                  color: Colors.white,
-                                  size: 32,
+                                            : (isListening
+                                                  ? const [
+                                                      Color(0xFF0284C7),
+                                                      Color(0xFF0369A1),
+                                                    ]
+                                                  : const [
+                                                      Color(0xFF0D9488),
+                                                      Color(0xFF0284C7),
+                                                    ])),
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                        ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isSpeaking
+                                            ? const Color(0xFFEF4444)
+                                            : (isThinking
+                                                  ? const Color(0xFF8B5CF6)
+                                                  : (isListening
+                                                        ? const Color(0xFF0284C7)
+                                                        : const Color(0xFF0D9488))))
+                                        .withValues(
+                                          alpha: isThinking
+                                              ? 0.4 + pulseVal * 0.35
+                                              : 0.35,
+                                        ),
+                                    blurRadius: isThinking ? 14 + pulseVal * 8 : 10,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: isThinking
+                                    ? Icon(
+                                        Icons.auto_awesome,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85 + pulseVal * 0.15,
+                                        ),
+                                        size: 28,
+                                      )
+                                    : Icon(
+                                        isSpeaking
+                                            ? Icons.stop_rounded
+                                            : (isListening
+                                                  ? Icons.graphic_eq_rounded
+                                                  : Icons.mic_rounded),
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -1023,27 +1063,36 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
 
           // Dòng trạng thái giọng nói (không hiển thị văn bản nhận diện/phản hồi trực tiếp)
           if (isThinking) ...[
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(Color(0xFF0284C7)),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Text(
-                  'Linh AI đang suy nghĩ câu trả lời...',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0284C7),
-                  ),
-                ),
-              ],
+            AnimatedBuilder(
+              animation: _thinkingPulseAnimation,
+              builder: (context, child) {
+                final pulseVal = _thinkingPulseAnimation.value;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 15,
+                      color: const Color(0xFF8B5CF6).withValues(
+                        alpha: 0.6 + pulseVal * 0.4,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Linh AI đang suy nghĩ câu trả lời...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color.lerp(
+                          const Color(0xFF0284C7),
+                          const Color(0xFF8B5CF6),
+                          pulseVal * 0.7,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ] else ...[
             Text(
@@ -1993,7 +2042,7 @@ class _TravelAssistantScreenState extends ConsumerState<TravelAssistantScreen>
   String _resolveVoiceStateStatus(VoiceAssistantState state) {
     switch (state.voiceState) {
       case VoiceState.listening:
-        return 'Đang nghe bạn nói... (Nói xong tự động trả lời)';
+        return 'Đang nghe bạn nói...';
       case VoiceState.thinking:
       case VoiceState.processing:
         return 'Linh AI đang suy nghĩ câu trả lời...';

@@ -839,17 +839,21 @@ async def ask_rag_stream(
 
         # Đọc lịch trình chi tiết thực tế của chuyến đi liên kết với cuộc hội thoại (nếu có)
         try:
-            # Tối ưu hóa chế độ voice: Bỏ qua query toàn bộ database chuyến đi đối với các câu hỏi thăm hỏi, thời tiết, địa danh chung
+            # Voice Fast-Path Optimization:
+            # Ở chế độ voice, mặc định KHÔNG query bảng Trip & ItineraryDays để tránh độ trễ blocking 150-300ms.
+            # Chỉ truy vấn chi tiết khi người dùng thực sự có ý định tra cứu hoặc chỉnh sửa lịch trình cụ thể.
             should_query_trip_db = True
             if request.mode == "voice":
                 normalized_question = unicodedata.normalize("NFD", user_question.casefold())
                 normalized_question = "".join(c for c in normalized_question if unicodedata.category(c) != "Mn").replace("đ", "d")
-                trip_keywords = (
-                    "lich trinh", "ke hoach", "chuyen di", "ngay", "tour",
-                    "hoat dong", "di dau", "diem den", "khach san", "sua",
-                    "doi", "them", "xoa", "tao", "len", "lap", "save", "luu"
+                
+                # Từ khóa hành động rõ ràng liên quan đến tra cứu/sửa lịch trình hiện có
+                voice_itinerary_keywords = (
+                    "lich trinh hom nay", "lich trinh ngay", "ngay mai di dau", "hom nay di dau",
+                    "sua lich trinh", "doi diem", "xoa hoat dong", "them hoat dong", "doi gio",
+                    "chuyen hoat dong", "chi tiet ngay", "lich trinh chi tiet"
                 )
-                should_query_trip_db = any(kw in normalized_question for kw in trip_keywords)
+                should_query_trip_db = any(kw in normalized_question for kw in voice_itinerary_keywords)
 
             if should_query_trip_db:
                 from sqlmodel import select
@@ -900,13 +904,12 @@ async def ask_rag_stream(
                             planning_summary = f"{planning_summary}\n\n{itin_block}"
                         else:
                             planning_summary = itin_block
-                else:
+                elif request.mode != "voice":
+                    # Ở chế độ chat text mới cần khối hướng dẫn dự phòng; chế độ voice giữ prompt siêu gọn nhẹ
                     itin_block = (
                         "=== THÔNG TIN LỊCH TRÌNH TRONG DATABASE ===\n"
                         "Cuộc hội thoại này hiện tại chưa có bất kỳ lịch trình chi tiết nào được lưu trong cơ sở dữ liệu.\n"
-                        "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo / lên / lập lịch trình mới theo điểm đến và số ngày cụ thể (ví dụ: 'Tạo lịch trình đi Đà Nẵng 4 ngày', 'Lên lịch 2 ngày'): "
-                        "Hệ thống TravelWise sẽ tự động tạo lịch trình mới theo đúng số ngày và địa điểm du khách yêu cầu! "
-                        "Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC nói 'Mình chưa có thông tin lịch trình X ngày...', không từ chối và TUYỆT ĐỐI KHÔNG tự ý gạ đổi sang số ngày khác! "
+                        "(QUY TẮC BẮT BUỘC: Khi du khách yêu cầu tạo / lên / lập lịch trình mới theo điểm đến và số ngày cụ thể: "
                         "Hãy hào hứng xác nhận bạn đang chuẩn bị lên lịch trình đúng theo số ngày và địa điểm du khách vừa yêu cầu trong 1-2 câu ngắn gọn, ấm áp!)\n"
                     )
                     if planning_summary:
